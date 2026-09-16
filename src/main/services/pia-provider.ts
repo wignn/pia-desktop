@@ -1614,13 +1614,14 @@ export class PiaProvider {
             rawForm === '10-K' || rawForm === '10-Q' || rawForm === '8-K' || rawForm === '4' || rawForm === '13F'
               ? rawForm
               : 'OTHER'
+          const companyName = i.company_name || i.raw_json?.companyName || i.title || i.ticker || ''
           return {
             id: i.id || i.accession_number,
             symbol: i.symbol || i.ticker,
-            companyName: i.company_name || i.title,
+            companyName,
             formType,
             filedDate: i.filing_date,
-            title: `${rawForm} Filing - ${i.company_name || i.ticker || ''}`,
+            title: i.title || `${rawForm} Filing - ${companyName || i.ticker || ''}`,
             description: i.description || `Form ${rawForm} submitted to SEC EDGAR database.`,
             reportUrl: i.report_url || i.document_url,
             isInsiderTrade: rawForm === '4'
