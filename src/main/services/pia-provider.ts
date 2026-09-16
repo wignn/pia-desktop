@@ -497,14 +497,15 @@ export class PiaProvider {
 
       const res = await this.client.market.getCandles(params.symbol, {
         timeframe: tf,
-        limit: params.limit,
-        since: params.from,
-        until: params.to
+        resolution: tf,
+        limit: params.limit || 1000,
+        before: params.to && params.to > 0 ? Math.floor(params.to / (params.to > 1e11 ? 1000 : 1)) : undefined
       })
 
-      if (!res || (!Array.isArray(res.candles) && !Array.isArray(res.items))) return []
-      const rows = (Array.isArray(res.candles) ? res.candles : res.items) as Candle[]
-      if (rows.length === 0) return []
+      const payload = (res || {}) as Record<string, unknown>
+      const rawRows = Array.isArray(payload.candles) ? payload.candles : Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : []
+      if (rawRows.length === 0) return []
+      const rows = rawRows as Candle[]
 
       // Strict normalization & sorting
       const bars: CandleBar[] = []
