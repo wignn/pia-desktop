@@ -1,0 +1,590 @@
+﻿{
+  "_id": "@piaa/sdk",
+  "_rev": "8-5866a976c960b79e5ebb3627022e53cf",
+  "name": "@piaa/sdk",
+  "dist-tags": { "latest": "1.3.2" },
+  "versions": {
+    "1.0.0": {
+      "name": "@piaa/sdk",
+      "version": "1.0.0",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.0.0",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/atlsd/issues" },
+      "dist": {
+        "shasum": "271b8cc11992039f2b6d7a0f576ee30f05edecc2",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.0.0.tgz",
+        "fileCount": 31,
+        "integrity": "sha512-Awh1IS4KthmlrbsjStQsv0SECXlPy+1zGzBVuiqHJYdgFTXYQTVr0x/guSorD1NKsWPy3023pCRNPTUFKJQWzA==",
+        "signatures": [
+          {
+            "sig": "MEUCIBWOFurBAgYMTyBe2U6i+aLX5/GtjmFGfkEUShq5F+9rAiEA7PDiZR1J1L1tMvhfvKWpjQETCmI2dNarh+hXrjKnPyc=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.0.0",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 125855
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "9cc7d3478f673fad6e4eaea1e4393eb1272f04a9",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm --sourcemap && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/atlsd.git",
+        "type": "git",
+        "directory": "packages/api-client"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.0.0_1789031567796_0.7036821178869328",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.0.1": {
+      "name": "@piaa/sdk",
+      "version": "1.0.1",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.0.1",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/atlsd/issues" },
+      "dist": {
+        "shasum": "c28f05676a24e7639bfe9a1d40bfa46f7f9eac20",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.0.1.tgz",
+        "fileCount": 31,
+        "integrity": "sha512-xXBnMd/L2XZxkKuep02o7EvwtIdAF7YpFV7Zpt6I5+Ov7TLUXVFv8lkrjdlAwes+cxt0eFvgRgk0zpVozyBtHg==",
+        "signatures": [
+          {
+            "sig": "MEYCIQCD4+TlrE6MxbgdQPQLQbZs6IrnKx2zniFSFctFGXzHqwIhAJ++udpZFJ1NUOOi+9YC//Sp/XMJJjXaynbeLQV6gc0N",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.0.1",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 125855
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "950a2e7a766ce4ffa549e566c963fdf8e649d945",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm --sourcemap && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/atlsd.git",
+        "type": "git",
+        "directory": "packages/api-client"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.0.1_1789032136112_0.8581733825476534",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.0.2": {
+      "name": "@piaa/sdk",
+      "version": "1.0.2",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.0.2",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "a8f2c24ef100b7916884223c5d37a75f3bff882e",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.0.2.tgz",
+        "fileCount": 17,
+        "integrity": "sha512-JIt2murGocUepCbSVAp+A6U8C4axRSCIbIXymFyp3d6wMp6n5tOac87dyaYJyYAyxVLmVRVgO+58ZqfX+YTOJw==",
+        "signatures": [
+          {
+            "sig": "MEUCIQDcz6MzOVf0k9XDAZtd/aCRotjpKf8dQC2PJ0DoUuBL0wIgVUTdz7tQsPMcwT5HI+eeyfjTLRAAfGeNC4o7PThSf4U=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.0.2",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 51598
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "f4a127fdbeb6cef71eee417a7a8748d4fd58fc47",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.0.2_1789039770703_0.08373747560944533",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.1.0": {
+      "name": "@piaa/sdk",
+      "version": "1.1.0",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.1.0",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "b638b449ee30e55cf6cebb2c834c077278b578a8",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.1.0.tgz",
+        "fileCount": 19,
+        "integrity": "sha512-UYLRDURLbKbNERIvne+O1y2qE/brxoicWce5WsHy8GQqoJkPoF1i2Ci/WLAQyRXKSLGNn5OTzFiGWAeEFvysEw==",
+        "signatures": [
+          {
+            "sig": "MEUCIFUVQc8sxDsxRXnxWpVJjyOKn7dmuXwRuQdGHUDiUJZtAiEAzoWUJfGuc4GHH3W6MyT5kSd4AG7oUKtniwD+ADwP1WY=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.1.0",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 56921
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "a1afbc5d0f673dc7a0d03cf7fb31f014945344c2",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.1.0_1789183529223_0.37423211593816674",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.2.0": {
+      "name": "@piaa/sdk",
+      "version": "1.2.0",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.2.0",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "bb84bceebb3d725d9b69059db6c9798022aabc5d",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.2.0.tgz",
+        "fileCount": 21,
+        "integrity": "sha512-+wFFBZR6v7odzuMIe3BnTicMrrOdNZptlCeW4wMmp34h20IjxFpNVnvoZVI+Kmy1HPu1jU8XhZtplL7LxtSW0A==",
+        "signatures": [
+          {
+            "sig": "MEQCIBrfLttrnw0L+WP+l7EybkM+NDjpaSLA6QzFAkVnNW7jAiAp3Nbu37TfuZPBI3pNfzRwF2Np1JtVGRGeV/Gb6gLNDQ==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.2.0",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 68443
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "9b061e25dd706795ca65e09a6fbb0894287a8e45",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.2.0_1789359056379_0.5277961735061729",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.3.0": {
+      "name": "@piaa/sdk",
+      "version": "1.3.0",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.3.0",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "a3047f30662fd41a4d59dc49e2a1793894632115",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.3.0.tgz",
+        "fileCount": 25,
+        "integrity": "sha512-V4bIj3eRzvqeKDNJyUHWnH2pX+rZtMd6HkESLqYogY8ELrnCosJ5i41XYtI/cjb5+M29oWN6CaJ+PgOAtWTjQg==",
+        "signatures": [
+          {
+            "sig": "MEUCIQCgx0PHy9SXAr81EaZybgPTqCggIGGb1h3gczryBePEtgIgYhkIHe4UBQLdLaBRlY+eZzNGJedRywtFl7ifpYb4U/I=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.3.0",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 80400
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "7a8bfd82a43b54f56783ce27f818b744062e122b",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.3.0_1789361578463_0.5867944800133158",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.3.1": {
+      "name": "@piaa/sdk",
+      "version": "1.3.1",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "license": "MIT",
+      "_id": "@piaa/sdk@1.3.1",
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "fc1674f2128bffa1d4102855ff8383b65658a18c",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.3.1.tgz",
+        "fileCount": 25,
+        "integrity": "sha512-dVRlk40E5/aFoPECre8QL+H5Sblks2E1kJRHxsNlRCcgFm+uMEWPjn2xnUObm+0kitJUjbPdL+98d+1odKUiKQ==",
+        "signatures": [
+          {
+            "sig": "MEQCIESu2PIL6JaiCFg4thLNMigGHTqS4Zh/my4+Awbi3rzuAiBta2o5GFGB1RgEUp/2O49B841T4z93ORF2XdCXxRNcag==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.3.1",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 80400
+      },
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "e04c724fedb0b18cde83313136b9c8b1d38fe347",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "tmp": "tmp/sdk_1.3.1_1789361713825_0.3456369009511844",
+        "host": "s3://npm-registry-packages-npm-production"
+      }
+    },
+    "1.3.2": {
+      "_id": "@piaa/sdk@1.3.2",
+      "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+      "dist": {
+        "shasum": "60c029f26c62abb2f6d6be0834e561a09dc35669",
+        "tarball": "https://registry.npmjs.org/@piaa/sdk/-/sdk-1.3.2.tgz",
+        "fileCount": 25,
+        "integrity": "sha512-QIq2X77yKXi3EO8rK55WA+bel49s1eaYZF1b6HSiunCTbhOkvHGsSvD3dGoVA0VxHKIybzU8VKNctGy8H48T1Q==",
+        "signatures": [
+          {
+            "sig": "MEQCIEZYR9370+Fh5WDsBX7X0h6yduIOEBUHuW7esWnVka7RAiBW6xabyJWRb32UCcuEzNqHhjCFbc/BFPXnrgn00zsIlA==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+            "sig": "MEUCIGfGRuEJ/jedg+xd6lBVvhscVuGg3454a6gesuEBZ26UAiEAgajeoKuPs312HfnL8wNmA8HC66EqOctr6Aq8dRISupE="
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@piaa%2fsdk@1.3.2",
+          "provenance": { "predicateType": "https://slsa.dev/provenance/v1" }
+        },
+        "unpackedSize": 81823
+      },
+      "main": "./dist/index.js",
+      "name": "@piaa/sdk",
+      "types": "./dist/index.d.ts",
+      "author": { "name": "Merrr", "email": "wign@wign.dev" },
+      "module": "./dist/index.js",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        }
+      },
+      "gitHead": "5da74d4dcdf517aade99d1e5af2c7a62edbd470f",
+      "license": "MIT",
+      "scripts": {
+        "test": "bun test",
+        "build": "bun build src/index.ts --outdir ./dist --format esm && bun x tsc -p tsconfig.json --emitDeclarationOnly",
+        "prepublishOnly": "bun run build && bun test"
+      },
+      "version": "1.3.2",
+      "_npmUser": { "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" },
+      "homepage": "https://pia.wign.dev/portal/docs",
+      "keywords": [
+        "pia",
+        "atlsd",
+        "market-data",
+        "finance",
+        "crypto",
+        "trading",
+        "sdk",
+        "websocket"
+      ],
+      "repository": {
+        "url": "git+https://github.com/wignn/pia-sdk.git",
+        "type": "git",
+        "directory": "typescript"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+      "directories": {},
+      "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+      "_nodeVersion": "20.20.2",
+      "publishConfig": { "access": "public" },
+      "_hasShrinkwrap": false,
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages-npm-production",
+        "tmp": "tmp/sdk_1.3.2_1789442482243_0.3560564785661251"
+      }
+    }
+  },
+  "time": {
+    "created": "2026-09-10T09:12:47.540Z",
+    "modified": "2026-09-15T03:21:22.837Z",
+    "1.0.0": "2026-09-10T09:12:47.971Z",
+    "1.0.1": "2026-09-10T09:22:16.242Z",
+    "1.0.2": "2026-09-10T11:29:30.833Z",
+    "1.1.0": "2026-09-12T03:25:29.383Z",
+    "1.2.0": "2026-09-14T04:10:56.507Z",
+    "1.3.0": "2026-09-14T04:52:58.594Z",
+    "1.3.1": "2026-09-14T04:55:13.967Z",
+    "1.3.2": "2026-09-15T03:21:22.327Z"
+  },
+  "bugs": { "url": "https://github.com/wignn/pia-sdk/issues" },
+  "author": { "name": "Merrr", "email": "wign@wign.dev" },
+  "license": "MIT",
+  "homepage": "https://pia.wign.dev/portal/docs",
+  "keywords": ["pia", "atlsd", "market-data", "finance", "crypto", "trading", "sdk", "websocket"],
+  "repository": {
+    "url": "git+https://github.com/wignn/pia-sdk.git",
+    "type": "git",
+    "directory": "typescript"
+  },
+  "description": "Official TypeScript/JavaScript SDK for PIA Market Intelligence Platform",
+  "maintainers": [{ "name": "wignn", "email": "tigfiragnafatur1933@gmail.com" }],
+  "readme": "# @piaa/sdk (Official TypeScript / JavaScript SDK)\n\nThe official, production-ready SDK for the **PIA Market Intelligence & Realtime Financial Platform**.\n\nDesigned for institutional algorithmic traders, fintech dashboards, and quantitative applications across **Node.js 18+**, **Bun**, **Deno**, and modern **Browsers**.\n\n---\n\n## Features\n\n- **Zero-Fuss Sensible Defaults**: Connect in 3 lines of code with pre-configured endpoints and sensible timeout/retry defaults.\n- **Dual Proxy-Resilient Auth**: Transparently sends both standard `Authorization: Bearer <key>` and `x-api-key` headers to guarantee 100% compatibility across Cloudflare tunnels, WAFs, and internal gateways.\n- **Typed Error Hierarchy**: Clear, actionable, strongly-typed errors (`AuthenticationError`, `RateLimitError`, `TimeoutError`, `ValidationError`, `NetworkError`).\n- **Derivatives & Macro Intelligence**: Real-time Options Chain, Gamma Exposure (GEX), Fear & Greed Index, and CFTC Commitment of Traders (COT) positioning.\n- **Zero Sensitive Data Leaks**: Automatic redaction of API keys, bearer tokens, and secrets from error logs and stack traces.\n- **Cross-Platform Realtime Streaming**: Built-in resilient WebSocket client with **In-Band Message Authentication**, ping/pong keep-alives, and automatic re-subscription on reconnect.\n- **Rate Limit Telemetry**: Real-time inspection of RFC 6585 and daily quota headers (`X-RateLimit-*`, `X-DailyQuota-*`).\n\n---\n\n## Installation\n\n```bash\n# Using bun\nbun add @piaa/sdk\n\n# Using npm\nnpm install @piaa/sdk\n\n# Using pnpm / yarn\npnpm add @piaa/sdk\n```\n\n---\n\n## Quickstart\n\n### 1. REST API Usage\n\n```typescript\nimport { PiaClient, RateLimitError, AuthenticationError } from \"@piaa/sdk\";\n\n// Automatically picks up process.env.PIA_API_KEY if omitted\nconst client = new PiaClient({\n  apiKey: \"wi_live_...\",\n});\n\nasync function run() {\n  try {\n    // 1. Fetch live multi-asset snapshot & symbol catalog\n    const symbols = await client.market.getSymbols({ asset_type: \"crypto\" });\n    console.log(`Available crypto symbols: ${symbols.total}`);\n\n    const prices = await client.market.getPrices();\n    console.log(`Tracked assets: ${prices.total}`);\n    for (const item of prices.items.slice(0, 5)) {\n      console.log(`[${item.symbol}] $${item.price} (${item.asset_type})`);\n    }\n\n    // 2. Fetch historical OHLCV candlesticks\n    const candles = await client.market.getCandles(\"XAUUSD\", {\n      timeframe: \"1h\",\n      limit: 100,\n    });\n    console.log(`Fetched ${candles.count} bars for ${candles.symbol}`);\n\n    // 3. Options Chain & Gamma Exposure (GEX)\n    const gex = await client.options.getGex(\"SPX\");\n    console.log(`SPX Net GEX: $${gex.net_gex?.toLocaleString()} (0-Gamma: ${gex.zero_gamma_level})`);\n\n    // 4. Macro Sentiment & Positioning (Fear & Greed, COT)\n    const fg = await client.macro.getFearGreed();\n    console.log(`Fear & Greed Index: ${fg.score} (${fg.rating})`);\n\n    const cot = await client.macro.getCot(\"GOLD\");\n    console.log(`Gold Commercial Net: ${cot.reports[0]?.net_position}`);\n\n    // 5. Social Discussions & Breaking News\n    const posts = await client.social.getPosts({ limit: 10, symbol: \"BTC\" });\n    console.log(`Latest post by @${posts.items[0]?.author_username}: \"${posts.items[0]?.text}\"`);\n\n    // 6. Inspect rate limit telemetry\n    const quota = client.getRateLimitInfo();\n    console.log(`Remaining daily hits: ${quota.dailyRemaining}/${quota.dailyLimit}`);\n  } catch (err) {\n    if (err instanceof AuthenticationError) {\n      console.error(\"Invalid or expired API key.\");\n    } else if (err instanceof RateLimitError) {\n      console.error(`Rate limited! Retry after ${err.retryAfterSeconds} seconds.`);\n    } else {\n      console.error(\"API error:\", err);\n    }\n  }\n}\n\nrun();\n```\n\n---\n\n### 2. Realtime WebSocket Streaming (In-Band Message Auth)\n\nCross-platform streaming without query-string token leakage:\n\n```typescript\nimport { PiaClient } from \"@piaa/sdk\";\n\nconst client = new PiaClient({ apiKey: \"wi_live_...\" });\n\n// Listen for connection events\nclient.realtime.on(\"connect\", () => {\n  console.log(\"WebSocket connected. Authenticating...\");\n});\n\n// Fired once In-Band authentication is accepted by the server\nclient.realtime.on(\"authenticated\", (info) => {\n  console.log(\"Authenticated! Tier:\", info.plan);\n\n  // Subscribe to market symbols\n  client.realtime.subscribe([\"XAUUSD\", \"BTCUSDT\", \"EURUSD\"]);\n});\n\n// Handle real-time price ticks\nclient.realtime.on(\"tick\", (tick) => {\n  console.log(`[TICK] ${tick.symbol} -> $${tick.price} (bid: ${tick.bid}, ask: ${tick.ask})`);\n});\n\n// Handle disconnections (auto-reconnect is handled automatically)\nclient.realtime.on(\"disconnect\", ({ code, reason }) => {\n  console.warn(`WebSocket closed (${code}): ${reason}`);\n});\n\n// Start streaming\nclient.realtime.connect();\n\n// To stop and prevent auto-reconnection:\n// client.realtime.disconnect();\n```\n\n---\n\n## Complete Resource Reference\n\n| Resource | Methods | Endpoint | Description |\n|---|---|---|---|\n| `client.market` | `getPrices()`, `getCandles()`, `getOrderBook()` | `/api/v1/market/*` | Live price snapshot, ClickHouse OHLCV candles, and Level 2 DOM. |\n| `client.options` | `getChain()`, `getGex()`, `getSummary()` | `/api/v1/options/*` | Full options chain, Gamma Exposure levels, and put/call sentiment. |\n| `client.macro` | `getFearGreed()`, `getCot()`, `getCentralBankStance()` | `/api/v1/fear-greed`, `/api/v1/cot/*`, `/api/v1/central-banks/*` | Fear & Greed sentiment index, CFTC institutional COT reports, and central bank monetary policy stance. |\n| `client.social` | `getPosts()`, `getFeed()` | `/api/v1/social/*` | Real-time social sentiment and discussion feeds from Twitter/𝕏. |\n| `client.news` | `getNews()` | `/api/v1/news` | Curated multi-asset financial news headlines and articles. |\n| `client.economic` | `getCalendar()` | `/api/v1/economic/calendar` | Global economic calendar events, CPI releases, and rate decisions. |\n| `client.fixedIncome` | `getYieldCurve()` | `/api/v1/rates/yield-curve` | Benchmark sovereign bond yield curves across tenors. |\n| `client.ws` | `createTicket()` | `/api/v1/ws/ticket` | Ephemeral single-use WebSocket connection tickets. |\n| `client.realtime` | `connect()`, `subscribe()`, `unsubscribe()`, `disconnect()` | `/api/v1/ws` | Low-latency streaming socket client with event emitters. |\n\n---\n\n## Configuration Reference\n\n```typescript\nconst client = new PiaClient({\n  // Secret API key. Falls back to process.env.PIA_API_KEY\n  apiKey: \"wi_live_...\",\n\n  // Unified REST gateway (Default: \"https://api-engine.wign.dev\")\n  baseUrl: \"https://api-engine.wign.dev\",\n\n  // Realtime streaming gateway (Default: \"wss://api-engine.wign.dev/api/v1/ws\")\n  wsUrl: \"wss://api-engine.wign.dev/api/v1/ws\",\n\n  // Request timeout in milliseconds (Default: 15,000)\n  timeoutMs: 10_000,\n\n  // Maximum retry attempts for transient errors (Default: 3)\n  maxRetries: 3,\n\n  // Initial retry delay for exponential backoff (Default: 500ms)\n  retryDelayMs: 500,\n\n  // Custom HTTP headers injected into all requests\n  headers: {\n    \"X-Client-App\": \"my-trading-bot\",\n  },\n\n  // Custom fetch implementation (useful for mocking or custom proxies)\n  fetch: customFetch,\n\n  // Custom WebSocket implementation (e.g. 'ws' in Node.js)\n  WebSocket: customWebSocket,\n\n  // Enable verbose debug logs (Default: false)\n  debug: false,\n});\n```\n\n---\n\n## Error Handling\n\nAll errors thrown by the SDK inherit from `PiaError`:\n\n| Error Class | HTTP Status | Description | Properties |\n|---|---|---|---|\n| `ConfigurationError` | N/A | Missing or invalid client configuration | `message` |\n| `ValidationError` | N/A | Invalid method arguments (e.g. empty symbol) | `paramName` |\n| `AuthenticationError` | 401 | Invalid, expired, or revoked API key | `statusCode`, `endpoint` |\n| `PermissionError` | 403 | API key lacks required scope (e.g. `realtime:ws`) | `requiredScope` |\n| `RateLimitError` | 429 | Rate limit or daily quota exceeded | `retryAfterSeconds`, `dailyRemaining`, `minuteRemaining` |\n| `TimeoutError` | 408 / N/A | Request exceeded configured `timeoutMs` | `timeoutMs`, `endpoint` |\n| `NetworkError` | N/A | Network drop, DNS resolution failure | `causeError` |\n| `ParseError` | N/A | Response was not valid JSON | `rawText` |\n| `ApiError` | Other | General HTTP errors | `statusCode`, `rawBody` |\n\n---\n\n## Testing\n\nRun the test suite using Bun:\n\n```bash\nbun test\n```\n",
+  "readmeFilename": "README.md"
+}
