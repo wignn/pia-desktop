@@ -21,6 +21,7 @@ import { GeoSignalsPanel } from './components/panels/GeoSignalsPanel'
 import { EnergyPanel } from './components/panels/EnergyPanel'
 import { SecFilingsPanel } from './components/panels/SecFilingsPanel'
 import { SocialPanel } from './components/panels/SocialPanel'
+import { LiveStreamPanel } from './components/panels/LiveStreamPanel'
 import { ReplayToolbar } from './components/panels/ReplayToolbar'
 import { SymbolSearchModal } from './components/modals/SymbolSearchModal'
 import { IndicatorModal } from './components/modals/IndicatorModal'
@@ -183,6 +184,7 @@ export function App(): React.JSX.Element {
                 {activeTab === 'news' && <NewsPanel />}
                 {activeTab === 'alerts' && <AlertsPanel />}
                 {activeTab === 'paper' && <PaperTradingPanel />}
+                {activeTab === 'live' && <LiveStreamPanel />}
               </div>
             )}
 

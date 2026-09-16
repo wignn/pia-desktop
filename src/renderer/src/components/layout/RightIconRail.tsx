@@ -263,6 +263,23 @@ const RAIL_ITEMS: RailItem[] = [
         <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
       </svg>
     )
+  },
+  {
+    id: 'live',
+    title: 'Live TV & Financial Broadcast',
+    icon: (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#f23645"
+        strokeWidth="2"
+      >
+        <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+        <polyline points="17 2 12 7 7 2" />
+      </svg>
+    )
   }
 ]
 

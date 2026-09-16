@@ -20,6 +20,7 @@ export type RightPanelTab =
   | 'news'
   | 'alerts'
   | 'paper'
+  | 'live'
   | 'settings'
 export type AppTheme = 'dark' | 'light'
 

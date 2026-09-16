@@ -998,7 +998,16 @@ export class PiaProvider {
         const raw = await this.client.intelligence.analyze({ symbol, query })
         const payload = (raw as unknown as Record<string, unknown>)
         const nested = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : payload
-        const analysis = String(nested.analysis ?? nested.summary ?? nested.explanation ?? nested.content ?? (typeof nested.data === 'string' ? nested.data : ''))
+        const candidateAnalysis =
+          nested.analysis ||
+          nested.summary ||
+          nested.explanation ||
+          nested.content ||
+          (nested.reason
+            ? `${nested.final_signal ? `Signal: ${String(nested.final_signal).toUpperCase()}. ` : ''}${nested.reason}`
+            : '') ||
+          (typeof nested.data === 'string' ? nested.data : '')
+        const analysis = String(candidateAnalysis ?? '')
         if (analysis.trim()) {
           const sentimentValue = String(nested.sentiment ?? '').toLowerCase()
           const sentiment = sentimentValue === 'bullish' || sentimentValue === 'bearish' ? sentimentValue : 'neutral'
@@ -1028,11 +1037,17 @@ export class PiaProvider {
         const raw = await this.client.intelligence.getInsights(symbol)
         const rawValue = raw as unknown as Record<string, unknown>
         const payload = (rawValue.data && typeof rawValue.data === 'object' ? rawValue.data : rawValue) as Record<string, unknown>
-        const summary = String(payload.summary ?? payload.explanation ?? payload.analysis ?? '')
+        const summary = String(payload.summary || payload.explanation || payload.headline || payload.analysis || '')
         if (summary.trim()) {
           const rawSentiment = String(payload.sentiment ?? '').toLowerCase()
           const sentiment = rawSentiment === 'bullish' || rawSentiment === 'bearish' ? rawSentiment : 'neutral'
-          const drivers = Array.isArray(payload.drivers) ? payload.drivers.filter((item): item is string => typeof item === 'string') : []
+          const drivers = Array.isArray(payload.drivers)
+            ? payload.drivers
+                .map((item: any) =>
+                  typeof item === 'string' ? item : item?.name || item?.term || ''
+                )
+                .filter(Boolean)
+            : []
           return {
             symbol: String(payload.symbol || symbol),
             summary,
@@ -1403,27 +1418,46 @@ export class PiaProvider {
         const res = (raw as typeof raw & { data?: typeof raw }).data || raw
         const events = res.events || res.items || []
         if (events.length > 0) {
-          return events.map((e) => {
+          return (events as any[]).map((e: any) => {
             let category: GeoSignalEventItem['category'] = 'conflict'
-            if (e.category === 'sanction') {
+            const catLower = String(e.category || '').toLowerCase()
+            if (catLower.includes('sanction')) {
               category = 'sanctions'
-            } else if (e.category === 'trade') {
+            } else if (catLower.includes('trade')) {
               category = 'trade'
-            } else if (e.category === 'supply_chain') {
+            } else if (catLower.includes('supply') || catLower.includes('maritime')) {
               category = 'maritime'
-            } else if (e.category === 'election') {
+            } else if (catLower.includes('election') || catLower.includes('diplomat')) {
               category = 'diplomatic'
             }
+            const rawSev = typeof e.severity === 'string' ? e.severity.toLowerCase() : ''
+            const numSev = Number(e.severity ?? e.severity_score ?? 0)
+            const severity: GeoSignalEventItem['severity'] =
+              rawSev === 'critical' || numSev > 7 || numSev > 0.7
+                ? 'critical'
+                : rawSev === 'high' || numSev > 5 || numSev > 0.5
+                  ? 'high'
+                  : rawSev === 'medium' || numSev > 3 || numSev > 0.3
+                    ? 'medium'
+                    : 'low'
             return {
-              id: e.id,
-              title: e.title,
-              region: e.region,
-              severity: e.severity,
+              id: String(e.id || e.event_id || Math.random().toString()),
+              title: String(e.title || ''),
+              region: String(e.region || e.country || 'Global'),
+              severity,
               category,
-              summary: e.summary,
-              affectedAssets: e.impacted_assets || [],
-              timestamp: e.published_at ? new Date(e.published_at).getTime() : Date.now(),
-              source: 'Geopolitical Intelligence Bureau'
+              summary: String(e.summary || ''),
+              affectedAssets: Array.isArray(e.impacted_assets)
+                ? e.impacted_assets
+                : Array.isArray(e.affected_assets)
+                  ? e.affected_assets
+                  : [],
+              timestamp: e.published_at
+                ? new Date(e.published_at).getTime()
+                : e.timestamp
+                  ? new Date(e.timestamp).getTime()
+                  : Date.now(),
+              source: String(e.source || 'Geopolitical Intelligence Bureau')
             }
           })
         }
@@ -1444,18 +1478,20 @@ export class PiaProvider {
         const layers = Array.isArray(payloadRecord.layers) ? payloadRecord.layers : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
         if (layers.length > 0) {
           return layers.map((l) => {
+            const numScore = Number(l.risk_level ?? l.max_severity ?? l.avg_severity ?? 0)
+            const normalizedScore = numScore <= 1.0 ? numScore * 10 : numScore
             const riskLevel: GeoSignalsMapRegion['riskLevel'] =
-              l.risk_level > 7
+              normalizedScore > 7
                 ? 'critical'
-                : l.risk_level > 5
+                : normalizedScore > 5
                   ? 'high'
-                  : l.risk_level > 3
+                  : normalizedScore > 3
                     ? 'elevated'
                     : 'moderate'
             return {
-              region: l.region,
+              region: l.region || l.key || 'Global',
               riskLevel,
-              activeHotspots: l.active_conflicts,
+              activeHotspots: l.active_conflicts ?? (l.signal_count ? Number(l.signal_count) : 0),
               chokepointStatus: l.chokepoints_status
                 ? Object.entries(l.chokepoints_status)
                     .map(([k, v]) => `${k}: ${v}`)
@@ -1481,12 +1517,18 @@ export class PiaProvider {
         const assets = Array.isArray(payloadRecord.assets) ? payloadRecord.assets : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
         if (assets.length > 0) {
           return assets.map((a) => {
+            const rawScore = Number(a.risk_score ?? a.max_severity ?? a.avg_severity ?? 0)
+            const riskScore = rawScore <= 1.0 ? Math.round(rawScore * 100) : Math.round(rawScore)
             const supplyDisruptionRisk: GeoAssetImpactItem['supplyDisruptionRisk'] =
-              a.affected_supply_pct && a.affected_supply_pct > 15 ? 'high' : 'medium'
+              riskScore > 65 || (a.affected_supply_pct && a.affected_supply_pct > 15)
+                ? 'high'
+                : riskScore > 35
+                  ? 'medium'
+                  : 'low'
             return {
-              symbol: a.symbol,
-              riskScore: a.risk_score,
-              primaryDriver: a.primary_risk_driver,
+              symbol: a.symbol || a.asset || '',
+              riskScore,
+              primaryDriver: a.primary_risk_driver || a.category || 'Regional tension / Supply chain',
               supplyDisruptionRisk
             }
           })
