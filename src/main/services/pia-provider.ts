@@ -1138,19 +1138,18 @@ export class PiaProvider {
     if (this.client) {
       try {
         const res = await this.client.options.getSummary()
-        const payload = (res && typeof res === 'object' ? res : {}) as Record<string, unknown>
-        const source = payload.data && typeof payload.data === 'object' ? payload.data : payload
-        const value = source as Record<string, unknown>
-        const totalVolume = value.total_volume ?? value.totalVolume
-        const totalOpenInterest = value.total_open_interest ?? value.totalOpenInterest
-        const putCallRatio = value.put_call_ratio ?? value.putCallRatio
-        const active = Array.isArray(value.most_active_symbols) ? value.most_active_symbols : Array.isArray(value.mostActiveSymbols) ? value.mostActiveSymbols : []
+        const payload = (res && typeof res === 'object' ? res : {}) as Record<string, any>
+        const source = Array.isArray(payload.data) ? payload.data[0] || {} : payload.data && typeof payload.data === 'object' ? payload.data : payload
+        const totalVolume = source.total_volume ?? source.totalVolume
+        const totalOpenInterest = source.total_open_interest ?? source.totalOpenInterest
+        const putCallRatio = source.put_call_ratio ?? source.putCallRatio
+        const active = Array.isArray(source.most_active_symbols) ? source.most_active_symbols : Array.isArray(source.mostActiveSymbols) ? source.mostActiveSymbols : Array.isArray(payload.data) ? payload.data : []
         if (totalVolume !== undefined || totalOpenInterest !== undefined || putCallRatio !== undefined || active.length > 0) {
           return {
             totalVolume: totalVolume === undefined ? undefined : Number(totalVolume),
             totalOpenInterest: totalOpenInterest === undefined ? undefined : Number(totalOpenInterest),
             putCallRatio: putCallRatio === undefined ? undefined : Number(putCallRatio),
-            mostActiveSymbols: active.map((s: any) => ({ symbol: String(s.symbol), volume: Number(s.volume) }))
+            mostActiveSymbols: active.map((s: any) => ({ symbol: String(s.symbol), volume: Number(s.volume ?? s.total_volume ?? 0), pcr: s.put_call_ratio !== undefined ? Number(s.put_call_ratio) : undefined }))
           }
         }
       } catch (err) {
