@@ -17,7 +17,7 @@ export const DEFAULT_MARKET_CAPABILITIES: MarketCapabilities = {
 export function capabilitiesForSymbol(_symbol: string, category: AssetCategory): MarketCapabilities {
   return {
     ...DEFAULT_MARKET_CAPABILITIES,
-    orderBook: category === 'crypto' || category === 'stocks',
+    orderBook: true,
     options: category === 'stocks' || category === 'indices',
     gex: category === 'stocks' || category === 'indices'
   }
