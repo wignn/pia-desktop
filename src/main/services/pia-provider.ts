@@ -1337,7 +1337,12 @@ export class PiaProvider {
         const numeric = Number(value.value ?? value.rate ?? value.yield)
         return date && Number.isFinite(numeric) ? [{ date, value: numeric }] : []
       })
-      return { ...raw, tenor, points, timestamp: Date.now() }
+      return {
+        tenor,
+        date: raw.date || raw.as_of || new Date().toISOString().split('T')[0],
+        points,
+        timestamp: Date.now()
+      }
     } catch (err) {
       console.warn('[PiaProvider] fixedIncome.getHistory failed:', this.formatProviderError(err))
       return null
@@ -1347,16 +1352,22 @@ export class PiaProvider {
   public async getYieldSpreads(): Promise<YieldSpreadResult | null> {
     if (this.client) {
       try {
-        const res = await this.client.fixedIncome.getSpreads()
-        if (res) {
+        const raw = await this.client.fixedIncome.getSpreads()
+        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const rows = Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : Array.isArray((payload as any)?.items) ? (payload as any).items : []
+        const findSpread = (short: string, long: string) => {
+          const row = rows.find((item: any) => String(item?.spread || '').toUpperCase().includes(`${short}-${long}`))
+          return row ? Number(row.value) : undefined
+        }
+        const spread2y10y = (payload as any)?.spread2y10y ?? (payload as any)?.spread_2y_10y ?? findSpread('2Y', '10Y')
+        const spread3m10y = (payload as any)?.spread3m10y ?? (payload as any)?.spread_3m_10y ?? findSpread('3M', '10Y')
+        if (spread2y10y !== undefined || spread3m10y !== undefined) {
           return {
             date: new Date().toISOString().split('T')[0],
-            spread2Y10Y: res.spread2y10y ?? res.spread_2y_10y,
-            spread3M10Y: res.spread3m10y ?? res.spread_3m_10y,
-            isInverted:
-              (res.spread2y10y ?? res.spread_2y_10y) !== undefined
-                ? (res.spread2y10y ?? res.spread_2y_10y)! < 0
-                : undefined,
+            spread2Y10Y: spread2y10y,
+            spread3M10Y: spread3m10y,
+            isInverted: spread2y10y !== undefined ? spread2y10y < 0 : undefined,
             updatedAt: Date.now()
           }
         }
@@ -1408,9 +1419,13 @@ export class PiaProvider {
   public async getGeoMap(): Promise<GeoSignalsMapRegion[]> {
     if (this.client) {
       try {
-        const res = await this.client.geosignals.getMap()
-        if (res && res.layers) {
-          return res.layers.map((l) => {
+        const raw = await this.client.geosignals.getMap()
+        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { layers?: unknown[]; items?: unknown[]; data?: unknown }
+        const layers = Array.isArray(payloadRecord.layers) ? payloadRecord.layers : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
+        if (layers.length > 0) {
+          return layers.map((l) => {
             const riskLevel: GeoSignalsMapRegion['riskLevel'] =
               l.risk_level > 7
                 ? 'critical'
@@ -1441,9 +1456,13 @@ export class PiaProvider {
   public async getGeoAssetImpacts(): Promise<GeoAssetImpactItem[]> {
     if (this.client) {
       try {
-        const res = await this.client.geosignals.getAssetImpacts()
-        if (res && res.assets) {
-          return res.assets.map((a) => {
+        const raw = await this.client.geosignals.getAssetImpacts()
+        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { assets?: unknown[]; items?: unknown[]; data?: unknown }
+        const assets = Array.isArray(payloadRecord.assets) ? payloadRecord.assets : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
+        if (assets.length > 0) {
+          return assets.map((a) => {
             const supplyDisruptionRisk: GeoAssetImpactItem['supplyDisruptionRisk'] =
               a.affected_supply_pct && a.affected_supply_pct > 15 ? 'high' : 'medium'
             return {
