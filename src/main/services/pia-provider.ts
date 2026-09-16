@@ -995,23 +995,23 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.intelligence.analyze({ symbol, query })
-        const payload = raw as typeof raw & { content?: string | null; analysis?: string; data?: unknown }
-        const res = payload as typeof raw
-        const analysis = payload.analysis || payload.content || (typeof payload.data === 'string' ? payload.data : undefined)
-        if (analysis) {
-          const sentiment =
-            res.sentiment === 'bullish' || res.sentiment === 'bearish' ? res.sentiment : 'neutral'
+        const payload = (raw as unknown as Record<string, unknown>)
+        const nested = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : payload
+        const analysis = String(nested.analysis ?? nested.summary ?? nested.explanation ?? nested.content ?? (typeof nested.data === 'string' ? nested.data : ''))
+        if (analysis.trim()) {
+          const sentimentValue = String(nested.sentiment ?? '').toLowerCase()
+          const sentiment = sentimentValue === 'bullish' || sentimentValue === 'bearish' ? sentimentValue : 'neutral'
           return {
-            symbol: res.symbol || symbol,
+            symbol: String(nested.symbol || symbol),
             sentiment,
-            confidence: res.confidence,
+            confidence: typeof nested.confidence === 'number' ? nested.confidence : undefined,
             analysis,
-            catalysts: res.catalysts || [],
+            catalysts: Array.isArray(nested.catalysts) ? nested.catalysts.filter((item): item is string => typeof item === 'string') : [],
             keyLevels: {
-              support: res.key_levels?.support || [],
-              resistance: res.key_levels?.resistance || []
+              support: Array.isArray((nested.key_levels as any)?.support) ? (nested.key_levels as any).support : [],
+              resistance: Array.isArray((nested.key_levels as any)?.resistance) ? (nested.key_levels as any).resistance : []
             },
-            generatedAt: res.generated_at ? new Date(res.generated_at).getTime() : Date.now()
+            generatedAt: nested.generated_at ? new Date(String(nested.generated_at)).getTime() : Date.now()
           }
         }
       } catch (err) {
