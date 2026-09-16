@@ -66,7 +66,7 @@ class MarketApi extends ApiResource {
   getCorporateActions = () => this.get('/api/v1/market/corporate-actions')
   getRealizedVolatility = (symbol?: string) => this.get('/api/v1/market/realized-volatility', symbol ? { symbol } : undefined)
   getImpliedVolatility = (symbol?: string) => this.get('/api/v1/market/implied-volatility', symbol ? { symbol } : undefined)
-  getCandles = (symbol: string, params?: Json) => this.get(`/api/v1/market/history/${encodeURIComponent(symbol)}`, { resolution: params?.timeframe, limit: params?.limit, since: params?.since, before: params?.until })
+  getCandles = (symbol: string, params?: Json) => this.get(`/api/v1/market/history/${encodeURIComponent(symbol)}`, { resolution: params?.timeframe || params?.resolution || '1m', limit: params?.limit, before: params?.before ?? params?.until })
   getOrderBook = (symbol: string) => this.get(`/api/v1/market/orderbook/${encodeURIComponent(symbol)}`)
 }
 

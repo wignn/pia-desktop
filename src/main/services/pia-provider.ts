@@ -502,11 +502,13 @@ export class PiaProvider {
         until: params.to
       })
 
-      if (!res || !Array.isArray(res.candles) || res.candles.length === 0) return []
+      if (!res || (!Array.isArray(res.candles) && !Array.isArray(res.items))) return []
+      const rows = (Array.isArray(res.candles) ? res.candles : res.items) as Candle[]
+      if (rows.length === 0) return []
 
       // Strict normalization & sorting
       const bars: CandleBar[] = []
-      for (const r of res.candles as Candle[]) {
+      for (const r of rows) {
         let ts = Number(r.time ?? 0)
         if (ts < 1e11) ts *= 1000
         const open = Number(r.open)
