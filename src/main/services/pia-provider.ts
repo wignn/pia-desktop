@@ -991,15 +991,18 @@ export class PiaProvider {
   ): Promise<IntelligenceAnalyzeResult | null> {
     if (this.client) {
       try {
-        const res = await this.client.intelligence.analyze({ symbol, query })
-        if (res && res.analysis) {
+        const raw = await this.client.intelligence.analyze({ symbol, query })
+        const payload = raw as typeof raw & { content?: string | null; analysis?: string; data?: unknown }
+        const res = payload as typeof raw
+        const analysis = payload.analysis || payload.content || (typeof payload.data === 'string' ? payload.data : undefined)
+        if (analysis) {
           const sentiment =
             res.sentiment === 'bullish' || res.sentiment === 'bearish' ? res.sentiment : 'neutral'
           return {
             symbol: res.symbol || symbol,
             sentiment,
             confidence: res.confidence,
-            analysis: res.analysis,
+            analysis,
             catalysts: res.catalysts || [],
             keyLevels: {
               support: res.key_levels?.support || [],
