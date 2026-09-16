@@ -1139,11 +1139,13 @@ export class PiaProvider {
       try {
         const res = await this.client.options.getSummary()
         const payload = (res && typeof res === 'object' ? res : {}) as Record<string, any>
-        const source = Array.isArray(payload.data) ? payload.data[0] || {} : payload.data && typeof payload.data === 'object' ? payload.data : payload
-        const totalVolume = source.total_volume ?? source.totalVolume
-        const totalOpenInterest = source.total_open_interest ?? source.totalOpenInterest
-        const putCallRatio = source.put_call_ratio ?? source.putCallRatio
-        const active = Array.isArray(source.most_active_symbols) ? source.most_active_symbols : Array.isArray(source.mostActiveSymbols) ? source.mostActiveSymbols : Array.isArray(payload.data) ? payload.data : []
+        const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.items) ? payload.items : []
+        const source = rows.length > 0 ? rows[0] : payload
+        const totalVolume = payload.total_volume ?? payload.totalVolume ?? rows.reduce((sum: number, row: any) => sum + Number(row.total_volume ?? row.volume ?? 0), 0)
+        const totalOpenInterest = payload.total_open_interest ?? payload.totalOpenInterest ?? rows.reduce((sum: number, row: any) => sum + Number(row.total_open_interest ?? row.open_interest ?? 0), 0)
+        const volumeWeightedPcr = rows.reduce((sum: number, row: any) => sum + Number(row.put_call_ratio ?? 0) * Number(row.total_volume ?? row.volume ?? 0), 0)
+        const putCallRatio = payload.put_call_ratio ?? payload.putCallRatio ?? (Number(totalVolume) > 0 ? volumeWeightedPcr / Number(totalVolume) : source.put_call_ratio)
+        const active = Array.isArray(source.most_active_symbols) ? source.most_active_symbols : Array.isArray(source.mostActiveSymbols) ? source.mostActiveSymbols : rows
         if (totalVolume !== undefined || totalOpenInterest !== undefined || putCallRatio !== undefined || active.length > 0) {
           return {
             totalVolume: totalVolume === undefined ? undefined : Number(totalVolume),
