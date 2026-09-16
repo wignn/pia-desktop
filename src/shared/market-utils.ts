@@ -14,12 +14,20 @@ export const DEFAULT_MARKET_CAPABILITIES: MarketCapabilities = {
   gex: false
 }
 
-export function capabilitiesForSymbol(_symbol: string, category: AssetCategory): MarketCapabilities {
+export function resolveOptionsUnderlying(symbol: string): string {
+  const clean = symbol.trim().toUpperCase()
+  if (clean === 'XAUUSD' || clean === 'GOLD') return 'GLD'
+  if (clean === 'XAGUSD' || clean === 'SILVER') return 'SLV'
+  return clean
+}
+export function capabilitiesForSymbol(symbol: string, category: AssetCategory): MarketCapabilities {
+  const clean = symbol.toUpperCase()
+  const optionsUnderlying = clean === 'XAUUSD' || clean === 'GOLD' || clean === 'XAGUSD' || clean === 'SILVER'
   return {
     ...DEFAULT_MARKET_CAPABILITIES,
     orderBook: true,
-    options: category === 'stocks' || category === 'indices',
-    gex: category === 'stocks' || category === 'indices'
+    options: optionsUnderlying || category === 'stocks' || category === 'indices',
+    gex: optionsUnderlying || category === 'stocks' || category === 'indices'
   }
 }
 

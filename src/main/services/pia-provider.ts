@@ -58,7 +58,8 @@ import { IPC_CHANNELS } from '@shared/contracts'
 import {
   mapPiaAssetTypeToCategory,
   getSymbolPrecision,
-  capabilitiesForSymbol
+  capabilitiesForSymbol,
+  resolveOptionsUnderlying
 } from '@shared/market-utils'
 import type { CredentialManager } from './credentials'
 
@@ -1053,7 +1054,8 @@ export class PiaProvider {
   public async getOptionsChain(symbol: string): Promise<OptionChainData | null> {
     if (this.client) {
       try {
-        const res = await this.client.options.getChain(symbol)
+        console.info(`[PiaProvider] Fetching options chain for ${symbol} (underlying ${resolveOptionsUnderlying(symbol)})...`)
+        const res = await this.client.options.getChain(resolveOptionsUnderlying(symbol))
         if (res && res.contracts && res.underlying_price !== undefined) {
           const calls: OptionContractData[] = []
           const puts: OptionContractData[] = []
@@ -1095,7 +1097,7 @@ export class PiaProvider {
   public async getOptionsGex(symbol: string): Promise<OptionGexData | null> {
     if (this.client) {
       try {
-        const res = await this.client.options.getGex(symbol)
+        const res = await this.client.options.getGex(resolveOptionsUnderlying(symbol))
         if (res) {
           const levels: OptionGexLevel[] = []
           const posMap = new Map<number, number>()
