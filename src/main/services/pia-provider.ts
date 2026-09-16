@@ -1137,15 +1137,19 @@ export class PiaProvider {
     if (this.client) {
       try {
         const res = await this.client.options.getSummary()
-        if (res) {
+        const payload = (res && typeof res === 'object' ? res : {}) as Record<string, unknown>
+        const source = payload.data && typeof payload.data === 'object' ? payload.data : payload
+        const value = source as Record<string, unknown>
+        const totalVolume = value.total_volume ?? value.totalVolume
+        const totalOpenInterest = value.total_open_interest ?? value.totalOpenInterest
+        const putCallRatio = value.put_call_ratio ?? value.putCallRatio
+        const active = Array.isArray(value.most_active_symbols) ? value.most_active_symbols : Array.isArray(value.mostActiveSymbols) ? value.mostActiveSymbols : []
+        if (totalVolume !== undefined || totalOpenInterest !== undefined || putCallRatio !== undefined || active.length > 0) {
           return {
-            totalVolume: res.total_volume,
-            totalOpenInterest: res.total_open_interest,
-            putCallRatio: res.put_call_ratio,
-            mostActiveSymbols: (res.most_active_symbols || []).map((s) => ({
-              symbol: s.symbol,
-              volume: s.volume
-            }))
+            totalVolume: totalVolume === undefined ? undefined : Number(totalVolume),
+            totalOpenInterest: totalOpenInterest === undefined ? undefined : Number(totalOpenInterest),
+            putCallRatio: putCallRatio === undefined ? undefined : Number(putCallRatio),
+            mostActiveSymbols: active.map((s: any) => ({ symbol: String(s.symbol), volume: Number(s.volume) }))
           }
         }
       } catch (err) {
@@ -1375,9 +1379,9 @@ export class PiaProvider {
         if (spread2y10y !== undefined || spread3m10y !== undefined) {
           return {
             date: new Date().toISOString().split('T')[0],
-            spread2Y10Y: spread2y10y,
-            spread3M10Y: spread3m10y,
-            isInverted: spread2y10y !== undefined ? spread2y10y < 0 : undefined,
+            spread2Y10Y: Number(spread2y10y),
+            spread3M10Y: Number(spread3m10y),
+            isInverted: spread2y10y !== undefined ? Number(spread2y10y) < 0 : undefined,
             updatedAt: Date.now()
           }
         }
