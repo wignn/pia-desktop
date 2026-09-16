@@ -1504,17 +1504,23 @@ export class PiaProvider {
         const raw = await this.client.energy.getDashboard()
         const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { items?: unknown[]; data?: unknown }
+        const payloadRecord = payload as typeof raw & { items?: unknown[]; data?: unknown; crude_oil?: any; natural_gas?: any }
         const items = Array.isArray(payloadRecord.items)
           ? payloadRecord.items
           : Array.isArray(payloadRecord.data)
             ? payloadRecord.data
             : []
         const find = (terms: string[]) => items.find((x: any) => terms.some((t) => String(x?.series_id || x?.name || '').toLowerCase().includes(t)))
-        const wti = find(['wti'])
-        const brent = find(['brent'])
+        const wti = find(['wti', 'usoil'])
+        const brent = find(['brent', 'ukoil'])
         const gas = find(['henry', 'natural gas'])
-        const data = { ...payloadRecord, crude_oil: { ...payloadRecord.crude_oil, wti_price: payloadRecord.crude_oil?.wti_price ?? wti?.latest_value, brent_price: payloadRecord.crude_oil?.brent_price ?? brent?.latest_value }, natural_gas: { ...payloadRecord.natural_gas, henry_hub_price: payloadRecord.natural_gas?.henry_hub_price ?? gas?.latest_value } }
+        const prices = await this.client.market.getPrices()
+        const marketItems = Array.isArray(prices?.items) ? prices.items : []
+        const marketPrice = (symbols: string[]) => marketItems.find((item: any) => symbols.includes(String(item.symbol).toUpperCase()))?.price
+        const wtiPrice = payloadRecord.crude_oil?.wti_price ?? wti?.latest_value ?? marketPrice(['USOIL', 'WTI'])
+        const brentPrice = payloadRecord.crude_oil?.brent_price ?? brent?.latest_value ?? marketPrice(['UKOIL', 'BRENT'])
+        const storage = payloadRecord.natural_gas?.storage_bcf ?? gas?.latest_value
+        const data = { ...payloadRecord, crude_oil: { ...payloadRecord.crude_oil, wti_price: wtiPrice, brent_price: brentPrice, spread: payloadRecord.crude_oil?.spread ?? (wtiPrice !== undefined && brentPrice !== undefined ? wtiPrice - brentPrice : undefined) }, natural_gas: { ...payloadRecord.natural_gas, henry_hub_price: payloadRecord.natural_gas?.henry_hub_price ?? marketPrice(['NATGAS', 'NGAS', 'HENRYHUB']), storage_bcf: storage } }
         if (data) {
           return {
             wtiPrice: data.crude_oil?.wti_price,
