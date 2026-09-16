@@ -1025,7 +1025,8 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.intelligence.getInsights(symbol)
-        const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+        const rawValue = raw as unknown as Record<string, unknown>
+        const payload = (rawValue.data && typeof rawValue.data === 'object' ? rawValue.data : rawValue) as Record<string, unknown>
         const summary = String(payload.summary ?? payload.explanation ?? payload.analysis ?? '')
         if (summary.trim()) {
           const rawSentiment = String(payload.sentiment ?? '').toLowerCase()
