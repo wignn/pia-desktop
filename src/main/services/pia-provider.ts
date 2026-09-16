@@ -1198,8 +1198,19 @@ export class PiaProvider {
   public async getCot(symbol: string): Promise<CotReportResult | null> {
     if (this.client) {
       try {
-        const res = await this.client.macro.getCot(symbol)
-        if (res && res.reports) {
+        const raw = await this.client.macro.getCot(symbol)
+        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { data?: unknown; items?: unknown[] }
+        const reports = Array.isArray(payloadRecord.reports)
+          ? payloadRecord.reports
+          : Array.isArray(payloadRecord.data)
+            ? payloadRecord.data
+            : Array.isArray(payloadRecord.items)
+              ? payloadRecord.items
+              : []
+        const res = { ...payloadRecord, reports } as typeof raw
+        if (reports.length > 0) {
           const positions = res.reports.map((r) => ({
             category: r.market_name || 'All Categories',
             longPositions: r.non_commercial_long,
@@ -1241,7 +1252,9 @@ export class PiaProvider {
     if (this.client) {
       for (const b of banks) {
         try {
-          const res = await this.client.macro.getCentralBankStance(b)
+          const raw = await this.client.macro.getCentralBankStance(b)
+          const wrapped = raw as typeof raw & { data?: typeof raw }
+          const res = (wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw) as typeof raw
           if (res) {
             const rawStance = res.stance?.toLowerCase()
             const stance: CentralBankStanceResult['stance'] =
@@ -1268,7 +1281,16 @@ export class PiaProvider {
   public async getYieldCurve(): Promise<YieldCurveResult | null> {
     if (this.client) {
       try {
-        const res = await this.client.fixedIncome.getYieldCurve()
+        const raw = await this.client.fixedIncome.getYieldCurve()
+        const wrapped = raw as typeof raw & { data?: unknown; bonds?: unknown[]; as_of?: string }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { points?: unknown[]; bonds?: unknown[]; as_of?: string }
+        const pointRows = Array.isArray(payloadRecord.points)
+          ? payloadRecord.points
+          : Array.isArray(payloadRecord.bonds)
+            ? payloadRecord.bonds
+            : []
+        const res = { ...payloadRecord, points: pointRows, date: payloadRecord.date || payloadRecord.as_of } as typeof raw
         if (res && res.points) {
           return {
             date: res.date || new Date().toISOString().split('T')[0],
@@ -1348,9 +1370,11 @@ export class PiaProvider {
   public async getGeoEvents(): Promise<GeoSignalEventItem[]> {
     if (this.client) {
       try {
-        const res = await this.client.geosignals.getEvents()
-        if (res && res.events) {
-          return res.events.map((e) => {
+        const raw = await this.client.geosignals.getEvents()
+        const res = (raw as typeof raw & { data?: typeof raw }).data || raw
+        const events = res.events || res.items || []
+        if (events.length > 0) {
+          return events.map((e) => {
             let category: GeoSignalEventItem['category'] = 'conflict'
             if (e.category === 'sanction') {
               category = 'sanctions'
@@ -1440,19 +1464,32 @@ export class PiaProvider {
   public async getEnergyDashboard(): Promise<EnergyDashboardData | null> {
     if (this.client) {
       try {
-        const res = await this.client.energy.getDashboard()
-        if (res) {
+        const raw = await this.client.energy.getDashboard()
+        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { items?: unknown[]; data?: unknown }
+        const items = Array.isArray(payloadRecord.items)
+          ? payloadRecord.items
+          : Array.isArray(payloadRecord.data)
+            ? payloadRecord.data
+            : []
+        const find = (terms: string[]) => items.find((x: any) => terms.some((t) => String(x?.series_id || x?.name || '').toLowerCase().includes(t)))
+        const wti = find(['wti'])
+        const brent = find(['brent'])
+        const gas = find(['henry', 'natural gas'])
+        const data = { ...payloadRecord, crude_oil: { ...payloadRecord.crude_oil, wti_price: payloadRecord.crude_oil?.wti_price ?? wti?.latest_value, brent_price: payloadRecord.crude_oil?.brent_price ?? brent?.latest_value }, natural_gas: { ...payloadRecord.natural_gas, henry_hub_price: payloadRecord.natural_gas?.henry_hub_price ?? gas?.latest_value } }
+        if (data) {
           return {
-            wtiPrice: res.crude_oil?.wti_price,
-            brentPrice: res.crude_oil?.brent_price,
-            wtiBrentSpread: res.crude_oil?.spread,
-            crudeChangePct: res.crude_oil?.weekly_change_pct,
-            henryHubPrice: res.natural_gas?.henry_hub_price,
-            naturalGasStorageBcf: res.natural_gas?.storage_bcf,
-            storageVs5YrAvgPct: res.natural_gas?.storage_change,
-            crackSpread321: res.refining_margins?.['321'],
+            wtiPrice: data.crude_oil?.wti_price,
+            brentPrice: data.crude_oil?.brent_price,
+            wtiBrentSpread: data.crude_oil?.spread,
+            crudeChangePct: data.crude_oil?.weekly_change_pct,
+            henryHubPrice: data.natural_gas?.henry_hub_price,
+            naturalGasStorageBcf: data.natural_gas?.storage_bcf,
+            storageVs5YrAvgPct: data.natural_gas?.storage_change,
+            crackSpread321: data.refining_margins?.['321'],
             refiningMarginStatus: undefined,
-            updatedAt: res.updated_at ? new Date(res.updated_at).getTime() : Date.now()
+            updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now()
           }
         }
       } catch (err) {
@@ -1469,35 +1506,41 @@ export class PiaProvider {
   }): Promise<SecFilingItemData[]> {
     if (this.client) {
       try {
-        const res = await this.client.sec.getFilings({
+        const raw = await this.client.sec.getFilings({
           symbol: params?.symbol,
           form_type: params?.formType,
           limit: params?.limit ?? 20
         })
-        if (res && res.items) {
-          return res.items.map((i) => {
-            const rawForm = i.form_type
-            const formType: SecFilingItemData['formType'] =
-              rawForm === '10-K' ||
-              rawForm === '10-Q' ||
-              rawForm === '8-K' ||
-              rawForm === '4' ||
-              rawForm === '13F'
-                ? rawForm
-                : 'OTHER'
-            return {
-              id: i.id,
-              symbol: i.symbol,
-              companyName: i.company_name,
-              formType,
-              filedDate: i.filing_date,
-              title: `${i.form_type} Filing - ${i.company_name}`,
-              description: i.description || `Form ${i.form_type} submitted to SEC EDGAR database.`,
-              reportUrl: i.report_url,
-              isInsiderTrade: i.form_type === '4'
-            }
-          })
-        }
+        const wrapped = raw as typeof raw & { data?: unknown; filings?: unknown }
+        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+        const payloadRecord = payload as typeof raw & { data?: unknown; filings?: unknown }
+        const items = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payloadRecord.items)
+            ? payloadRecord.items
+            : Array.isArray(payloadRecord.filings)
+              ? payloadRecord.filings
+              : Array.isArray(payloadRecord.data)
+                ? payloadRecord.data
+                : []
+        return items.map((i) => {
+          const rawForm = i.form_type
+          const formType: SecFilingItemData['formType'] =
+            rawForm === '10-K' || rawForm === '10-Q' || rawForm === '8-K' || rawForm === '4' || rawForm === '13F'
+              ? rawForm
+              : 'OTHER'
+          return {
+            id: i.id || i.accession_number,
+            symbol: i.symbol || i.ticker,
+            companyName: i.company_name || i.title,
+            formType,
+            filedDate: i.filing_date,
+            title: `${rawForm} Filing - ${i.company_name || i.ticker || ''}`,
+            description: i.description || `Form ${rawForm} submitted to SEC EDGAR database.`,
+            reportUrl: i.report_url || i.document_url,
+            isInsiderTrade: rawForm === '4'
+          }
+        })
       } catch (err) {
         console.warn('[PiaProvider] client.sec.getFilings() failed, unavailable', err)
       }
