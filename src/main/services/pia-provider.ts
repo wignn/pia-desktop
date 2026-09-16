@@ -4,7 +4,7 @@
  * heartbeat monitoring, and timestamp normalization.
  */
 
-import { PiaApiClient } from './pia-api'
+import { PiaClient } from '@piaa/sdk'
 import type { MarketPrice, Candle } from '@piaa/sdk'
 import type { BrowserWindow } from 'electron'
 import type {
@@ -63,7 +63,7 @@ import {
 import type { CredentialManager } from './credentials'
 
 export class PiaProvider {
-  private client: PiaApiClient | null = null
+  private client: PiaClient | null = null
   private subscriptionCounts = new Map<string, number>()
   private getWindow: () => BrowserWindow | null
   private credManager: CredentialManager
@@ -98,10 +98,11 @@ export class PiaProvider {
     }
 
     try {
-      this.client = new PiaApiClient({
+      this.client = new PiaClient({
         apiKey,
         baseUrl,
-        wsUrl
+        wsUrl,
+        debug: false
       })
 
       this.setupRealtimeListeners()
@@ -497,12 +498,12 @@ export class PiaProvider {
 
       const res = await this.client.market.getCandles(params.symbol, {
         timeframe: tf,
-        resolution: tf,
-        limit: params.limit || 1000,
-        before: params.to && params.to > 0 ? Math.floor(params.to / (params.to > 1e11 ? 1000 : 1)) : undefined
+        limit: params.limit,
+        since: params.from,
+        until: params.to
       })
 
-      const payload = (res || {}) as Record<string, unknown>
+      const payload = (res || {}) as unknown as Record<string, unknown>
       const rawRows = Array.isArray(payload.candles) ? payload.candles : Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : []
       if (rawRows.length === 0) return []
       const rows = rawRows as Candle[]
@@ -1598,7 +1599,7 @@ export class PiaProvider {
   public async createWsTicket(): Promise<WsTicketData | null> {
     if (!this.client) return null
     try {
-      const raw = await this.client.request('/api/v1/ws/ticket', 'POST')
+      const raw = await this.client.ws.createTicket()
       return {
         ticket: raw.ticket,
         expiresIn: raw.expires_in,
