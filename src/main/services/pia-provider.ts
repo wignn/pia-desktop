@@ -1024,16 +1024,19 @@ export class PiaProvider {
   public async getMarketInsights(symbol: string): Promise<MarketInsightResult | null> {
     if (this.client) {
       try {
-        const res = await this.client.intelligence.getInsights(symbol)
-        if (res && res.summary) {
-          const sentiment =
-            res.sentiment === 'bullish' || res.sentiment === 'bearish' ? res.sentiment : 'neutral'
+        const raw = await this.client.intelligence.getInsights(symbol)
+        const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+        const summary = String(payload.summary ?? payload.explanation ?? payload.analysis ?? '')
+        if (summary.trim()) {
+          const rawSentiment = String(payload.sentiment ?? '').toLowerCase()
+          const sentiment = rawSentiment === 'bullish' || rawSentiment === 'bearish' ? rawSentiment : 'neutral'
+          const drivers = Array.isArray(payload.drivers) ? payload.drivers.filter((item): item is string => typeof item === 'string') : []
           return {
-            symbol: res.symbol || symbol,
-            summary: res.summary,
+            symbol: String(payload.symbol || symbol),
+            summary,
             sentiment,
-            drivers: res.drivers || [],
-            timestamp: res.timestamp ? new Date(res.timestamp).getTime() : Date.now()
+            drivers,
+            timestamp: payload.timestamp ? new Date(String(payload.timestamp)).getTime() : Date.now()
           }
         }
       } catch (err) {
@@ -1360,15 +1363,15 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.fixedIncome.getSpreads()
-        const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
-        const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const rows = Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : Array.isArray((payload as any)?.items) ? (payload as any).items : []
-        const findSpread = (short: string, long: string) => {
-          const row = rows.find((item: any) => String(item?.spread || '').toUpperCase().includes(`${short}-${long}`))
-          return row ? Number(row.value) : undefined
+        const payload = (raw?.data && typeof raw.data === 'object' ? raw.data : raw) as any
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.items) ? payload.items : []
+        const valueOf = (short: string, long: string) => {
+          const normalized = `${short}${long}`.toLowerCase()
+          const row = rows.find((item: any) => String(item?.spread ?? item?.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalized))
+          return row?.value !== undefined ? Number(row.value) : undefined
         }
-        const spread2y10y = (payload as any)?.spread2y10y ?? (payload as any)?.spread_2y_10y ?? findSpread('2Y', '10Y')
-        const spread3m10y = (payload as any)?.spread3m10y ?? (payload as any)?.spread_3m_10y ?? findSpread('3M', '10Y')
+        const spread2y10y = payload?.spread2y10y ?? payload?.spread_2y_10y ?? valueOf('2y', '10y')
+        const spread3m10y = payload?.spread3m10y ?? payload?.spread_3m_10y ?? valueOf('3m', '10y')
         if (spread2y10y !== undefined || spread3m10y !== undefined) {
           return {
             date: new Date().toISOString().split('T')[0],
