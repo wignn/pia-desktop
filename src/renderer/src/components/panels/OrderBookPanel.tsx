@@ -32,7 +32,8 @@ export const OrderBookPanel: React.FC = () => {
         if (!symbol || !symInfo?.capabilities.orderBook) return
         if (showLoading) setIsLoading(true)
         const data = await window.api.orderbook.get(symbol)
-        setOrderBook(data)
+        if (data && (data.bids.length > 0 || data.asks.length > 0)) setOrderBook(data)
+        else setOrderBook(null)
       } catch (err) {
         if (isUnsupportedOrderBookError(err)) {
           setUnsupportedSymbol(symbol)
@@ -93,7 +94,8 @@ export const OrderBookPanel: React.FC = () => {
       inFlight = true
       try {
         const data = await window.api.orderbook.get(symbol)
-        setOrderBook(data)
+        if (data && (data.bids.length > 0 || data.asks.length > 0)) setOrderBook(data)
+        else setOrderBook(null)
       } catch (err) {
         if (isUnsupportedOrderBookError(err)) {
           setUnsupportedSymbol(symbol)

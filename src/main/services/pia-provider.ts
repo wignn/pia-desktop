@@ -223,6 +223,11 @@ export class PiaProvider {
 
   private normalizeMarketPrice(raw: MarketPrice): PriceQuote | null {
     if (!raw || !raw.symbol) return null
+    const rawValue = raw as MarketPrice & {
+      volume?: number
+      volume_type?: 'exchange' | 'tick' | 'unavailable'
+      volume_available?: boolean
+    }
     const price = Number(raw.price)
     if (isNaN(price) || price <= 0) return null
 
@@ -235,7 +240,22 @@ export class PiaProvider {
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
       timestamp: ts,
-      volume24h: raw.volume_24h !== undefined ? Number(raw.volume_24h) : undefined,
+      volume24h:
+        raw.volume_24h !== undefined
+          ? Number(raw.volume_24h)
+          : rawValue.volume !== undefined
+            ? Number(rawValue.volume)
+            : undefined,
+      volumeType:
+        rawValue.volume_type === 'exchange' || rawValue.volume_type === 'tick' || rawValue.volume_type === 'unavailable'
+          ? rawValue.volume_type
+          : raw.volume_24h !== undefined
+            ? 'exchange'
+            : rawValue.volume !== undefined
+              ? 'exchange'
+              : 'unavailable',
+      volumeAvailable:
+        rawValue.volume_available ?? (raw.volume_24h !== undefined || rawValue.volume !== undefined),
       change24h:
         raw.change_24h_pct !== undefined ? (price * Number(raw.change_24h_pct)) / 100 : undefined,
       change24hPercent: raw.change_24h_pct !== undefined ? Number(raw.change_24h_pct) : undefined,
@@ -503,7 +523,7 @@ export class PiaProvider {
             high: Math.max(high, open, close),
             low: Math.min(low, open, close),
             close,
-            volume: volume && !isNaN(volume) ? volume : undefined
+            volume: volume !== undefined && !isNaN(volume) ? volume : undefined
           })
         }
       }

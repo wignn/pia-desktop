@@ -228,6 +228,8 @@ export class CandleEngine {
 
     const lastBarIndex = this.activeBars.length - 1
     const lastBar = this.activeBars[lastBarIndex]
+    const tickVolume = quote.volume24h !== undefined ? 1 : undefined
+    const nextVolume = (lastBar.volume ?? 0) + (tickVolume ?? 0)
 
     if (barStartTimestamp > lastBar.timestamp) {
       // New bar formed
@@ -237,7 +239,7 @@ export class CandleEngine {
         high: price,
         low: price,
         close: price,
-        volume: 1
+        volume: tickVolume
       }
       this.activeBars.push(newBar)
       if (notify) {
@@ -252,7 +254,7 @@ export class CandleEngine {
         high: Math.max(lastBar.high, price),
         low: Math.min(lastBar.low, price),
         close: price,
-        volume: (lastBar.volume || 0) + 1
+        volume: tickVolume === undefined ? lastBar.volume : nextVolume
       }
       this.activeBars[lastBarIndex] = updatedBar
       if (notify) {
@@ -290,7 +292,7 @@ export class CandleEngine {
           high: Math.max(b.high, b.open, b.close),
           low: Math.min(b.low, b.open, b.close),
           close: b.close,
-          volume: b.volume && !isNaN(b.volume) ? b.volume : 0
+          volume: b.volume !== undefined && !isNaN(b.volume) ? b.volume : undefined
         })
       }
     }

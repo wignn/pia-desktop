@@ -54,6 +54,8 @@ export interface PriceQuote {
   ask?: number
   timestamp: number
   volume24h?: number
+  volumeType?: 'exchange' | 'tick' | 'unavailable'
+  volumeAvailable?: boolean
   change24h?: number
   change24hPercent?: number
   high24h?: number
