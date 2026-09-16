@@ -1282,23 +1282,24 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.fixedIncome.getYieldCurve()
-        const wrapped = raw as typeof raw & { data?: unknown; bonds?: unknown[]; as_of?: string }
+        const wrapped = raw as typeof raw & { data?: unknown; points?: unknown[]; bonds?: unknown[]; as_of?: string }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { points?: unknown[]; bonds?: unknown[]; as_of?: string }
+        const payloadRecord = payload as typeof raw & { points?: unknown[]; bonds?: unknown[]; as_of?: string; spreads?: unknown[] }
         const pointRows = Array.isArray(payloadRecord.points)
           ? payloadRecord.points
           : Array.isArray(payloadRecord.bonds)
             ? payloadRecord.bonds
             : []
-        const res = { ...payloadRecord, points: pointRows, date: payloadRecord.date || payloadRecord.as_of } as typeof raw
-        if (res && res.points) {
+        const normalizeYield = (p: any) => ({
+          tenor: p.tenor || p.symbol || p.name,
+          yield: Number(p.yield ?? p.yield_value ?? p.value),
+          previousYield: p.previous_yield !== undefined ? Number(p.previous_yield) : undefined
+        })
+        const points = pointRows.map(normalizeYield).filter((p) => p.tenor && Number.isFinite(p.yield))
+        if (points.length > 0) {
           return {
-            date: res.date || new Date().toISOString().split('T')[0],
-            points: res.points.map((p) => ({
-              tenor: p.tenor,
-              yield: p.yield,
-              previousYield: undefined
-            })),
+            date: payloadRecord.date || payloadRecord.as_of || new Date().toISOString().split('T')[0],
+            points,
             updatedAt: Date.now()
           }
         }
