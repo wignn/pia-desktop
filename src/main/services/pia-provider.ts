@@ -4,7 +4,7 @@
  * heartbeat monitoring, and timestamp normalization.
  */
 
-import { PiaClient } from '@piaa/sdk'
+import { PiaApiClient } from './pia-api'
 import type { MarketPrice, Candle } from '@piaa/sdk'
 import type { BrowserWindow } from 'electron'
 import type {
@@ -63,7 +63,7 @@ import {
 import type { CredentialManager } from './credentials'
 
 export class PiaProvider {
-  private client: PiaClient | null = null
+  private client: PiaApiClient | null = null
   private subscriptionCounts = new Map<string, number>()
   private getWindow: () => BrowserWindow | null
   private credManager: CredentialManager
@@ -98,11 +98,10 @@ export class PiaProvider {
     }
 
     try {
-      this.client = new PiaClient({
+      this.client = new PiaApiClient({
         apiKey,
         baseUrl,
-        wsUrl,
-        debug: false
+        wsUrl
       })
 
       this.setupRealtimeListeners()
@@ -351,7 +350,7 @@ export class PiaProvider {
   }
 
   public getRateLimitInfo(): RateLimitStatus {
-    return this.client?.getRateLimitInfo() || {}
+    return {}
   }
 
   /**
@@ -1596,7 +1595,7 @@ export class PiaProvider {
   public async createWsTicket(): Promise<WsTicketData | null> {
     if (!this.client) return null
     try {
-      const raw = await this.client.ws.createTicket()
+      const raw = await this.client.request('/api/v1/ws/ticket', 'POST')
       return {
         ticket: raw.ticket,
         expiresIn: raw.expires_in,
