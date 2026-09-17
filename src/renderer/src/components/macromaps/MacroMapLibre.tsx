@@ -65,6 +65,7 @@ const COUNTRY_COORDINATES: Record<string, [number, number]> = {
 
 export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
   selectedMetric,
+  selectedYear = 2025,
   macroData,
   selectedCountryId,
   onSelectCountry,
@@ -88,23 +89,34 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
   const enrichedGeoJson = useMemo(() => {
     const raw = rawWorldGeoJson as unknown as GeoJSON.FeatureCollection
     const features = raw.features.map((feature) => {
-      const iso = (
-        (feature.properties?.iso_a2 || feature.properties?.ISO_A2 || '') as string
+      const rawIso = String(
+        (feature.properties?.iso_a2 && feature.properties.iso_a2 !== '-99'
+          ? feature.properties.iso_a2
+          : '') ||
+          feature.properties?.wb_a2 ||
+          feature.properties?.postal ||
+          feature.properties?.ISO_A2 ||
+          ''
       ).toUpperCase()
-      const macro = macroByIso.get(iso)
+      const macro = macroByIso.get(rawIso)
+
+      const activeValue =
+        macro?.history && typeof macro.history[selectedYear] === 'number'
+          ? macro.history[selectedYear]
+          : macro?.value
 
       const choroplethColor =
-        macro?.value === undefined ? '#1a202c' : getChoroplethColor(macro.value, selectedMetric)
+        activeValue === undefined ? '#1a202c' : getChoroplethColor(activeValue, selectedMetric)
 
       return {
         ...feature,
         properties: {
           ...feature.properties,
-          iso_a2: iso,
-          hasData: Boolean(macro),
-          metricValue: macro ? macro.value : null,
+          iso_a2: rawIso,
+          hasData: Boolean(macro && activeValue !== undefined),
+          metricValue: activeValue !== undefined ? activeValue : null,
           choroplethColor,
-          countryName: macro?.name || feature.properties?.name || iso,
+          countryName: macro?.name || feature.properties?.name || rawIso,
           flag: macro?.flag || '',
           ticker: macro?.ticker || ''
         }
@@ -115,7 +127,7 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
       type: 'FeatureCollection',
       features
     } as GeoJSON.FeatureCollection
-  }, [macroByIso, selectedMetric])
+  }, [macroByIso, selectedMetric, selectedYear])
 
   // Initialize MapLibre GL map instance
   useEffect(() => {

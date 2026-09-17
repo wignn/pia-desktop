@@ -83,23 +83,35 @@ export const MacroMapsView: React.FC = () => {
   const filteredList = useMemo(() => {
     return macroData.filter((c) => {
       if (selectedRegion !== 'All') {
+        const id = c.id.toUpperCase()
+        const isG7 = ['US', 'CA', 'GB', 'FR', 'DE', 'IT', 'JP'].includes(id)
+        const isBRICS = ['BR', 'RU', 'IN', 'CN', 'ZA', 'EG', 'ET', 'IR', 'AE', 'SA'].includes(id)
+        const isG20 =
+          isG7 ||
+          isBRICS ||
+          ['ID', 'KR', 'SA', 'TR', 'AU', 'AR', 'MX', 'EU'].includes(id)
+
+        if (selectedRegion === 'G20' && !isG20 && c.region !== 'G20') return false
+        if (selectedRegion === 'G7' && !isG7 && c.region !== 'G7') return false
+        if (selectedRegion === 'BRICS' && !isBRICS && c.region !== 'BRICS') return false
         if (
-          selectedRegion === 'G20' &&
-          c.region !== 'G20' &&
-          c.region !== 'G7' &&
-          c.region !== 'BRICS'
+          selectedRegion === 'Europe' &&
+          c.region !== 'Europe' &&
+          !['GB', 'FR', 'DE', 'IT', 'EU', 'ES', 'NL', 'CH', 'SE', 'NO', 'PL', 'IE', 'BE', 'AT', 'PT', 'GR', 'FI', 'DK', 'CZ', 'RO', 'HU', 'UA'].includes(id)
         ) {
           return false
-        } else if (selectedRegion === 'G7' && c.region !== 'G7') {
+        }
+        if (
+          selectedRegion === 'Asia' &&
+          c.region !== 'Asia' &&
+          !['CN', 'IN', 'JP', 'KR', 'ID', 'SG', 'TH', 'MY', 'VN', 'PH', 'SA', 'TR', 'AE', 'PK', 'BD', 'IL', 'TW', 'HK'].includes(id)
+        ) {
           return false
-        } else if (selectedRegion === 'BRICS' && c.region !== 'BRICS') {
-          return false
-        } else if (
-          selectedRegion !== 'G20' &&
-          selectedRegion !== 'G7' &&
-          selectedRegion !== 'BRICS' &&
-          c.region !== selectedRegion &&
-          !c.subregion?.toLowerCase().includes(selectedRegion.toLowerCase())
+        }
+        if (
+          selectedRegion === 'Americas' &&
+          c.region !== 'Americas' &&
+          !['US', 'CA', 'MX', 'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC'].includes(id)
         ) {
           return false
         }
