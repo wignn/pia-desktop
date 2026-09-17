@@ -899,8 +899,67 @@ export class PiaProvider {
   }): Promise<MacroMapResult | null> {
     if (!this.client) return null
     try {
-      const indicator = params?.indicator === 'gdp_growth' ? 'gdp' : params?.indicator
-      const response = await this.client.economic.getMacroMap({ ...params, indicator })
+      const indicator = params?.indicator || 'inflation'
+      const query = new URLSearchParams()
+      query.set('indicator', indicator)
+      if (params?.period) query.set('period', params.period)
+
+      // Primary source: geo-economi microservice via Gateway L1 RAM cache
+      try {
+        const raw = await (this.client as any).transport.request(
+          `/api/v1/macro/map?${query.toString()}`,
+          'GET'
+        )
+        const res = raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw
+        if (res && Array.isArray(res.countries) && res.countries.length > 0) {
+          const parsedCountries: CountryMacroData[] = res.countries.map((c: any) => {
+            const hist: Record<number, number> = {}
+            if (c.history && typeof c.history === 'object') {
+              for (const [yr, val] of Object.entries(c.history)) {
+                const numYr = parseInt(yr, 10)
+                if (!isNaN(numYr) && typeof val === 'number') {
+                  hist[numYr] = val
+                }
+              }
+            }
+            return {
+              id: String(c.id || c.country_code || ''),
+              name: String(c.name || c.country_name || ''),
+              flag: String(c.flag || '🌐'),
+              region: (c.region || 'Unknown') as CountryMacroData['region'],
+              subregion: String(c.subregion || 'Global'),
+              ticker: String(c.ticker || c.id || ''),
+              value: typeof c.value === 'number' ? c.value : undefined,
+              prevValue: typeof c.prevValue === 'number' ? c.prevValue : typeof c.previous_value === 'number' ? c.previous_value : undefined,
+              change: typeof c.change === 'number' ? c.change : undefined,
+              unit: String(c.unit || res.unit || '%'),
+              period: String(c.period || res.period || '2025'),
+              history: hist,
+              rank: typeof c.rank === 'number' ? c.rank : undefined
+            }
+          })
+
+          return {
+            indicator: res.indicator || indicator,
+            indicatorName: res.indicatorName || res.indicator_name || 'Macroeconomic Indicator',
+            unit: res.unit || '%',
+            period: res.period || '2025',
+            minValue: res.minValue ?? res.min_value,
+            maxValue: res.maxValue ?? res.max_value,
+            timeline: Array.isArray(res.timeline) ? res.timeline : [],
+            countries: parsedCountries,
+            total: res.total || parsedCountries.length,
+            source: res.source || 'World Bank / GDELT / PIA Macro Core',
+            updatedAt: typeof res.updatedAt === 'number' ? res.updatedAt : Date.now(),
+            isLive: true
+          }
+        }
+      } catch (err) {
+        console.warn('[PiaProvider] /api/v1/macro/map request failed, trying economic.getMacroMap fallback:', err)
+      }
+
+      const legacyIndicator = params?.indicator === 'gdp_growth' ? 'gdp' : params?.indicator
+      const response = await this.client.economic.getMacroMap({ ...params, indicator: legacyIndicator })
       const liveResponse = response as typeof response & {
         is_live?: boolean
         updated_at?: string
