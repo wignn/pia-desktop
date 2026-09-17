@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { Map as MapLibre, GeoJSONSource, setWorkerUrl } from 'maplibre-gl'
+import { Map as MapLibre, GeoJSONSource, Popup, setWorkerUrl } from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import rawWorldGeoJson from './world-countries.json'
@@ -215,7 +215,17 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
       resizeObserver.observe(mapContainerRef.current)
     }
 
-    // Mouse hover detection over countries
+    // Native MapLibre Popup for zero-lag 60fps tooltips
+    const popup = new Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      className: 'macro-map-native-popup'
+    })
+
+    let lastHoveredIso = ''
+
+    // Mouse hover detection over countries (optimized with ISO deduplication)
     map.on('mousemove', 'countries-fill', (e) => {
       const feature = e.features?.[0]
       if (!feature || !feature.properties) return
@@ -223,16 +233,49 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
       const iso = (feature.properties.iso_a2 as string)?.toUpperCase()
       if (iso) {
         map.getCanvas().style.cursor = 'pointer'
-        map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], iso])
 
         const macro = macroByIso.get(iso) || null
-        onHoverCountry(macro, e.point.x, e.point.y)
+        const name = (feature.properties.countryName as string) || (feature.properties.name as string) || iso
+        const flag = (feature.properties.flag as string) || macro?.flag || '🌐'
+        const rawVal = feature.properties.metricValue !== null && feature.properties.metricValue !== undefined
+          ? Number(feature.properties.metricValue)
+          : macro?.value
+        const valStr = rawVal !== undefined && !isNaN(rawVal) ? `${rawVal.toFixed(1)}%` : 'Unavailable'
+
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 6px 10px; background: #1e222d; border: 1px solid #2a2e39; border-radius: 5px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); color: #d1d4dc; font-size: 11px; pointer-events: none; min-width: 120px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+                <div style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: #ffffff;">
+                  <span style="font-size: 13px;">${flag}</span>
+                  <span>${name}</span>
+                </div>
+                ${macro?.rank ? `<span style="font-size: 9px; padding: 1px 4px; background: #131722; color: #787b86; border-radius: 2px;">#${macro.rank}</span>` : ''}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+                <span style="color: #787b86; text-transform: uppercase; font-size: 9px; font-weight: 600;">${selectedMetric.replace('_', ' ')}:</span>
+                <span style="font-size: 13px; font-weight: 700; color: #2962ff;">${valStr}</span>
+              </div>
+            </div>`
+          )
+          .addTo(map)
+
+        if (iso !== lastHoveredIso) {
+          lastHoveredIso = iso
+          map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], iso])
+          onHoverCountry(macro, e.point.x, e.point.y)
+        }
       }
     })
 
     map.on('mouseleave', 'countries-fill', () => {
       map.getCanvas().style.cursor = ''
-      map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], ''])
+      if (lastHoveredIso) {
+        lastHoveredIso = ''
+        map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], ''])
+      }
+      popup.remove()
       onHoverCountry(null)
     })
 

@@ -10,6 +10,17 @@ const HISTORICAL_YEARS = [
   1914, 1929, 1945, 1971, 1980, 1990, 2000, 2008, 2015, 2020, 2022, 2024, 2026
 ]
 
+const formatMacroValue = (val: number | undefined, unit: string = '%'): string => {
+  if (val === undefined || isNaN(val)) return 'Unavailable'
+  return `${val.toFixed(1)}${unit}`
+}
+
+const formatMacroChange = (change: number | undefined): string => {
+  if (change === undefined || isNaN(change)) return 'Unavailable'
+  const isPos = change >= 0
+  return `${isPos ? '+' : ''}${change.toFixed(1)}%`
+}
+
 export const MacroMapsView: React.FC = () => {
   const { tabs, activeTabId, openLayoutInNewTab } = useTabStore()
   const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -327,9 +338,7 @@ export const MacroMapsView: React.FC = () => {
                   {hoveredCountry.ticker}:
                 </span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.accent }}>
-                  {hoveredCountry.value === undefined
-                    ? 'Unavailable'
-                    : `${hoveredCountry.value}${hoveredCountry.unit}`}
+                  {formatMacroValue(hoveredCountry.value, hoveredCountry.unit)}
                 </span>
               </div>
 
@@ -343,9 +352,7 @@ export const MacroMapsView: React.FC = () => {
                         : THEME_TOKENS.colors.bearish
                   }}
                 >
-                  {hoveredCountry.change === undefined
-                    ? 'Unavailable'
-                    : `${hoveredCountry.change >= 0 ? '+' : ''}${hoveredCountry.change}%`}
+                  {formatMacroChange(hoveredCountry.change)}
                 </span>
               </div>
             </div>
@@ -532,9 +539,7 @@ export const MacroMapsView: React.FC = () => {
                         fontSize: 12
                       }}
                     >
-                      {country.value === undefined
-                        ? 'Unavailable'
-                        : `${country.value}${country.unit}`}
+                      {formatMacroValue(country.value, country.unit)}
                     </div>
                     <div
                       style={{
@@ -545,8 +550,8 @@ export const MacroMapsView: React.FC = () => {
                       }}
                     >
                       {country.change === undefined
-                        ? 'Change unavailable'
-                        : `${isPositiveChange ? '▲' : '▼'} ${Math.abs(country.change)}%`}
+                        ? '-'
+                        : `${isPositiveChange ? '▲' : '▼'} ${Math.abs(country.change).toFixed(1)}%`}
                     </div>
                   </div>
 
