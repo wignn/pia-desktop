@@ -14,7 +14,7 @@ import { EnergyWidget } from './widgets/EnergyWidget'
 const STORAGE_KEY = 'pia_control_panel_widgets'
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
-  { id: 'w_live_tv_1', type: 'live_tv', title: 'Live Financial TV Broadcast', colSpan: 6, minHeightPx: 330, config: { channelId: 'bloomberg' } },
+  { id: 'w_live_tv_1', type: 'live_tv', title: 'Live Financial TV Broadcast', colSpan: 6, minHeightPx: 330, config: { channelId: 'bloomberg_live' } },
   { id: 'w_chart_gold', type: 'mini_chart', title: 'XAUUSD (Spot Gold)', colSpan: 6, minHeightPx: 330, config: { symbol: 'XAUUSD', timeframe: '15m' } },
   { id: 'w_chart_btc', type: 'mini_chart', title: 'BTCUSDT (Bitcoin)', colSpan: 4, minHeightPx: 290, config: { symbol: 'BTCUSDT', timeframe: '15m' } },
   { id: 'w_yields', type: 'yield_curve', title: 'US Treasury Yields & 2s10s', colSpan: 4, minHeightPx: 290 },
@@ -97,20 +97,37 @@ export const ControlPanelView: React.FC = () => {
     )
   }
 
-  // Drag and drop reordering
-  const handleDragStart = (index: number) => {
+  // Shift position left / right
+  const handleShiftPosition = (index: number, direction: -1 | 1) => {
+    const target = index + direction
+    if (target < 0 || target >= widgets.length) return
+    setWidgets((prev) => {
+      const updated = [...prev]
+      const [moved] = updated.splice(index, 1)
+      updated.splice(target, 0, moved)
+      return updated
+    })
+  }
+
+  // HTML5 Drag and drop reordering
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData('text/plain', String(index))
+    e.dataTransfer.effectAllowed = 'move'
     setDraggedIndex(index)
   }
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
     if (dragOverIndex !== index) {
       setDragOverIndex(index)
     }
   }
 
-  const handleDrop = (index: number) => {
-    if (draggedIndex === null || draggedIndex === index) {
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    const fromIndex = draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer.getData('text/plain'), 10)
+    if (isNaN(fromIndex) || fromIndex === index || fromIndex < 0 || fromIndex >= widgets.length) {
       setDraggedIndex(null)
       setDragOverIndex(null)
       return
@@ -118,7 +135,7 @@ export const ControlPanelView: React.FC = () => {
 
     setWidgets((prev) => {
       const updated = [...prev]
-      const [moved] = updated.splice(draggedIndex, 1)
+      const [moved] = updated.splice(fromIndex, 1)
       updated.splice(index, 0, moved)
       return updated
     })
@@ -279,9 +296,9 @@ export const ControlPanelView: React.FC = () => {
             <div
               key={w.id}
               draggable
-              onDragStart={() => handleDragStart(index)}
+              onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
-              onDrop={() => handleDrop(index)}
+              onDrop={(e) => handleDrop(e, index)}
               style={{
                 gridColumn: `span ${Math.min(w.colSpan, 12)}`,
                 minHeight: w.minHeightPx || 280,
@@ -317,6 +334,54 @@ export const ControlPanelView: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {/* Position shift buttons (1-click move) */}
+                  <button
+                    type="button"
+                    onClick={() => handleShiftPosition(index, -1)}
+                    disabled={index === 0}
+                    title="Move widget position left / earlier"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 2,
+                      backgroundColor: '#1e222d',
+                      border: '1px solid #2a2e39',
+                      color: index === 0 ? '#444955' : '#089981',
+                      cursor: index === 0 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      fontSize: 10
+                    }}
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleShiftPosition(index, 1)}
+                    disabled={index === widgets.length - 1}
+                    title="Move widget position right / later"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 2,
+                      backgroundColor: '#1e222d',
+                      border: '1px solid #2a2e39',
+                      color: index === widgets.length - 1 ? '#444955' : '#089981',
+                      cursor: index === widgets.length - 1 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      fontSize: 10
+                    }}
+                  >
+                    ▶
+                  </button>
+
+                  <div style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }} />
+
                   {/* Width adjust buttons */}
                   <span style={{ fontSize: 9, color: '#787b86', marginRight: 2 }}>{w.colSpan}/12 col</span>
                   <button

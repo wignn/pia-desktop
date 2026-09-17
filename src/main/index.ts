@@ -3,7 +3,7 @@
  * Manages Electron lifecycle, secure window initialization, SQLite persistence, and IPC wiring.
  */
 
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -118,6 +118,16 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.pia.terminal')
+
+    // Ensure YouTube embeds have genuine desktop Referer & Origin so live broadcasts never report "This video is private"
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
+      (details, callback) => {
+        details.requestHeaders['Referer'] = 'https://www.youtube.com/'
+        details.requestHeaders['Origin'] = 'https://www.youtube.com'
+        callback({ requestHeaders: details.requestHeaders })
+      }
+    )
 
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window)
