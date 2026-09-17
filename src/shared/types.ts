@@ -424,7 +424,7 @@ export interface ChartLayoutData {
 export interface TerminalTabItem {
   id: string
   title: string
-  type: 'chart' | 'hub' | 'macromaps'
+  type: 'chart' | 'hub' | 'macromaps' | 'controlpanel'
   layoutId?: string
   symbol: string
   timeframe: Timeframe

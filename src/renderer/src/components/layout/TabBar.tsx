@@ -4,8 +4,15 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
 export const TabBar: React.FC = () => {
-  const { tabs, activeTabId, setActiveTabId, closeTab, openHubInNewTab, openMacroMapsInNewTab } =
-    useTabStore()
+  const {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    closeTab,
+    openHubInNewTab,
+    openMacroMapsInNewTab,
+    openControlPanelInNewTab
+  } = useTabStore()
   const { prices } = useMarketStore()
 
   const formatPrice = (p?: number): string => {
@@ -284,6 +291,53 @@ export const TabBar: React.FC = () => {
           <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
         </svg>
         <span>Macro Maps</span>
+      </button>
+
+      {/* Control Panel / War Room New Tab Button */}
+      <button
+        type="button"
+        onClick={openControlPanelInNewTab}
+        title="Open Control Panel & Financial War Room in New Tab"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          height: 26,
+          padding: '0 8px',
+          borderRadius: 4,
+          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+          backgroundColor: 'rgba(8, 153, 129, 0.1)',
+          color: '#089981',
+          cursor: 'pointer',
+          marginLeft: 4,
+          fontSize: 11,
+          fontWeight: 600,
+          transition: 'all 0.1s ease'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'rgba(8, 153, 129, 0.2)'
+          e.currentTarget.style.borderColor = '#089981'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'rgba(8, 153, 129, 0.1)'
+          e.currentTarget.style.borderColor = THEME_TOKENS.colors.borderSubtle
+        }}
+      >
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        <span>Control Panel</span>
       </button>
     </div>
   )

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { TabBar } from './components/layout/TabBar'
 import { SuperchartsHub } from './components/hub/SuperchartsHub'
 import { MacroMapsView } from './components/macromaps/MacroMapsView'
+import { ControlPanelView } from './components/controlpanel/ControlPanelView'
 import { TopToolbar } from './components/layout/TopToolbar'
 import { LeftDrawingToolbar } from './components/layout/LeftDrawingToolbar'
 import { RightIconRail } from './components/layout/RightIconRail'
@@ -42,6 +43,7 @@ export function App(): React.JSX.Element {
   const activeTabItem = tabs.find((t) => t.id === activeTabId) || tabs[0]
   const isHubActive = activeTabItem?.type === 'hub'
   const isMacroMapsActive = activeTabItem?.type === 'macromaps'
+  const isControlPanelActive = activeTabItem?.type === 'controlpanel'
   const {
     activeTab,
     isRightPanelOpen,
@@ -129,6 +131,8 @@ export function App(): React.JSX.Element {
         <SuperchartsHub />
       ) : isMacroMapsActive ? (
         <MacroMapsView />
+      ) : isControlPanelActive ? (
+        <ControlPanelView />
       ) : (
         <>
           {/* Top TradingView Toolbar */}

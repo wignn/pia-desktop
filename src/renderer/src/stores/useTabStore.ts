@@ -25,6 +25,8 @@ interface TabState {
   switchToHub: () => void
   openMacroMapsInNewTab: (metric?: MacroMetricType) => string
   switchToMacroMaps: (metric?: MacroMetricType) => void
+  openControlPanelInNewTab: () => string
+  switchToControlPanel: () => void
 }
 
 const getInitialTabs = (): TerminalTabItem[] => {
@@ -309,8 +311,8 @@ export const useTabStore = create<TabState>((set, get) => ({
   switchToMacroMaps: (metric: MacroMetricType = 'inflation') => {
     const { activeTabId, tabs } = get()
     const metricLabels: Record<MacroMetricType, string> = {
-      inflation: 'Inflation Rate',
-      interest_rate: 'Interest Rate',
+      inflation: 'Inflation (CPI)',
+      interest_rate: 'Interest Rates',
       gdp_growth: 'GDP Growth',
       unemployment: 'Unemployment Rate',
       debt_to_gdp: 'Debt to GDP'
@@ -325,6 +327,40 @@ export const useTabStore = create<TabState>((set, get) => ({
               title: `Macro Maps - ${label}`,
               customName: `Macro Maps: ${label}`,
               macroMetric: metric
+            }
+          : t
+      )
+    })
+  },
+
+  openControlPanelInNewTab: () => {
+    const id = `controlpanel_${Date.now()}`
+    const newTab: TerminalTabItem = {
+      id,
+      title: 'Control Panel',
+      type: 'controlpanel',
+      symbol: 'XAUUSD',
+      timeframe: '15m',
+      customName: 'War Room'
+    }
+
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: id
+    }))
+    return id
+  },
+
+  switchToControlPanel: () => {
+    const { activeTabId, tabs } = get()
+    set({
+      tabs: tabs.map((t) =>
+        t.id === activeTabId
+          ? {
+              ...t,
+              type: 'controlpanel',
+              title: 'Control Panel',
+              customName: 'War Room'
             }
           : t
       )
