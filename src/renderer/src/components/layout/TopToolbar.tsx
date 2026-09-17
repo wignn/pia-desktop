@@ -11,8 +11,16 @@ const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w
 
 export const TopToolbar: React.FC = () => {
   const { symbol, timeframe, setTimeframe, prices } = useMarketStore()
-  const { chartType, setChartType, activeIndicators, clearAllDrawings, isReplaying, setReplaying } =
-    useChartStore()
+  const {
+    chartType,
+    setChartType,
+    activeIndicators,
+    clearAllDrawings,
+    isReplaying,
+    setReplaying,
+    triggerSnapshot,
+    snapshotToast
+  } = useChartStore()
   const { theme, toggleTheme, setSymbolSearchOpen, setIndicatorModalOpen, setSettingsModalOpen } =
     useWorkspaceStore()
   const { activeLayout, layouts, saveCurrentLayout, loadLayoutById } = useLayoutStore()
@@ -559,6 +567,38 @@ export const TopToolbar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Snapshot / Save Chart Image Button (TradingView Camera) */}
+      <button
+        type="button"
+        onClick={triggerSnapshot}
+        className="tv-btn"
+        style={{
+          padding: '5px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          color: snapshotToast ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.textSecondary
+        }}
+        title="Take a snapshot / save chart image (PNG & Clipboard)"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+        {snapshotToast && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: THEME_TOKENS.colors.bullish }}>
+            {snapshotToast}
+          </span>
+        )}
+      </button>
 
       <div style={{ width: 1, height: 20, backgroundColor: THEME_TOKENS.colors.borderMedium }} />
 

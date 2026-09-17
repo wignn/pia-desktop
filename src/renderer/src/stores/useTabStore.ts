@@ -27,20 +27,35 @@ interface TabState {
   switchToMacroMaps: (metric?: MacroMetricType) => void
 }
 
-const defaultInitialTabs: TerminalTabItem[] = [
-  {
-    id: 'tab_initial_main',
-    title: 'Live Chart',
-    type: 'chart',
-    layoutId: 'layout_live_main',
-    symbol: '',
-    timeframe: '1h',
-    customName: 'Live Chart'
+const getInitialTabs = (): TerminalTabItem[] => {
+  let symbol = 'XAUUSD'
+  let timeframe: Timeframe = '15m'
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const savedSym = localStorage.getItem('pia_last_symbol')
+      if (savedSym && savedSym.trim()) symbol = savedSym.trim().toUpperCase()
+      const savedTf = localStorage.getItem('pia_last_timeframe') as Timeframe
+      if (savedTf && ['1m', '5m', '15m', '1h', '4h', '1d', '1w'].includes(savedTf)) timeframe = savedTf
+    }
+  } catch {
+    // ignore
   }
-]
+
+  return [
+    {
+      id: 'tab_initial_main',
+      title: symbol || 'Live Chart',
+      type: 'chart',
+      layoutId: 'layout_live_main',
+      symbol,
+      timeframe,
+      customName: symbol || 'Live Chart'
+    }
+  ]
+}
 
 export const useTabStore = create<TabState>((set, get) => ({
-  tabs: defaultInitialTabs,
+  tabs: getInitialTabs(),
   activeTabId: 'tab_initial_main',
 
   addTab: (custom = {}) => {

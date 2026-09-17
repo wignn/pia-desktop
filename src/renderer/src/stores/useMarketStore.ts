@@ -27,9 +27,33 @@ interface MarketState {
   subscribeToMarketEvents: () => () => void
 }
 
+const loadInitialSymbol = (): string => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('pia_last_symbol')
+      if (saved && saved.trim()) return saved.trim().toUpperCase()
+    }
+  } catch {
+    // ignore
+  }
+  return 'XAUUSD'
+}
+
+const loadInitialTimeframe = (): Timeframe => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('pia_last_timeframe') as Timeframe
+      if (saved && ['1m', '5m', '15m', '1h', '4h', '1d', '1w'].includes(saved)) return saved
+    }
+  } catch {
+    // ignore
+  }
+  return '15m'
+}
+
 export const useMarketStore = create<MarketState>((set, get) => ({
-  symbol: null,
-  timeframe: '1h',
+  symbol: loadInitialSymbol(),
+  timeframe: loadInitialTimeframe(),
   symbols: [],
   prices: {},
   connectionState: { status: 'connecting' },
@@ -45,6 +69,13 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       set({ symbol: null })
       return
     }
+
+    try {
+      localStorage.setItem('pia_last_symbol', cleanSymbol)
+    } catch {
+      // ignore
+    }
+
     // Switch subscription in main process only for valid provider symbols.
     if (oldSymbol) void window.api.market.unsubscribePrice(oldSymbol)
     void window.api.market.subscribePrice(cleanSymbol)
@@ -58,6 +89,12 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
   setTimeframe: (newTimeframe: Timeframe) => {
     if (get().timeframe === newTimeframe) return
+
+    try {
+      localStorage.setItem('pia_last_timeframe', newTimeframe)
+    } catch {
+      // ignore
+    }
 
     set({ timeframe: newTimeframe, isLoadingCandles: true })
 

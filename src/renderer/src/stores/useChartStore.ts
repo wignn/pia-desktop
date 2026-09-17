@@ -26,12 +26,44 @@ export interface ActiveIndicator {
   visible: boolean
 }
 
+const DEFAULT_INDICATORS: ActiveIndicator[] = [
+  { name: 'EMA', shortName: 'EMA', paneId: 'candle_pane', visible: true },
+  { name: 'VOL', shortName: 'VOL', paneId: 'volume_pane', visible: true }
+]
+
+const loadSavedIndicators = (): ActiveIndicator[] => {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_INDICATORS
+    const raw = localStorage.getItem('pia_active_indicators')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch {
+    // fallback
+  }
+  return DEFAULT_INDICATORS
+}
+
+const loadSavedChartType = (): ChartType => {
+  try {
+    if (typeof localStorage === 'undefined') return 'candle_solid'
+    const raw = localStorage.getItem('pia_chart_type') as ChartType
+    if (raw && ['candle_solid', 'candle_stroke', 'line', 'area'].includes(raw)) return raw
+  } catch {
+    // fallback
+  }
+  return 'candle_solid'
+}
+
 interface ChartState {
   chartType: ChartType
   activeTool: DrawingToolType
   magnetMode: boolean
   activeIndicators: ActiveIndicator[]
   drawingsClearSignal: number
+  snapshotSignal: number
+  snapshotToast: string | null
 
   // Replay mode state
   isReplaying: boolean
@@ -46,6 +78,8 @@ interface ChartState {
   toggleMagnetMode: () => void
   toggleIndicator: (name: string, defaultPane?: string) => void
   clearAllDrawings: () => void
+  triggerSnapshot: () => void
+  setSnapshotToast: (msg: string | null) => void
   setReplaying: (active: boolean) => void
   toggleReplayPlay: () => void
   setReplaySpeed: (speedMs: number) => void
@@ -54,14 +88,13 @@ interface ChartState {
 }
 
 export const useChartStore = create<ChartState>((set, get) => ({
-  chartType: 'candle_solid',
+  chartType: loadSavedChartType(),
   activeTool: 'cursor',
   magnetMode: false,
-  activeIndicators: [
-    { name: 'EMA', shortName: 'EMA', paneId: 'candle_pane', visible: true },
-    { name: 'VOL', shortName: 'VOL', paneId: 'volume_pane', visible: true }
-  ],
+  activeIndicators: loadSavedIndicators(),
   drawingsClearSignal: 0,
+  snapshotSignal: 0,
+  snapshotToast: null,
 
   isReplaying: false,
   isReplayPlaying: false,
@@ -69,7 +102,14 @@ export const useChartStore = create<ChartState>((set, get) => ({
   replayCurrentIndex: 0,
   replayTotalBars: 0,
 
-  setChartType: (type: ChartType) => set({ chartType: type }),
+  setChartType: (type: ChartType) => {
+    set({ chartType: type })
+    try {
+      localStorage.setItem('pia_chart_type', type)
+    } catch {
+      // ignore
+    }
+  },
   setActiveTool: (tool: DrawingToolType) => set({ activeTool: tool }),
   toggleMagnetMode: () => set((state) => ({ magnetMode: !state.magnetMode })),
 
@@ -77,22 +117,26 @@ export const useChartStore = create<ChartState>((set, get) => ({
     const list = get().activeIndicators
     const exists = list.find((item) => item.name === name)
 
+    let updated: ActiveIndicator[]
     if (exists) {
-      // Toggle off or remove
-      set({
-        activeIndicators: list.filter((item) => item.name !== name)
-      })
+      updated = list.filter((item) => item.name !== name)
     } else {
-      // Add indicator
       const isSubPane = ['VOL', 'MACD', 'RSI'].includes(name)
       const paneId = isSubPane ? `${name.toLowerCase()}_pane` : defaultPane
-      set({
-        activeIndicators: [...list, { name, shortName: name, paneId, visible: true }]
-      })
+      updated = [...list, { name, shortName: name, paneId, visible: true }]
+    }
+
+    set({ activeIndicators: updated })
+    try {
+      localStorage.setItem('pia_active_indicators', JSON.stringify(updated))
+    } catch {
+      // ignore
     }
   },
 
   clearAllDrawings: () => set((state) => ({ drawingsClearSignal: state.drawingsClearSignal + 1 })),
+  triggerSnapshot: () => set((state) => ({ snapshotSignal: state.snapshotSignal + 1 })),
+  setSnapshotToast: (msg: string | null) => set({ snapshotToast: msg }),
 
   setReplaying: (active: boolean) => {
     if (active) {

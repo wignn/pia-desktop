@@ -72,6 +72,7 @@ export class PiaProvider {
   private lastLatencyCheck = 0
   private discoveredSymbols = new Map<string, SymbolInfo>()
   private realtimeErrorDetail: string | null = null
+  private candleCache = new Map<string, { bars: CandleBar[]; cachedAt: number }>()
 
   constructor(credManager: CredentialManager, getWindow: () => BrowserWindow | null) {
     this.credManager = credManager
@@ -492,6 +493,13 @@ export class PiaProvider {
   }): Promise<CandleBar[]> {
     if (!this.client) return []
 
+    const cacheKey = `${params.symbol}:${params.timeframe}:${params.limit || 500}:${params.to || 'latest'}`
+    const cached = this.candleCache.get(cacheKey)
+    const ttl = params.to ? 600_000 : 3_000 // 10 minutes for past history, 3 seconds for latest active bar
+    if (cached && Date.now() - cached.cachedAt < ttl) {
+      return cached.bars
+    }
+
     try {
       const tf = ['1m', '5m', '15m', '1h', '4h', '1d'].includes(params.timeframe)
         ? (params.timeframe as '1m' | '5m' | '15m' | '1h' | '4h' | '1d')
@@ -533,6 +541,13 @@ export class PiaProvider {
       }
 
       bars.sort((a, b) => a.timestamp - b.timestamp)
+      if (bars.length > 0) {
+        this.candleCache.set(cacheKey, { bars, cachedAt: Date.now() })
+        if (this.candleCache.size > 150) {
+          const firstKey = this.candleCache.keys().next().value
+          if (firstKey) this.candleCache.delete(firstKey)
+        }
+      }
       return bars
     } catch (err) {
       console.warn('getCandles unavailable:', this.formatProviderError(err))
