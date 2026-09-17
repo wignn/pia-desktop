@@ -15,12 +15,6 @@ const formatMacroValue = (val: number | undefined, unit: string = '%'): string =
   return `${val.toFixed(1)}${unit}`
 }
 
-const formatMacroChange = (change: number | undefined): string => {
-  if (change === undefined || isNaN(change)) return 'Unavailable'
-  const isPos = change >= 0
-  return `${isPos ? '+' : ''}${change.toFixed(1)}%`
-}
-
 export const MacroMapsView: React.FC = () => {
   const { tabs, activeTabId, openLayoutInNewTab } = useTabStore()
   const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -38,10 +32,8 @@ export const MacroMapsView: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState<number>(2026)
   const [isPlaying, setIsPlaying] = useState<boolean>(false)
 
-  // Selected & Hovered Country for tooltip / detail
-  const [hoveredCountry, setHoveredCountry] = useState<CountryMacroData | null>(null)
+  // Selected Country for detail view
   const [selectedCountryId, setSelectedCountryId] = useState<string>('US')
-  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [liveMacroData, setLiveMacroData] = useState<CountryMacroData[] | null>(null)
   const [isLiveData, setIsLiveData] = useState(false)
 
@@ -273,90 +265,9 @@ export const MacroMapsView: React.FC = () => {
             macroData={macroData}
             selectedCountryId={selectedCountryId}
             onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
-            onHoverCountry={(country, x, y) => {
-              setHoveredCountry(country)
-              if (x !== undefined && y !== undefined) {
-                setMousePos({ x, y })
-              }
-            }}
+            onHoverCountry={() => {}}
             onOpenChart={handleOpenChart}
           />
-
-          {/* Interactive Hover Tooltip */}
-          {hoveredCountry && (
-            <div
-              style={{
-                position: 'absolute',
-                left: Math.min(mousePos.x + 14, window.innerWidth - 620),
-                top: Math.max(mousePos.y - 45, 20),
-                backgroundColor: THEME_TOKENS.colors.bgSurface,
-                border: `1px solid ${THEME_TOKENS.colors.accent}`,
-                borderRadius: 6,
-                padding: '8px 12px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                pointerEvents: 'none',
-                zIndex: 100,
-                minWidth: 160
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8
-                }}
-              >
-                <span style={{ fontSize: 14 }}>{hoveredCountry.flag}</span>
-                <span
-                  style={{ fontWeight: 700, fontSize: 12, color: THEME_TOKENS.colors.textBright }}
-                >
-                  {hoveredCountry.name}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    padding: '1px 4px',
-                    borderRadius: 2,
-                    backgroundColor: THEME_TOKENS.colors.bgApp,
-                    color: THEME_TOKENS.colors.textSecondary
-                  }}
-                >
-                  #{hoveredCountry.rank}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 6,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'baseline'
-                }}
-              >
-                <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
-                  {hoveredCountry.ticker}:
-                </span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.accent }}>
-                  {formatMacroValue(hoveredCountry.value, hoveredCountry.unit)}
-                </span>
-              </div>
-
-              <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted, marginTop: 2 }}>
-                Period: {hoveredCountry.period} | 1Y Chg:{' '}
-                <span
-                  style={{
-                    color:
-                      hoveredCountry.change !== undefined && hoveredCountry.change >= 0
-                        ? THEME_TOKENS.colors.bullish
-                        : THEME_TOKENS.colors.bearish
-                  }}
-                >
-                  {formatMacroChange(hoveredCountry.change)}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* 3. RIGHT COUNTRY RANKING SIDEBAR */}

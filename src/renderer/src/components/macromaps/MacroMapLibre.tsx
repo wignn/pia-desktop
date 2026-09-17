@@ -195,7 +195,9 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
       zoom: 1.45,
       minZoom: 1,
       maxZoom: 9,
-      attributionControl: false
+      attributionControl: false,
+      fadeDuration: 0,
+      trackResize: true
     })
 
     map.on('load', () => {
@@ -224,59 +226,86 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
     })
 
     let lastHoveredIso = ''
+    let rafId: number | null = null
 
-    // Mouse hover detection over countries (optimized with ISO deduplication)
+    // Mouse hover detection over countries (optimized: DOM updated ONLY on country transition)
     map.on('mousemove', 'countries-fill', (e) => {
       const feature = e.features?.[0]
       if (!feature || !feature.properties) return
 
       const iso = (feature.properties.iso_a2 as string)?.toUpperCase()
-      if (iso) {
-        map.getCanvas().style.cursor = 'pointer'
+      if (!iso) return
+
+      map.getCanvas().style.cursor = 'pointer'
+
+      // Only re-render popup HTML when moving across country boundaries
+      if (iso !== lastHoveredIso) {
+        lastHoveredIso = iso
+        map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], iso])
 
         const macro = macroByIso.get(iso) || null
         const name = (feature.properties.countryName as string) || (feature.properties.name as string) || iso
         const flag = (feature.properties.flag as string) || macro?.flag || '🌐'
-        const rawVal = feature.properties.metricValue !== null && feature.properties.metricValue !== undefined
-          ? Number(feature.properties.metricValue)
-          : macro?.value
+        const rawVal =
+          feature.properties.metricValue !== null && feature.properties.metricValue !== undefined
+            ? Number(feature.properties.metricValue)
+            : macro?.value
         const valStr = rawVal !== undefined && !isNaN(rawVal) ? `${rawVal.toFixed(1)}%` : 'Unavailable'
 
+        const chgVal = macro?.change
+        const chgStr =
+          chgVal !== undefined && !isNaN(chgVal)
+            ? `<span style="color: ${chgVal >= 0 ? '#089981' : '#f23645'}; font-weight: 600;">${chgVal >= 0 ? '+' : ''}${chgVal.toFixed(1)}%</span>`
+            : ''
+
         popup
-          .setLngLat(e.lngLat)
           .setHTML(
-            `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 6px 10px; background: #1e222d; border: 1px solid #2a2e39; border-radius: 5px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); color: #d1d4dc; font-size: 11px; pointer-events: none; min-width: 120px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+            `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 7px 11px; background: #1e222d; border: 1px solid #2a2e39; border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); color: #d1d4dc; font-size: 11px; pointer-events: none; min-width: 140px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;">
                 <div style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: #ffffff;">
-                  <span style="font-size: 13px;">${flag}</span>
+                  <span style="font-size: 14px;">${flag}</span>
                   <span>${name}</span>
                 </div>
                 ${macro?.rank ? `<span style="font-size: 9px; padding: 1px 4px; background: #131722; color: #787b86; border-radius: 2px;">#${macro.rank}</span>` : ''}
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 3px;">
                 <span style="color: #787b86; text-transform: uppercase; font-size: 9px; font-weight: 600;">${selectedMetric.replace('_', ' ')}:</span>
                 <span style="font-size: 13px; font-weight: 700; color: #2962ff;">${valStr}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #787b86; border-top: 1px solid #2a2e39; padding-top: 4px; margin-top: 2px;">
+                <span>Period: ${macro?.period || '2025'}</span>
+                ${chgStr ? `<span>1Y: ${chgStr}</span>` : ''}
               </div>
             </div>`
           )
           .addTo(map)
 
-        if (iso !== lastHoveredIso) {
-          lastHoveredIso = iso
-          map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], iso])
-          onHoverCountry(macro, e.point.x, e.point.y)
+        if (onHoverCountry) {
+          onHoverCountry(macro)
         }
       }
+
+      // Smooth RAF-throttled position update (zero DOM reconstruction)
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        popup.setLngLat(e.lngLat)
+      })
     })
 
     map.on('mouseleave', 'countries-fill', () => {
       map.getCanvas().style.cursor = ''
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
       if (lastHoveredIso) {
         lastHoveredIso = ''
         map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], ''])
       }
       popup.remove()
-      onHoverCountry(null)
+      if (onHoverCountry) {
+        onHoverCountry(null)
+      }
     })
 
     // Click handler for country selection and camera flyTo
