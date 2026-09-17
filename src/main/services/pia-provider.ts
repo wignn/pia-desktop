@@ -507,7 +507,7 @@ export class PiaProvider {
     const cached = this.candleCache.get(cacheKey)
     const ttl = params.to ? 600_000 : 3_000 // 10 minutes for past history, 3 seconds for latest active bar
     if (cached && Date.now() - cached.cachedAt < ttl) {
-      return cached.bars
+      return cached.bars.map((b) => ({ ...b }))
     }
 
     try {

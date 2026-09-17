@@ -81,10 +81,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     void window.api.market.subscribePrice(cleanSymbol)
 
     set({ symbol: cleanSymbol, isLoadingCandles: true })
-
-    candleEngine.setSymbolAndTimeframe(cleanSymbol, get().timeframe).finally(() => {
-      set({ isLoadingCandles: false })
-    })
   },
 
   setTimeframe: (newTimeframe: Timeframe) => {
@@ -97,16 +93,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     }
 
     set({ timeframe: newTimeframe, isLoadingCandles: true })
-
-    const activeSymbol = get().symbol
-    if (!activeSymbol) {
-      set({ isLoadingCandles: false })
-      return
-    }
-
-    candleEngine.setSymbolAndTimeframe(activeSymbol, newTimeframe).finally(() => {
-      set({ isLoadingCandles: false })
-    })
   },
 
   setSelectedBar: (bar: KLineData | null) => {

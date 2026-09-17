@@ -20,6 +20,8 @@ export class CandleEngine {
   private tickBuffer: PriceQuote[] = []
   private activeBars: KLineData[] = []
   private listeners = new Set<CandleEngineListener>()
+  private inFlightKey = ''
+  private inFlightPromise: Promise<KLineData[]> | null = null
 
   // Replay mode state
   private isReplayMode = false
@@ -63,70 +65,87 @@ export class CandleEngine {
     timeframe: Timeframe,
     limit = 500
   ): Promise<KLineData[]> {
-    this.generationId++
-    const activeGen = this.generationId
-    this.currentSymbol = symbol
-    this.currentTimeframe = timeframe
-    this.isLoading = true
-    this.tickBuffer = []
-    this.activeBars = []
-    this.isReplayMode = false
-    this.replayBars = []
-    this.replayIndex = 0
-
-    let normalizedBars: KLineData[] = []
-    let lastError: unknown
-
-    // A transient empty response is not a valid chart state. Retry once before
-    // notifying KLineChart, while keeping the same generation active.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const rawBars = await window.api.market.getCandles({
-          symbol,
-          timeframe,
-          limit
-        })
-
-        // If user switched symbol or timeframe while request was in-flight, discard.
-        if (this.generationId !== activeGen) return []
-
-        normalizedBars = this.normalizeAndSortBars(rawBars)
-        if (normalizedBars.length > 0) break
-      } catch (err) {
-        lastError = err
-        if (attempt === 1) break
-      }
+    const reqKey = `${symbol}:${timeframe}:${limit}`
+    if (this.inFlightPromise && this.inFlightKey === reqKey) {
+      return this.inFlightPromise
     }
 
-    if (this.generationId !== activeGen) return []
+    this.inFlightKey = reqKey
+    const execute = async (): Promise<KLineData[]> => {
+      this.generationId++
+      const activeGen = this.generationId
+      this.currentSymbol = symbol
+      this.currentTimeframe = timeframe
+      this.isLoading = true
+      this.tickBuffer = []
+      this.activeBars = []
+      this.isReplayMode = false
+      this.replayBars = []
+      this.replayIndex = 0
 
-    if (normalizedBars.length === 0) {
-      this.isLoading = false
-      if (lastError) {
-        console.error(
-          `[CandleEngine] Failed to load candles for ${symbol} [${timeframe}]:`,
-          lastError
-        )
-      } else {
-        console.warn(`[CandleEngine] No historical candles returned for ${symbol} [${timeframe}]`)
+      let normalizedBars: KLineData[] = []
+      let lastError: unknown
+
+      // A transient empty response is not a valid chart state. Retry once before
+      // notifying KLineChart, while keeping the same generation active.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const rawBars = await window.api.market.getCandles({
+            symbol,
+            timeframe,
+            limit
+          })
+
+          // If user switched symbol or timeframe while request was in-flight, discard.
+          if (this.generationId !== activeGen) return []
+
+          normalizedBars = this.normalizeAndSortBars(rawBars)
+          if (normalizedBars.length > 0) break
+        } catch (err) {
+          lastError = err
+          if (attempt === 1) break
+        }
+      }
+
+      if (this.generationId !== activeGen) return []
+
+      if (normalizedBars.length === 0) {
+        this.isLoading = false
+        if (lastError) {
+          console.error(
+            `[CandleEngine] Failed to load candles for ${symbol} [${timeframe}]:`,
+            lastError
+          )
+        } else {
+          console.warn(`[CandleEngine] No historical candles returned for ${symbol} [${timeframe}]`)
+        }
+        this.tickBuffer = []
+        for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, [])
+        return []
+      }
+
+      this.activeBars = normalizedBars
+
+      // Reconcile buffered ticks only after a valid historical series exists.
+      for (const tick of this.tickBuffer) {
+        if (tick.symbol === this.currentSymbol) this.reconcileTick(tick, false)
       }
       this.tickBuffer = []
-      for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, [])
-      return []
+
+      this.isLoading = false
+      const result = [...this.activeBars]
+      for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, result)
+      return result
     }
 
-    this.activeBars = normalizedBars
+    this.inFlightPromise = execute().finally(() => {
+      if (this.inFlightKey === reqKey) {
+        this.inFlightPromise = null
+        this.inFlightKey = ''
+      }
+    })
 
-    // Reconcile buffered ticks only after a valid historical series exists.
-    for (const tick of this.tickBuffer) {
-      if (tick.symbol === this.currentSymbol) this.reconcileTick(tick, false)
-    }
-    this.tickBuffer = []
-
-    this.isLoading = false
-    const result = [...this.activeBars]
-    for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, result)
-    return result
+    return this.inFlightPromise
   }
 
   /**
@@ -231,8 +250,23 @@ export class CandleEngine {
     const tickVolume = quote.volume24h !== undefined ? 1 : undefined
     const nextVolume = (lastBar.volume ?? 0) + (tickVolume ?? 0)
 
-    if (barStartTimestamp > lastBar.timestamp) {
-      // New bar formed
+    if (barStartTimestamp === lastBar.timestamp) {
+      // Update current active bar
+      const updatedBar: KLineData = {
+        ...lastBar,
+        high: Math.max(lastBar.high, price),
+        low: Math.min(lastBar.low, price),
+        close: price,
+        volume: tickVolume === undefined ? lastBar.volume : nextVolume
+      }
+      this.activeBars[lastBarIndex] = updatedBar
+      if (notify) {
+        for (const listener of this.listeners) {
+          listener.onBarUpdate(currentGen, updatedBar)
+        }
+      }
+    } else if (barStartTimestamp > lastBar.timestamp) {
+      // New bar formed (timestamp progressed to next interval)
       const newBar: KLineData = {
         timestamp: barStartTimestamp,
         open: price,
@@ -247,22 +281,8 @@ export class CandleEngine {
           listener.onBarUpdate(currentGen, newBar)
         }
       }
-    } else {
-      // Update active bar
-      const updatedBar: KLineData = {
-        ...lastBar,
-        high: Math.max(lastBar.high, price),
-        low: Math.min(lastBar.low, price),
-        close: price,
-        volume: tickVolume === undefined ? lastBar.volume : nextVolume
-      }
-      this.activeBars[lastBarIndex] = updatedBar
-      if (notify) {
-        for (const listener of this.listeners) {
-          listener.onBarUpdate(currentGen, updatedBar)
-        }
-      }
     }
+    // Note: If barStartTimestamp < lastBar.timestamp, tick is from a delayed/out-of-order packet; ignore.
   }
 
   /**
