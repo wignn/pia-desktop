@@ -161,7 +161,14 @@ export class PiaProvider {
       const msg =
         this.formatProviderError(err) || this.realtimeErrorDetail || 'Realtime connection error'
       this.realtimeErrorDetail = null
-      this.setConnectionState({ status: 'error', error: msg })
+      console.warn('[PiaProvider] Realtime notice/error:', msg)
+
+      // Only transition connection state to error if the underlying socket is closed.
+      // Transient stream errors or notices should not mark an active connection as failed.
+      const isSocketOpen = (rt as any).ws?.readyState === 1
+      if (!isSocketOpen) {
+        this.setConnectionState({ status: 'error', error: msg })
+      }
     })
 
     rt.on('tick', (tick: MarketPrice) => {

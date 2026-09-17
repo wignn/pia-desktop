@@ -8,18 +8,18 @@ interface StreamChannel {
 }
 
 const CHANNELS: StreamChannel[] = [
-  { id: 'user_stream', name: 'Live TV', youtubeId: 'QB5BNdBFujE', badge: 'LIVE' },
   { id: 'bloomberg', name: 'Bloomberg', youtubeId: 'dp8PhLsUcFE', badge: 'US' },
   { id: 'cnbc', name: 'CNBC', youtubeId: '9NyxcX14vhk', badge: 'US' },
   { id: 'cnbc_id', name: 'CNBC ID', youtubeId: 'XMjM1m3jXkc', badge: 'ID' },
   { id: 'idx_live', name: 'IDX Channel', youtubeId: 'W1Y_L9c_9lA', badge: 'IDX' },
   { id: 'yahoo', name: 'Yahoo Finance', youtubeId: '141xLq6wY4k', badge: 'US' },
+  { id: 'user_stream', name: 'Custom Live', youtubeId: 'QB5BNdBFujE', badge: 'LIVE' },
   { id: 'fed', name: 'Fed Live', youtubeId: '19106093498', badge: 'FED' }
 ]
 
 function extractYouTubeId(input: string): string {
   const trimmed = input.trim()
-  if (!trimmed) return 'QB5BNdBFujE'
+  if (!trimmed) return 'dp8PhLsUcFE'
   const match = trimmed.match(/(?:live\/|v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/)
   if (match && match[1]) return match[1]
   if (trimmed.length === 11 && !trimmed.includes('/')) return trimmed
@@ -29,7 +29,7 @@ function extractYouTubeId(input: string): string {
 export const LiveTvWidget: React.FC<{
   channelId?: string
   onUpdateChannel?: (id: string) => void
-}> = ({ channelId = 'user_stream', onUpdateChannel }) => {
+}> = ({ channelId = 'bloomberg', onUpdateChannel }) => {
   const [activeChannelId, setActiveChannelId] = useState(channelId)
   const [customYtId, setCustomYtId] = useState('QB5BNdBFujE')
   const [isCustomInputOpen, setIsCustomInputOpen] = useState(false)
@@ -37,7 +37,7 @@ export const LiveTvWidget: React.FC<{
   const [isMuted, setIsMuted] = useState(true)
 
   const activeChannel = CHANNELS.find((c) => c.id === activeChannelId)
-  const currentVideoId = activeChannelId === 'custom' ? customYtId : activeChannel?.youtubeId || 'QB5BNdBFujE'
+  const currentVideoId = activeChannelId === 'custom' ? customYtId : activeChannel?.youtubeId || 'dp8PhLsUcFE'
 
   const handleSelectChannel = (id: string) => {
     setActiveChannelId(id)
