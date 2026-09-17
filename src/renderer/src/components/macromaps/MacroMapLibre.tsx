@@ -18,8 +18,9 @@ export interface MacroMapLibreProps {
   macroData: CountryMacroData[]
   selectedCountryId: string | null
   onSelectCountry: (countryId: string) => void
-  onHoverCountry: (country: CountryMacroData | null, x?: number, y?: number) => void
+  onHoverCountry?: (country: CountryMacroData | null, x?: number, y?: number) => void
   onOpenChart?: (country: CountryMacroData) => void
+  onSwitchToCanvas?: () => void
 }
 
 // Pre-indexed approximate centroids for instant, reliable camera flyTo
@@ -69,7 +70,8 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
   macroData,
   selectedCountryId,
   onSelectCountry,
-  onHoverCountry
+  onHoverCountry,
+  onSwitchToCanvas
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MapLibre | null>(null)
@@ -541,6 +543,33 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
         >
           {isGlobe ? <MapIcon size={16} /> : <Globe size={16} />}
         </button>
+
+        {onSwitchToCanvas && (
+          <>
+            <div style={{ height: 1, backgroundColor: '#2a2e39' }} />
+            <button
+              type="button"
+              onClick={onSwitchToCanvas}
+              title="Switch to Ultra-Fast Canvas 2D Engine"
+              style={{
+                width: 32,
+                height: 32,
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: '#089981',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.12s'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2e39')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              <Compass size={16} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Projection Mode Badge */}

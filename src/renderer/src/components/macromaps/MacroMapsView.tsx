@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { MACRO_METRICS } from './macroDataset'
 import { MacroMapLibre } from './MacroMapLibre'
+import { TradingViewMacroMap } from './TradingViewMacroMap'
 import { useTabStore } from '../../stores/useTabStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import type { MacroMetricType, CountryMacroData } from '@shared/types'
@@ -36,6 +37,7 @@ export const MacroMapsView: React.FC = () => {
   const [selectedCountryId, setSelectedCountryId] = useState<string>('US')
   const [liveMacroData, setLiveMacroData] = useState<CountryMacroData[] | null>(null)
   const [isLiveData, setIsLiveData] = useState(false)
+  const [mapEngine, setMapEngine] = useState<'canvas' | 'globe'>('canvas')
 
   // Historical animation playback loop
   useEffect(() => {
@@ -259,15 +261,28 @@ export const MacroMapsView: React.FC = () => {
             overflow: 'hidden'
           }}
         >
-          <MacroMapLibre
-            selectedMetric={selectedMetric}
-            selectedYear={selectedYear}
-            macroData={macroData}
-            selectedCountryId={selectedCountryId}
-            onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
-            onHoverCountry={() => {}}
-            onOpenChart={handleOpenChart}
-          />
+          {mapEngine === 'canvas' ? (
+            <TradingViewMacroMap
+              selectedMetric={selectedMetric}
+              selectedYear={selectedYear}
+              macroData={macroData}
+              selectedCountryId={selectedCountryId}
+              onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
+              onOpenChart={handleOpenChart}
+              onSwitchToGlobe={() => setMapEngine('globe')}
+            />
+          ) : (
+            <MacroMapLibre
+              selectedMetric={selectedMetric}
+              selectedYear={selectedYear}
+              macroData={macroData}
+              selectedCountryId={selectedCountryId}
+              onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
+              onHoverCountry={() => {}}
+              onOpenChart={handleOpenChart}
+              onSwitchToCanvas={() => setMapEngine('canvas')}
+            />
+          )}
         </div>
 
         {/* 3. RIGHT COUNTRY RANKING SIDEBAR */}
