@@ -73,6 +73,7 @@ export const IPC_CHANNELS = {
   MARKET_UNSUBSCRIBE_PRICE: 'market:unsubscribe-price',
   MARKET_ON_PRICE_UPDATE: 'market:on-price-update',
   MARKET_ON_CONNECTION_STATE: 'market:on-connection-state',
+  MARKET_UPLOAD_SNAPSHOT: 'market:upload-snapshot',
 
   // Order Book & Microstructure
   ORDERBOOK_GET: 'orderbook:get',
@@ -388,6 +389,13 @@ export const VolatilityInputSchema = z.object({
 })
 export type VolatilityInput = z.infer<typeof VolatilityInputSchema>
 
+export const UploadSnapshotInputSchema = z.object({
+  image: z.string().min(10),
+  symbol: z.string().optional(),
+  timeframe: z.string().optional()
+})
+export type UploadSnapshotInput = z.infer<typeof UploadSnapshotInputSchema>
+
 export const SecFilingsInputSchema = z.object({
   symbol: z.string().optional(),
   formType: z.string().optional(),
@@ -449,6 +457,7 @@ export interface TerminalAPI {
     getCorporateActions: () => Promise<CorporateActionItem[]>
     getRealizedVolatility: (symbol?: string) => Promise<VolatilityData | null>
     getImpliedVolatility: (symbol?: string) => Promise<VolatilityData | null>
+    uploadSnapshot: (params: UploadSnapshotInput) => Promise<{ id: string; url: string } | null>
   }
   orderbook: {
     get: (symbol: string) => Promise<OrderBookData | null>

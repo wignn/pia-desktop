@@ -460,28 +460,7 @@ export const ChartContainer: React.FC = () => {
       const bgColor = theme === 'dark' ? '#131722' : '#ffffff'
       const dataUrl = chart.getConvertPictureUrl(true, 'png', bgColor)
       if (dataUrl) {
-        // 1. Download file
-        const a = document.createElement('a')
-        a.href = dataUrl
-        a.download = `PIA_${symbol || 'Chart'}_${timeframe}_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-
-        // 2. Copy to clipboard
-        fetch(dataUrl)
-          .then((res) => res.blob())
-          .then((blob) => {
-            if (navigator.clipboard && window.ClipboardItem) {
-              void navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-            }
-          })
-          .catch(() => {
-            // ignore clipboard permission error
-          })
-
-        setSnapshotToast('Snapshot saved & copied!')
-        setTimeout(() => setSnapshotToast(null), 3000)
+        useWorkspaceStore.getState().openSnapshotModal(dataUrl)
       }
     } catch (err) {
       console.error('Failed to take chart snapshot:', err)

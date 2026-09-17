@@ -26,6 +26,7 @@ import { ReplayToolbar } from './components/panels/ReplayToolbar'
 import { SymbolSearchModal } from './components/modals/SymbolSearchModal'
 import { IndicatorModal } from './components/modals/IndicatorModal'
 import { SettingsModal } from './components/modals/SettingsModal'
+import { SnapshotModal } from './components/modals/SnapshotModal'
 
 import { useMarketStore } from './stores/useMarketStore'
 import { useWorkspaceStore } from './stores/useWorkspaceStore'
@@ -46,7 +47,10 @@ export function App(): React.JSX.Element {
     isRightPanelOpen,
     setSymbolSearchOpen,
     setIndicatorModalOpen,
-    setSettingsModalOpen
+    setSettingsModalOpen,
+    isSnapshotModalOpen,
+    closeSnapshotModal,
+    snapshotDataUrl
   } = useWorkspaceStore()
   const { setActiveTool } = useChartStore()
   const { loadCredentials } = useSettingsStore()
@@ -286,6 +290,11 @@ export function App(): React.JSX.Element {
       <SymbolSearchModal />
       <IndicatorModal />
       <SettingsModal />
+      <SnapshotModal
+        isOpen={isSnapshotModalOpen}
+        onClose={closeSnapshotModal}
+        dataUrl={snapshotDataUrl}
+      />
     </div>
   )
 }

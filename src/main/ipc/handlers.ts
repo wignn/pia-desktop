@@ -32,6 +32,7 @@ import {
   SocialPostsInputSchema,
   MacroMapInputSchema,
   VolatilityInputSchema,
+  UploadSnapshotInputSchema,
   SaveLayoutSchema,
   GetLayoutSchema,
   FixedIncomeTenorSchema,
@@ -143,6 +144,12 @@ export function registerIpcHandlers(
     if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
     const { symbol } = SymbolSubscriptionSchema.parse(rawParams)
     return piaProvider.unsubscribePrice(symbol)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.MARKET_UPLOAD_SNAPSHOT, async (event, rawParams) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    const params = UploadSnapshotInputSchema.parse(rawParams)
+    return await piaProvider.uploadSnapshot(params)
   })
 
   // --- Drawings Handlers ---

@@ -555,6 +555,25 @@ export class PiaProvider {
     }
   }
 
+  public async uploadSnapshot(params: {
+    image: string
+    symbol?: string
+    timeframe?: string
+  }): Promise<{ id: string; url: string } | null> {
+    if (!this.client) return null
+    try {
+      const res = await (this.client as any).transport.request(
+        '/api/v1/charts/snapshot',
+        'POST',
+        params
+      )
+      return res?.data || res
+    } catch (err) {
+      console.error('[PiaProvider] uploadSnapshot failed:', err)
+      return null
+    }
+  }
+
   public subscribePrice(symbol: string): boolean {
     const clean = symbol?.trim().toUpperCase()
     if (!clean) return false

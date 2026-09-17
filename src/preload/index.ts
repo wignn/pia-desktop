@@ -62,7 +62,9 @@ const terminalApi: TerminalAPI = {
     getRealizedVolatility: (symbol?: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.MARKET_GET_VOLATILITY, { symbol, kind: 'realized' }),
     getImpliedVolatility: (symbol?: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.MARKET_GET_VOLATILITY, { symbol, kind: 'implied' })
+      ipcRenderer.invoke(IPC_CHANNELS.MARKET_GET_VOLATILITY, { symbol, kind: 'implied' }),
+    uploadSnapshot: (params: { image: string; symbol?: string; timeframe?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MARKET_UPLOAD_SNAPSHOT, params)
   },
 
   orderbook: {
