@@ -8,37 +8,61 @@ interface StreamChannel {
 }
 
 const CHANNELS: StreamChannel[] = [
-  { id: 'bloomberg', name: 'Bloomberg TV', youtubeId: 'dp8PhLsUcFE', badge: 'US' },
-  { id: 'cnbc', name: 'CNBC Live', youtubeId: '9NyxcX14vhk', badge: 'US' },
-  { id: 'cnbc_id', name: 'CNBC Indonesia', youtubeId: 'XMjM1m3jXkc', badge: 'ID' },
+  { id: 'user_stream', name: 'Live TV', youtubeId: 'QB5BNdBFujE', badge: 'LIVE' },
+  { id: 'bloomberg', name: 'Bloomberg', youtubeId: 'dp8PhLsUcFE', badge: 'US' },
+  { id: 'cnbc', name: 'CNBC', youtubeId: '9NyxcX14vhk', badge: 'US' },
+  { id: 'cnbc_id', name: 'CNBC ID', youtubeId: 'XMjM1m3jXkc', badge: 'ID' },
   { id: 'idx_live', name: 'IDX Channel', youtubeId: 'W1Y_L9c_9lA', badge: 'IDX' },
   { id: 'yahoo', name: 'Yahoo Finance', youtubeId: '141xLq6wY4k', badge: 'US' },
   { id: 'fed', name: 'Fed Live', youtubeId: '19106093498', badge: 'FED' }
 ]
 
+function extractYouTubeId(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'QB5BNdBFujE'
+  const match = trimmed.match(/(?:live\/|v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/)
+  if (match && match[1]) return match[1]
+  if (trimmed.length === 11 && !trimmed.includes('/')) return trimmed
+  return trimmed
+}
+
 export const LiveTvWidget: React.FC<{
   channelId?: string
   onUpdateChannel?: (id: string) => void
-}> = ({ channelId = 'bloomberg', onUpdateChannel }) => {
+}> = ({ channelId = 'user_stream', onUpdateChannel }) => {
   const [activeChannelId, setActiveChannelId] = useState(channelId)
+  const [customYtId, setCustomYtId] = useState('QB5BNdBFujE')
+  const [isCustomInputOpen, setIsCustomInputOpen] = useState(false)
+  const [customInputVal, setCustomInputVal] = useState('')
   const [isMuted, setIsMuted] = useState(true)
 
-  const activeChannel = CHANNELS.find((c) => c.id === activeChannelId) || CHANNELS[0]
+  const activeChannel = CHANNELS.find((c) => c.id === activeChannelId)
+  const currentVideoId = activeChannelId === 'custom' ? customYtId : activeChannel?.youtubeId || 'QB5BNdBFujE'
 
   const handleSelectChannel = (id: string) => {
     setActiveChannelId(id)
     if (onUpdateChannel) onUpdateChannel(id)
   }
 
+  const handleApplyCustomUrl = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customInputVal.trim()) return
+    const vid = extractYouTubeId(customInputVal)
+    setCustomYtId(vid)
+    setActiveChannelId('custom')
+    setIsCustomInputOpen(false)
+    if (onUpdateChannel) onUpdateChannel(`custom:${vid}`)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#000000' }}>
-      {/* Top Channel Bar */}
+      {/* Top Channel Navigation Bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
+          gap: 5,
+          padding: '5px 8px',
           backgroundColor: '#131722',
           borderBottom: '1px solid #2a2e39',
           overflowX: 'auto',
@@ -59,12 +83,12 @@ export const LiveTvWidget: React.FC<{
               type="button"
               onClick={() => handleSelectChannel(ch.id)}
               style={{
-                padding: '2px 8px',
+                padding: '2px 7px',
                 borderRadius: 3,
                 fontSize: 10,
                 fontWeight: isActive ? 700 : 500,
                 border: isActive ? '1px solid #2962ff' : '1px solid #2a2e39',
-                backgroundColor: isActive ? 'rgba(41, 98, 255, 0.18)' : '#1e222d',
+                backgroundColor: isActive ? 'rgba(41, 98, 255, 0.2)' : '#1e222d',
                 color: isActive ? '#2962ff' : '#d1d4dc',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap'
@@ -74,6 +98,25 @@ export const LiveTvWidget: React.FC<{
             </button>
           )
         })}
+
+        <button
+          type="button"
+          onClick={() => setIsCustomInputOpen((prev) => !prev)}
+          title="Paste custom YouTube link"
+          style={{
+            padding: '2px 7px',
+            borderRadius: 3,
+            fontSize: 10,
+            fontWeight: activeChannelId === 'custom' ? 700 : 500,
+            border: activeChannelId === 'custom' ? '1px solid #089981' : '1px solid #2a2e39',
+            backgroundColor: activeChannelId === 'custom' ? 'rgba(8, 153, 129, 0.2)' : '#1e222d',
+            color: activeChannelId === 'custom' ? '#089981' : '#787b86',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          🔗 Custom URL
+        </button>
 
         <button
           type="button"
@@ -92,16 +135,63 @@ export const LiveTvWidget: React.FC<{
             whiteSpace: 'nowrap'
           }}
         >
-          {isMuted ? '🔇 MUTED' : '🔊 LIVE SOUND'}
+          {isMuted ? '🔇 MUTED' : '🔊 SOUND'}
         </button>
       </div>
+
+      {/* Custom URL Input Bar */}
+      {isCustomInputOpen && (
+        <form
+          onSubmit={handleApplyCustomUrl}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 8px',
+            backgroundColor: '#181d28',
+            borderBottom: '1px solid #2a2e39'
+          }}
+        >
+          <input
+            type="text"
+            value={customInputVal}
+            onChange={(e) => setCustomInputVal(e.target.value)}
+            placeholder="Paste YouTube live link (e.g. https://www.youtube.com/live/...)"
+            style={{
+              flex: 1,
+              backgroundColor: '#131722',
+              border: '1px solid #2a2e39',
+              borderRadius: 3,
+              padding: '3px 8px',
+              fontSize: 10,
+              color: '#ffffff',
+              outline: 'none'
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: '3px 8px',
+              borderRadius: 3,
+              backgroundColor: '#089981',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Play
+          </button>
+        </form>
+      )}
 
       {/* Responsive YouTube Embed */}
       <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0, backgroundColor: '#000' }}>
         <iframe
-          key={`${activeChannel.youtubeId}-${isMuted ? 'm' : 'u'}`}
-          src={`https://www.youtube-nocookie.com/embed/${activeChannel.youtubeId}?autoplay=1&mute=${isMuted ? '1' : '0'}&controls=1&modestbranding=1&rel=0`}
-          title={activeChannel.name}
+          key={`${currentVideoId}-${isMuted ? 'm' : 'u'}`}
+          src={`https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&mute=${isMuted ? '1' : '0'}&controls=1&modestbranding=1&rel=0`}
+          title="Financial Live Broadcast"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           style={{
@@ -117,3 +207,4 @@ export const LiveTvWidget: React.FC<{
     </div>
   )
 }
+export default LiveTvWidget

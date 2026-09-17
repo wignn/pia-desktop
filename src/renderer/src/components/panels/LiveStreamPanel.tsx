@@ -11,6 +11,13 @@ interface StreamChannel {
 
 const PRESET_CHANNELS: StreamChannel[] = [
   {
+    id: 'user_live',
+    name: 'Global Financial Live',
+    category: 'markets',
+    youtubeId: 'QB5BNdBFujE',
+    description: '24/7 Live Financial News & Market Coverage'
+  },
+  {
     id: 'bloomberg',
     name: 'Bloomberg Television',
     category: 'markets',

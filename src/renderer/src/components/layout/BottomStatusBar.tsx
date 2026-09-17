@@ -37,8 +37,13 @@ export const BottomStatusBar: React.FC = () => {
         return 'Connected'
       case 'connecting':
         return 'Connecting...'
-      case 'error':
-        return connectionState.error || 'Connection Error'
+      case 'error': {
+        const rawErr = connectionState.error || 'Connection Error'
+        if (rawErr.includes('[object Object]')) {
+          return 'Stream re-synchronizing...'
+        }
+        return rawErr
+      }
       case 'disconnected':
         return 'Disconnected'
       default:

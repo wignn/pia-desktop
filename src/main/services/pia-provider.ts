@@ -190,12 +190,22 @@ export class PiaProvider {
       if (cause)
         return `${error.message.replace('[object Object]', '').trim()}: ${this.formatProviderError(cause)}`
       if (!error.message.includes('[object Object]')) return error.message
+      const anyErr = error as any
+      if (anyErr.error && typeof anyErr.error === 'object') {
+        return anyErr.error.msg || anyErr.error.message || JSON.stringify(anyErr.error)
+      }
+      return error.message.replace('[object Object]', 'Stream subscription rejected')
     }
     if (typeof error === 'string') return error
     if (error && typeof error === 'object') {
       const value = error as Record<string, unknown>
-      for (const key of ['message', 'detail', 'error', 'reason']) {
+      for (const key of ['msg', 'message', 'detail', 'error', 'reason']) {
         if (typeof value[key] === 'string' && value[key]) return value[key] as string
+        if (value[key] && typeof value[key] === 'object') {
+          const nested = value[key] as Record<string, unknown>
+          if (typeof nested.msg === 'string') return nested.msg
+          if (typeof nested.message === 'string') return nested.message
+        }
       }
     }
     return ''
@@ -730,22 +740,55 @@ export class PiaProvider {
         symbol: params?.symbol,
         limit: params?.limit ?? 25
       })
-      const items = Array.isArray(response.posts) ? response.posts : []
-      return items.map((item, index) => ({
-        id: item.id || `feed-${index}-${item.posted_at}`,
-        source: 'Social Feed',
-        author: item.author || 'MarketWatcher',
-        handle: item.author_handle ? `@${item.author_handle}` : undefined,
-        content: item.content,
-        sentiment: item.sentiment || 'neutral',
-        timestamp: item.posted_at ? new Date(item.posted_at).getTime() : Date.now(),
-        symbols: item.symbols || (params?.symbol ? [params.symbol] : []),
-        mediaUrls: item.media_urls,
-        url: undefined
-      }))
+      const raw = response as any
+      const items = Array.isArray(raw.items)
+        ? raw.items
+        : Array.isArray(raw.posts)
+          ? raw.posts
+          : Array.isArray(raw.data)
+            ? raw.data
+            : Array.isArray(raw)
+              ? raw
+              : []
+
+      if (items.length === 0) {
+        return await this.getSocialPosts(params)
+      }
+
+      return items.map((item: any, index: number) => {
+        const content = item.text || item.content || ''
+        const lower = content.toLowerCase()
+        const sentiment: SocialPostItemData['sentiment'] =
+          item.sentiment ||
+          (lower.includes('bull') || lower.includes('breakout') || lower.includes('surge')
+            ? 'bullish'
+            : lower.includes('bear') || lower.includes('drop') || lower.includes('fall')
+              ? 'bearish'
+              : 'neutral')
+
+        const timeStr = item.created_at || item.posted_at || item.timestamp
+        const timestamp = timeStr ? new Date(timeStr).getTime() : Date.now()
+        const author = item.author_display_name || item.author_username || item.author || 'MarketWatcher'
+        const handle = item.author_username || item.author_handle || item.handle
+
+        return {
+          id: item.id || item.event_id || item.post_id || `feed-${index}-${timestamp}`,
+          source: item.platform ? (item.platform === 'twitter' ? 'X / Twitter' : item.platform) : 'X / Twitter',
+          author,
+          handle: handle ? (handle.startsWith('@') ? handle : `@${handle}`) : undefined,
+          content,
+          sentiment,
+          timestamp,
+          symbols: item.symbols || (params?.symbol ? [params.symbol] : []),
+          likes: item.like_count || item.likes,
+          reposts: item.retweet_count || item.reposts,
+          mediaUrls: item.media_urls,
+          url: item.url
+        }
+      })
     } catch (err) {
-      console.warn('[PiaProvider] social.getFeed failed:', this.formatProviderError(err))
-      return []
+      console.warn('[PiaProvider] social.getFeed fallback to getSocialPosts:', this.formatProviderError(err))
+      return await this.getSocialPosts(params)
     }
   }
 
