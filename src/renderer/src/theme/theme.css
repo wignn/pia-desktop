@@ -173,3 +173,15 @@ button:focus {
 .tooltip-trigger {
   position: relative;
 }
+
+/* MapLibre Native Popup Dark Theme Overrides - removes default white background & tip */
+.maplibregl-popup.macro-map-native-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.maplibregl-popup.macro-map-native-popup .maplibregl-popup-tip {
+  display: none !important;
+}

@@ -385,6 +385,17 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <style>{`
+        .macro-map-native-popup .maplibregl-popup-content {
+          background: transparent !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+        }
+        .macro-map-native-popup .maplibregl-popup-tip {
+          display: none !important;
+        }
+      `}</style>
       {/* MapLibre WebGL Canvas Container */}
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
