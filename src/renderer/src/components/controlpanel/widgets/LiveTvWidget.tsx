@@ -136,6 +136,25 @@ export const LiveTvWidget: React.FC<{
         >
           {isMuted ? '🔇 MUTED' : '🔊 SOUND'}
         </button>
+
+        <a
+          href={`https://www.youtube.com/watch?v=${currentVideoId}`}
+          target="_blank"
+          rel="noreferrer"
+          title="Open stream in external browser window"
+          style={{
+            padding: '2px 6px',
+            borderRadius: 3,
+            fontSize: 10,
+            color: '#787b86',
+            border: '1px solid #2a2e39',
+            backgroundColor: '#1e222d',
+            textDecoration: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          ↗
+        </a>
       </div>
 
       {/* Custom URL Input Bar */}

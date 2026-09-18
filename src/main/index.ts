@@ -60,7 +60,8 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true
     }
   })
 
@@ -126,6 +127,16 @@ if (!gotTheLock) {
         details.requestHeaders['Referer'] = 'https://www.youtube.com/'
         details.requestHeaders['Origin'] = 'https://www.youtube.com'
         callback({ requestHeaders: details.requestHeaders })
+      }
+    )
+
+    session.defaultSession.webRequest.onHeadersReceived(
+      { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*'] },
+      (details, callback) => {
+        const responseHeaders = { ...details.responseHeaders }
+        delete responseHeaders['x-frame-options']
+        delete responseHeaders['X-Frame-Options']
+        callback({ responseHeaders })
       }
     )
 
