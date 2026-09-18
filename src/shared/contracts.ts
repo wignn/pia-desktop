@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod'
+import { TIMEFRAMES } from './types'
 import type {
   CandleBar,
   PriceQuote,
@@ -139,6 +140,7 @@ export const IPC_CHANNELS = {
   // Watchlists
   WATCHLIST_GET_ALL: 'watchlist:get-all',
   WATCHLIST_SAVE: 'watchlist:save',
+  WATCHLIST_DELETE: 'watchlist:delete',
 
   // Economic Calendar & News
   CALENDAR_GET: 'calendar:get',
@@ -176,7 +178,7 @@ export const IPC_CHANNELS = {
 
 export const GetCandlesSchema = z.object({
   symbol: z.string().min(1).max(32),
-  timeframe: z.enum(['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']),
+  timeframe: z.enum(TIMEFRAMES),
   from: z.number().int().positive().optional(),
   to: z.number().int().positive().optional(),
   limit: z.number().int().min(1).max(2000).optional().default(500)
@@ -278,6 +280,11 @@ export const WatchlistGroupSchema = z.object({
   name: z.string().min(1).max(64),
   symbols: z.array(z.string().min(1).max(32))
 })
+
+export const DeleteWatchlistSchema = z.object({
+  id: z.string().min(1)
+})
+export type DeleteWatchlistInput = z.infer<typeof DeleteWatchlistSchema>
 
 export const GetCalendarSchema = z.object({
   from: z.string().optional(),
@@ -424,7 +431,7 @@ export const SaveLayoutSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   symbol: z.string().min(1).max(32),
-  timeframe: z.enum(['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']),
+  timeframe: z.enum(TIMEFRAMES),
   chartType: z.enum(['candle_solid', 'candle_stroke', 'line', 'area']),
   indicators: z.array(IndicatorConfigSchema),
   activePanel: z.string().optional(),
@@ -520,6 +527,7 @@ export interface TerminalAPI {
   watchlist: {
     getAll: () => Promise<WatchlistGroup[]>
     save: (watchlist: WatchlistGroup) => Promise<boolean>
+    delete: (id: string) => Promise<boolean>
   }
   calendar: {
     get: (params?: GetCalendarInput) => Promise<EconomicEvent[]>

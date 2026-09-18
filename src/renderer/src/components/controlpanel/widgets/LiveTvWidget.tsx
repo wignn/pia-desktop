@@ -1,4 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useMemo, useEffect } from 'react'
+import {
+  parseYouTubeId,
+  buildYouTubeEmbedUrl,
+  sendYouTubePlayerCommand
+} from '../../../utils/youtube'
 
 interface StreamChannel {
   id: string
@@ -12,41 +17,98 @@ const CHANNELS: StreamChannel[] = [
   { id: 'cnbc', name: 'CNBC', youtubeId: '9NyxcX14vhk', badge: 'US' },
   { id: 'cnbc_id', name: 'CNBC ID', youtubeId: 'XMjM1m3jXkc', badge: 'ID' },
   { id: 'idx_live', name: 'IDX Channel', youtubeId: 'W1Y_L9c_9lA', badge: 'IDX' },
-  { id: 'yahoo', name: 'Yahoo Finance', youtubeId: '141xLq6wY4k', badge: 'US' },
-  { id: 'fed', name: 'Fed Live', youtubeId: '19106093498', badge: 'FED' }
+  { id: 'yahoo', name: 'Yahoo Finance', youtubeId: '141xLq6wY4k', badge: 'US' }
 ]
 
-function extractYouTubeId(input: string): string {
-  const trimmed = input.trim()
-  if (!trimmed) return 'QB5BNdBFujE'
-  const match = trimmed.match(/(?:live\/|v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/)
-  if (match && match[1]) return match[1]
-  if (trimmed.length === 11 && !trimmed.includes('/')) return trimmed
-  return trimmed
+function resolveChannel(rawId?: string): { isCustom: boolean; customId: string; activeId: string } {
+  if (rawId?.startsWith('custom:')) {
+    const parsedCustom = parseYouTubeId(rawId.slice(7))
+    if (parsedCustom) {
+      return { isCustom: true, customId: parsedCustom, activeId: 'custom' }
+    }
+  }
+  const matched = CHANNELS.find((c) => c.id === rawId)
+  return {
+    isCustom: false,
+    customId: 'QB5BNdBFujE',
+    activeId: matched ? matched.id : CHANNELS[0].id
+  }
 }
 
 export const LiveTvWidget: React.FC<{
   channelId?: string
   onUpdateChannel?: (id: string) => void
 }> = ({ channelId = 'bloomberg_live', onUpdateChannel }) => {
-  const [activeChannelId, setActiveChannelId] = useState(channelId)
-  const [customYtId, setCustomYtId] = useState('QB5BNdBFujE')
+  const [prevPropChannelId, setPrevPropChannelId] = useState(channelId)
+  const [activeChannelId, setActiveChannelId] = useState<string>(
+    () => resolveChannel(channelId).activeId
+  )
+  const [customYtId, setCustomYtId] = useState<string>(() => resolveChannel(channelId).customId)
   const [isCustomInputOpen, setIsCustomInputOpen] = useState(false)
   const [customInputVal, setCustomInputVal] = useState('')
   const [isMuted, setIsMuted] = useState(true)
 
-  const activeChannel = CHANNELS.find((c) => c.id === activeChannelId)
-  const currentVideoId = activeChannelId === 'custom' ? customYtId : activeChannel?.youtubeId || 'QB5BNdBFujE'
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const hasMountedRef = useRef(false)
 
-  const handleSelectChannel = (id: string) => {
+  // React to prop updates and restore custom:<id> correctly during render
+  if (channelId !== prevPropChannelId) {
+    setPrevPropChannelId(channelId)
+    const resolved = resolveChannel(channelId)
+    setActiveChannelId(resolved.activeId)
+    if (resolved.isCustom) {
+      setCustomYtId(resolved.customId)
+    }
+  }
+
+  const activeChannel = CHANNELS.find((c) => c.id === activeChannelId)
+  const currentVideoId =
+    activeChannelId === 'custom' ? customYtId : activeChannel?.youtubeId || CHANNELS[0].youtubeId
+
+  // Track initial mute for currently mounted video ID so mute toggles do not reload iframe
+  const [videoSession, setVideoSession] = useState(() => ({
+    videoId: currentVideoId,
+    initialMuted: isMuted
+  }))
+
+  if (videoSession.videoId !== currentVideoId) {
+    setVideoSession({
+      videoId: currentVideoId,
+      initialMuted: isMuted
+    })
+  }
+
+  const embedSrc = useMemo(() => {
+    return buildYouTubeEmbedUrl(videoSession.videoId, {
+      muted: videoSession.initialMuted,
+      autoplay: true,
+      controls: true,
+      modestbranding: true,
+      rel: false,
+      playsinline: true,
+      enablejsapi: true
+    })
+  }, [videoSession.videoId, videoSession.initialMuted])
+
+  // Mute / unmute via ref postMessage without reload
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return
+    }
+    sendYouTubePlayerCommand(iframeRef.current, isMuted ? 'mute' : 'unMute')
+  }, [isMuted])
+
+  const handleSelectChannel = (id: string): void => {
     setActiveChannelId(id)
     if (onUpdateChannel) onUpdateChannel(id)
   }
 
-  const handleApplyCustomUrl = (e: React.FormEvent) => {
+  const handleApplyCustomUrl = (e: React.FormEvent): void => {
     e.preventDefault()
     if (!customInputVal.trim()) return
-    const vid = extractYouTubeId(customInputVal)
+    const vid = parseYouTubeId(customInputVal)
+    if (!vid) return
     setCustomYtId(vid)
     setActiveChannelId('custom')
     setIsCustomInputOpen(false)
@@ -54,7 +116,15 @@ export const LiveTvWidget: React.FC<{
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#000000' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#000000'
+      }}
+    >
       {/* Top Channel Navigation Bar */}
       <div
         style={{
@@ -69,7 +139,16 @@ export const LiveTvWidget: React.FC<{
           flexShrink: 0
         }}
       >
-        <span style={{ fontSize: 10, fontWeight: 700, color: '#f23645', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#f23645',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
           <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#f23645' }} />
           LIVE
         </span>
@@ -205,10 +284,19 @@ export const LiveTvWidget: React.FC<{
       )}
 
       {/* Responsive YouTube Embed */}
-      <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0, backgroundColor: '#000' }}>
+      <div
+        style={{
+          flex: 1,
+          position: 'relative',
+          width: '100%',
+          minHeight: 0,
+          backgroundColor: '#000'
+        }}
+      >
         <iframe
-          key={`${currentVideoId}-${isMuted ? 'm' : 'u'}`}
-          src={`https://www.youtube.com/embed/${currentVideoId}?autoplay=1&mute=${isMuted ? '1' : '0'}&controls=1&modestbranding=1&rel=0`}
+          ref={iframeRef}
+          key={currentVideoId}
+          src={embedSrc}
           title="Financial Live Broadcast"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
@@ -225,4 +313,5 @@ export const LiveTvWidget: React.FC<{
     </div>
   )
 }
+
 export default LiveTvWidget

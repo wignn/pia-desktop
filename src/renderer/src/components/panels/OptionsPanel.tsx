@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import type { OptionChainData, OptionGexData, OptionSummaryData } from '@shared/types'
+import { pairOptionContractsByStrike, resolveValidExpiration } from '../../utils/options-helpers'
 
 export const OptionsPanel: React.FC = () => {
   const { symbol, symbols } = useMarketStore()
@@ -26,9 +27,7 @@ export const OptionsPanel: React.FC = () => {
         setChain(cData)
         setGex(gData)
         setSummary(sData)
-        setSelectedExp((prev) =>
-          !prev && cData?.expirations?.length ? cData.expirations[0] : prev
-        )
+        setSelectedExp((prev) => resolveValidExpiration(cData?.expirations, prev))
       } catch (err) {
         console.error('[OptionsPanel] Failed to fetch options data:', err)
       } finally {
@@ -41,9 +40,14 @@ export const OptionsPanel: React.FC = () => {
   useEffect(() => {
     let cancelled = false
     if (!symbol) {
-      setChain(null)
-      setGex(null)
-      setIsLoading(false)
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setChain(null)
+          setGex(null)
+          setSelectedExp('')
+          setIsLoading(false)
+        }
+      })
       return () => {
         cancelled = true
       }
@@ -58,9 +62,7 @@ export const OptionsPanel: React.FC = () => {
           setChain(cData)
           setGex(gData)
           setSummary(sData)
-          setSelectedExp((prev) =>
-            !prev && cData?.expirations?.length ? cData.expirations[0] : prev
-          )
+          setSelectedExp((prev) => resolveValidExpiration(cData?.expirations, prev))
           setIsLoading(false)
         }
       })
@@ -95,6 +97,11 @@ export const OptionsPanel: React.FC = () => {
       ...gex.levels.map((l) => Math.max(Math.abs(l.callGex ?? 0), Math.abs(l.putGex ?? 0)))
     )
   }, [gex])
+
+  const pairedChainRows = useMemo(() => {
+    if (!chain) return []
+    return pairOptionContractsByStrike(chain.calls, chain.puts, selectedExp)
+  }, [chain, selectedExp])
 
   return (
     <div
@@ -485,43 +492,55 @@ export const OptionsPanel: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {chain.calls.map((call, idx) => {
-                const put = chain.puts[idx]
-                return (
-                  <div
-                    key={call.strike}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 1.2fr 1fr 1fr',
-                      padding: '4px 6px',
-                      fontSize: 10,
-                      textAlign: 'center',
-                      fontFamily: THEME_TOKENS.typography?.fontMono,
-                      borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
-                    }}
-                  >
-                    <span style={{ color: THEME_TOKENS.colors.textPrimary }}>
-                      {call.bid === undefined ? 'Unavailable' : `$${call.bid.toFixed(2)}`}
-                    </span>
-                    <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                      {call.impliedVolatility === undefined
-                        ? 'Unavailable'
-                        : `${(call.impliedVolatility * 100).toFixed(1)}%`}
-                    </span>
-                    <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.accent }}>
-                      ${call.strike}
-                    </span>
-                    <span style={{ color: THEME_TOKENS.colors.textPrimary }}>
-                      {put?.bid === undefined ? 'Unavailable' : `$${put.bid.toFixed(2)}`}
-                    </span>
-                    <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                      {put?.impliedVolatility === undefined
-                        ? 'Unavailable'
-                        : `${(put.impliedVolatility * 100).toFixed(1)}%`}
-                    </span>
-                  </div>
-                )
-              })}
+              {pairedChainRows.length === 0 ? (
+                <div
+                  style={{
+                    padding: '16px 8px',
+                    textAlign: 'center',
+                    color: THEME_TOKENS.colors.textSecondary,
+                    fontSize: 11
+                  }}
+                >
+                  No contracts available for selected expiration.
+                </div>
+              ) : (
+                pairedChainRows.map(({ strike, call, put }) => {
+                  return (
+                    <div
+                      key={strike}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr 1.2fr 1fr 1fr',
+                        padding: '4px 6px',
+                        fontSize: 10,
+                        textAlign: 'center',
+                        fontFamily: THEME_TOKENS.typography?.fontMono,
+                        borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+                      }}
+                    >
+                      <span style={{ color: THEME_TOKENS.colors.textPrimary }}>
+                        {call?.bid === undefined ? 'Unavailable' : `$${call.bid.toFixed(2)}`}
+                      </span>
+                      <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                        {call?.impliedVolatility === undefined
+                          ? 'Unavailable'
+                          : `${(call.impliedVolatility * 100).toFixed(1)}%`}
+                      </span>
+                      <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.accent }}>
+                        ${strike}
+                      </span>
+                      <span style={{ color: THEME_TOKENS.colors.textPrimary }}>
+                        {put?.bid === undefined ? 'Unavailable' : `$${put.bid.toFixed(2)}`}
+                      </span>
+                      <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                        {put?.impliedVolatility === undefined
+                          ? 'Unavailable'
+                          : `${(put.impliedVolatility * 100).toFixed(1)}%`}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
         )}

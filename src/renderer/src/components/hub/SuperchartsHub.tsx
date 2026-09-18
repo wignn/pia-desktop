@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useLayoutStore } from '../../stores/useLayoutStore'
 import { useTabStore } from '../../stores/useTabStore'
 import { useWorkspaceStore, type RightPanelTab } from '../../stores/useWorkspaceStore'
+import { useMarketStore } from '../../stores/useMarketStore'
+import { resolveControlWidgetSymbol } from '../../utils/control-panel-helpers'
 import { THEME_TOKENS } from '../../theme/tokens'
 import type { ChartLayoutData, Timeframe } from '@shared/types'
 
@@ -31,10 +33,14 @@ export const SuperchartsHub: React.FC = () => {
   } = useLayoutStore()
 
   const { setActiveTab } = useWorkspaceStore()
+  const activeSymbol = useMarketStore((s) => s.symbol)
+  const symbols = useMarketStore((s) => s.symbols)
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newLayoutName, setNewLayoutName] = useState('')
-  const [newLayoutSymbol, setNewLayoutSymbol] = useState('')
+  const [newLayoutSymbol, setNewLayoutSymbol] = useState(() =>
+    resolveControlWidgetSymbol(useMarketStore.getState().symbol, useMarketStore.getState().symbols, 'XAUUSD')
+  )
   const [newLayoutTimeframe, setNewLayoutTimeframe] = useState<Timeframe>('1h')
   const [currentTimestamp] = useState<number>(() => Date.now())
 
@@ -46,21 +52,24 @@ export const SuperchartsHub: React.FC = () => {
     e.preventDefault()
     if (!newLayoutName.trim()) return
 
+    const validatedSymbol = resolveControlWidgetSymbol(newLayoutSymbol || activeSymbol, symbols, 'XAUUSD')
     const created = await createBlankLayout(
       newLayoutName.trim(),
-      newLayoutSymbol,
+      validatedSymbol,
       newLayoutTimeframe
     )
     if (created) {
       setIsCreateModalOpen(false)
       setNewLayoutName('')
+      setNewLayoutSymbol(validatedSymbol)
       await loadLayoutById(created.id, false)
     }
   }
 
   const handleOpenSuite = useCallback(
-    (panelTab: RightPanelTab, symbol = ''): void => {
+    (panelTab: RightPanelTab, symbolParam?: string): void => {
       const now = Date.now()
+      const symbol = resolveControlWidgetSymbol(symbolParam || activeSymbol, symbols, 'XAUUSD')
       // Launch a new tab with chart and automatically switch right panel
       const createdBlank: ChartLayoutData = {
         id: `suite_${panelTab}_${now}`,
@@ -78,7 +87,7 @@ export const SuperchartsHub: React.FC = () => {
       useTabStore.getState().openLayoutInActiveTab(createdBlank)
       setActiveTab(panelTab)
     },
-    [setActiveTab]
+    [activeSymbol, symbols, setActiveTab]
   )
 
   const filteredLayouts = layouts.filter((l) => {
@@ -202,7 +211,10 @@ export const SuperchartsHub: React.FC = () => {
       >
         {/* Create Layout */}
         <div
-          onClick={() => setIsCreateModalOpen(true)}
+          onClick={() => {
+            setNewLayoutSymbol(resolveControlWidgetSymbol(activeSymbol, symbols, 'XAUUSD'))
+            setIsCreateModalOpen(true)
+          }}
           style={{
             border: `2px dashed ${THEME_TOKENS.colors.borderMedium}`,
             borderRadius: 8,

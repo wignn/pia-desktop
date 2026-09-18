@@ -1,0 +1,93 @@
+flowchart TD
+
+subgraph group_foundation["Platform contracts"]
+  node_contracts["Versioned contracts<br/>Rust shared crate<br/>[event_envelope.rs]"]
+  node_domain["Tenant domain<br/>Rust shared crate<br/>[tenant.rs]"]
+  node_auth["API-key auth<br/>Rust shared crate<br/>[api_key.rs]"]
+end
+
+subgraph group_pipeline["Ingestion &amp; processing"]
+  node_ingestion["Ingestion gateway<br/>Rust service<br/>[main.rs]"]
+  node_macro["Macro collector<br/>Go service<br/>[main.go]"]
+  node_rss["RSSHub connector<br/>Python worker<br/>[run_worker.py]"]
+  node_market["Market data<br/>Rust service<br/>[ingestion.rs]"]
+  node_news["News service<br/>Rust service<br/>[pipeline.rs]"]
+  node_intelligence["Intelligence service<br/>Rust service<br/>[why_move.rs]"]
+  node_analyzer["Python analyzer<br/>Model worker<br/>[main.py]"]
+  node_sink["Sink connector<br/>Rust consumer<br/>[macro_worker.rs]"]
+end
+
+subgraph group_access["Access &amp; delivery"]
+  node_api["API gateway<br/>Rust ingress<br/>[main.rs]"]
+  node_control["Control plane<br/>Rust SaaS service<br/>[server.rs]"]
+  node_realtime["Realtime gateway<br/>Rust WebSocket service<br/>[hub.rs]"]
+  node_clients["Web, admin, terminal &amp; bot<br/>Client surfaces<br/>[+page.svelte]"]
+end
+
+subgraph group_data["Data &amp; operations"]
+  node_deploy{{"Blue/green deployment<br/>Compose deployment"}}
+  node_nats["NATS JetStream<br/>Durable event bus<br/>[nats.rs]"]
+  node_postgres[("PostgreSQL<br/>Transactional store")]
+  node_clickhouse[("ClickHouse<br/>Analytics store")]
+  node_redis[("Redis<br/>Hot-state store")]
+  node_monitoring["Observability stack<br/>Prometheus/Grafana/Loki<br/>[monitoring.yml]"]
+end
+
+node_deploy -->|"runs"| node_api
+node_deploy -->|"runs"| node_market
+node_deploy -->|"runs"| node_realtime
+node_contracts -->|"defines envelopes/topics"| node_nats
+node_domain -->|"models tenancy"| node_control
+node_auth -->|"validates keys"| node_api
+node_ingestion -->|"publishes normalized feeds"| node_nats
+node_macro -->|"publishes macro events"| node_nats
+node_rss -->|"publishes normalized content"| node_nats
+node_nats -->|"market events"| node_market
+node_nats -->|"news and macro events"| node_news
+node_nats -->|"durable consumption"| node_sink
+node_market -->|"writes ticks/OHLCV"| node_clickhouse
+node_market -->|"writes latest state"| node_postgres
+node_sink -->|"materializes events"| node_postgres
+node_news -->|"enriched workflows"| node_intelligence
+node_intelligence -->|"delegates model work"| node_analyzer
+node_control -->|"tenant authority"| node_postgres
+node_control -->|"syncs entitlements"| node_redis
+node_api -->|"checks quotas"| node_redis
+node_api -->|"proxies market APIs"| node_market
+node_api -->|"proxies news APIs"| node_news
+node_realtime -->|"subscribes updates"| node_nats
+node_realtime -->|"tickets and hot state"| node_redis
+node_clients -->|"REST"| node_api
+node_clients -->|"WebSocket"| node_realtime
+node_monitoring -.->|"health gates"| node_deploy
+
+click node_deploy "https://github.com/wignn/pia-engine/blob/main/infra/scripts/deploy-blue-green.sh"
+click node_contracts "https://github.com/wignn/pia-engine/blob/main/crates/atlsd-contracts/src/event_envelope.rs"
+click node_domain "https://github.com/wignn/pia-engine/blob/main/crates/atlsd-domain/src/tenant.rs"
+click node_auth "https://github.com/wignn/pia-engine/blob/main/crates/atlsd-auth/src/api_key.rs"
+click node_nats "https://github.com/wignn/pia-engine/blob/main/crates/atlsd-eventbus/src/nats.rs"
+click node_ingestion "https://github.com/wignn/pia-engine/blob/main/services/ingestion-gateway/src/main.rs"
+click node_macro "https://github.com/wignn/pia-engine/blob/main/services/macro-feed/cmd/main.go"
+click node_rss "https://github.com/wignn/pia-engine/blob/main/services/rsshub-connector/run_worker.py"
+click node_market "https://github.com/wignn/pia-engine/blob/main/services/market-data/src/ingestion.rs"
+click node_news "https://github.com/wignn/pia-engine/blob/main/services/news-service/src/pipeline.rs"
+click node_intelligence "https://github.com/wignn/pia-engine/blob/main/services/intelligence-service/src/why_move.rs"
+click node_analyzer "https://github.com/wignn/pia-engine/blob/main/services/analyzer/main.py"
+click node_sink "https://github.com/wignn/pia-engine/blob/main/services/sink-connector/src/workers/macro_worker.rs"
+click node_api "https://github.com/wignn/pia-engine/blob/main/services/api-gateway/src/main.rs"
+click node_control "https://github.com/wignn/pia-engine/blob/main/services/control-plane/src/api/server.rs"
+click node_realtime "https://github.com/wignn/pia-engine/blob/main/services/realtime-gateway/src/hub.rs"
+click node_clients "https://github.com/wignn/pia-engine/blob/main/apps/public-web/src/routes/%2Bpage.svelte"
+click node_monitoring "https://github.com/wignn/pia-engine/blob/main/infra/compose/monitoring.yml"
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_contracts,node_domain,node_auth toneBlue
+class node_ingestion,node_macro,node_rss,node_market,node_news,node_intelligence,node_analyzer,node_sink toneAmber
+class node_api,node_control,node_realtime,node_clients toneMint
+class node_deploy,node_nats,node_postgres,node_clickhouse,node_redis,node_monitoring toneRose

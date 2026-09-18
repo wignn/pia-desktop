@@ -3,7 +3,7 @@
  * Manages Electron lifecycle, secure window initialization, SQLite persistence, and IPC wiring.
  */
 
-import { app, shell, BrowserWindow, session } from 'electron'
+import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -24,16 +24,19 @@ app.commandLine.appendSwitch('enable-zero-copy')
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers')
 app.commandLine.appendSwitch('enable-accelerated-2d-canvas')
 app.commandLine.appendSwitch('enable-accelerated-video-decode')
-app.commandLine.appendSwitch(
-  'enable-features',
-  'VaapiVideoDecoder,CanvasOopRasterization,Vulkan,DefaultANGLEVulkan'
-)
 
 if (process.platform === 'win32') {
   // Direct3D 11 native hardware ANGLE backend on Windows
   app.commandLine.appendSwitch('use-angle', 'd3d11')
+  app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization')
 } else if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('enable-features', 'Vulkan,VaapiVideoDecoder')
+  // Vulkan & VA-API video decode acceleration on Linux
+  app.commandLine.appendSwitch(
+    'enable-features',
+    'CanvasOopRasterization,Vulkan,DefaultANGLEVulkan,VaapiVideoDecoder'
+  )
+} else {
+  app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization')
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -119,26 +122,6 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.pia.terminal')
-
-    // Ensure YouTube embeds have genuine desktop Referer & Origin so live broadcasts never report "This video is private"
-    session.defaultSession.webRequest.onBeforeSendHeaders(
-      { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
-      (details, callback) => {
-        details.requestHeaders['Referer'] = 'https://www.youtube.com/'
-        details.requestHeaders['Origin'] = 'https://www.youtube.com'
-        callback({ requestHeaders: details.requestHeaders })
-      }
-    )
-
-    session.defaultSession.webRequest.onHeadersReceived(
-      { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*'] },
-      (details, callback) => {
-        const responseHeaders = { ...details.responseHeaders }
-        delete responseHeaders['x-frame-options']
-        delete responseHeaders['X-Frame-Options']
-        callback({ responseHeaders })
-      }
-    )
 
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window)

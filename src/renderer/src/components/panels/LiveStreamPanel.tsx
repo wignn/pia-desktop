@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useId } from 'react'
+import React, { useState, useEffect, useId, useRef, useMemo } from 'react'
 import { THEME_TOKENS } from '../../theme/tokens'
+import { parseYouTubeId, buildYouTubeEmbedUrl, sendYouTubePlayerCommand } from '../../utils/youtube'
 
 interface StreamChannel {
   id: string
@@ -39,13 +40,6 @@ const PRESET_CHANNELS: StreamChannel[] = [
     description: 'US Equity Action, Ticker Breakdown & Earnings Coverage'
   },
   {
-    id: 'fed_reserve',
-    name: 'Federal Reserve Live',
-    category: 'macro',
-    youtubeId: '19106093498',
-    description: 'FOMC Rate Decisions & Fed Chair Press Conferences'
-  },
-  {
     id: 'cnbc_indonesia',
     name: 'CNBC Indonesia Live',
     category: 'markets',
@@ -63,26 +57,45 @@ const PRESET_CHANNELS: StreamChannel[] = [
 
 export const LiveStreamPanel: React.FC = () => {
   const customInputId = useId()
-  const [selectedChannel, setSelectedChannel] = useState<string>('bloomberg')
-  const [customYoutubeId, setCustomYoutubeId] = useState<string>('')
-  const [customInput, setCustomInput] = useState<string>('')
-  const [isMuted, setIsMuted] = useState<boolean>(true)
-
-  useEffect(() => {
+  const [selectedChannel, setSelectedChannel] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('pia-live-stream')
-      if (saved) setSelectedChannel(saved)
-      const savedCustom = localStorage.getItem('pia-live-custom')
-      if (savedCustom) {
-        setCustomYoutubeId(savedCustom)
-        setCustomInput(savedCustom)
+      if (saved && (saved === 'custom' || PRESET_CHANNELS.some((c) => c.id === saved))) {
+        return saved
       }
     } catch {
       // ignore
     }
-  }, [])
+    return 'bloomberg'
+  })
+  const [customYoutubeId, setCustomYoutubeId] = useState<string>(() => {
+    try {
+      const savedCustom = localStorage.getItem('pia-live-custom')
+      if (savedCustom) {
+        return parseYouTubeId(savedCustom) || ''
+      }
+    } catch {
+      // ignore
+    }
+    return ''
+  })
+  const [customInput, setCustomInput] = useState<string>(() => {
+    try {
+      const savedCustom = localStorage.getItem('pia-live-custom')
+      if (savedCustom) {
+        return parseYouTubeId(savedCustom) || ''
+      }
+    } catch {
+      // ignore
+    }
+    return ''
+  })
+  const [isMuted, setIsMuted] = useState<boolean>(true)
 
-  const handleSelectChannel = (id: string) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const hasMountedRef = useRef(false)
+
+  const handleSelectChannel = (id: string): void => {
     setSelectedChannel(id)
     try {
       localStorage.setItem('pia-live-stream', id)
@@ -91,9 +104,9 @@ export const LiveStreamPanel: React.FC = () => {
     }
   }
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
+  const handleCustomSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
-    const clean = extractYoutubeId(customInput)
+    const clean = parseYouTubeId(customInput)
     if (clean) {
       setCustomYoutubeId(clean)
       setSelectedChannel('custom')
@@ -106,21 +119,45 @@ export const LiveStreamPanel: React.FC = () => {
     }
   }
 
-  const extractYoutubeId = (urlOrId: string): string => {
-    const trimmed = urlOrId.trim()
-    if (!trimmed) return ''
-    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed
-    const match = trimmed.match(
-      /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|live\/|shorts\/))([a-zA-Z0-9_-]{11})/
-    )
-    return match ? match[1] : trimmed
-  }
-
   const activeChannel = PRESET_CHANNELS.find((c) => c.id === selectedChannel)
   const currentVideoId =
     selectedChannel === 'custom'
       ? customYoutubeId || PRESET_CHANNELS[0].youtubeId
       : activeChannel?.youtubeId || PRESET_CHANNELS[0].youtubeId
+
+  // Track initial mute for currently mounted video ID so mute toggles do not reload iframe
+  const [videoSession, setVideoSession] = useState(() => ({
+    videoId: currentVideoId,
+    initialMuted: isMuted
+  }))
+
+  if (videoSession.videoId !== currentVideoId) {
+    setVideoSession({
+      videoId: currentVideoId,
+      initialMuted: isMuted
+    })
+  }
+
+  const embedSrc = useMemo(() => {
+    return buildYouTubeEmbedUrl(videoSession.videoId, {
+      muted: videoSession.initialMuted,
+      autoplay: true,
+      controls: true,
+      modestbranding: true,
+      rel: false,
+      playsinline: true,
+      enablejsapi: true
+    })
+  }, [videoSession.videoId, videoSession.initialMuted])
+
+  // Mute / unmute via ref postMessage without reload
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return
+    }
+    sendYouTubePlayerCommand(iframeRef.current, isMuted ? 'mute' : 'unMute')
+  }, [isMuted])
 
   return (
     <div
@@ -319,10 +356,9 @@ export const LiveStreamPanel: React.FC = () => {
         }}
       >
         <iframe
-          key={`${currentVideoId}-${isMuted}`}
-          src={`https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&mute=${
-            isMuted ? '1' : '0'
-          }&playsinline=1&rel=0&modestbranding=1&enablejsapi=1`}
+          ref={iframeRef}
+          key={currentVideoId}
+          src={embedSrc}
           title={activeChannel?.name || 'YouTube Live'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen

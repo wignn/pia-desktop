@@ -7,6 +7,7 @@
 import { PiaClient } from '@piaa/sdk'
 import type { MarketPrice, Candle } from '@piaa/sdk'
 import type { BrowserWindow } from 'electron'
+import { TIMEFRAMES } from '@shared/types'
 import type {
   CandleBar,
   PriceQuote,
@@ -61,6 +62,7 @@ import {
   capabilitiesForSymbol,
   resolveOptionsUnderlying
 } from '@shared/market-utils'
+import { parseCalendarTimestamp } from '@shared/calendar-helpers'
 import type { CredentialManager } from './credentials'
 
 export class PiaProvider {
@@ -518,12 +520,16 @@ export class PiaProvider {
     }
 
     try {
-      const tf = ['1m', '5m', '15m', '1h', '4h', '1d'].includes(params.timeframe)
-        ? (params.timeframe as '1m' | '5m' | '15m' | '1h' | '4h' | '1d')
-        : '1m'
+      if (!TIMEFRAMES.includes(params.timeframe)) {
+        throw new Error(`Unsupported candle timeframe: ${params.timeframe}`)
+      }
 
+      // The runtime API accepts the canonical intervals; published SDK typings lag for 30m/1w.
+      const timeframe = params.timeframe as NonNullable<
+        Parameters<typeof this.client.market.getCandles>[1]
+      >['timeframe']
       const res = await this.client.market.getCandles(params.symbol, {
-        timeframe: tf,
+        timeframe,
         limit: params.limit,
         since: params.from,
         until: params.to
@@ -645,32 +651,35 @@ export class PiaProvider {
           ? response.items
           : []
       if (rawList.length === 0) return []
-      return rawList.map((item, idx) => ({
-        id: typeof item.id === 'string' ? item.id : `econ-${idx}`,
-        title:
-          typeof item.event === 'string'
-            ? item.event
-            : typeof item.title === 'string'
-              ? item.title
-              : 'Economic Release',
-        country:
-          typeof item.country === 'string'
-            ? item.country
-            : typeof item.currency === 'string'
-              ? item.currency
-              : 'USD',
-        countryCode: typeof item.country === 'string' ? item.country : 'US',
-        date: typeof item.date === 'string' ? item.date : new Date().toISOString().split('T')[0],
-        time: typeof item.time === 'string' ? item.time : '12:30',
-        timestamp: Date.now(),
-        impact:
-          item.impact === 'high' || item.impact === 'medium' || item.impact === 'low'
-            ? item.impact
-            : 'none',
-        actual: this.normalizeEconomicValue(item.actual),
-        forecast: this.normalizeEconomicValue(item.forecast),
-        previous: this.normalizeEconomicValue(item.previous)
-      }))
+      return rawList.map((item, idx) => {
+        const parsed = parseCalendarTimestamp(item)
+        return {
+          id: typeof item.id === 'string' ? item.id : `econ-${idx}`,
+          title:
+            typeof item.event === 'string'
+              ? item.event
+              : typeof item.title === 'string'
+                ? item.title
+                : 'Economic Release',
+          country:
+            typeof item.country === 'string'
+              ? item.country
+              : typeof item.currency === 'string'
+                ? item.currency
+                : 'USD',
+          countryCode: typeof item.country === 'string' ? item.country : 'US',
+          date: parsed.date,
+          time: parsed.time,
+          timestamp: parsed.timestamp,
+          impact:
+            item.impact === 'high' || item.impact === 'medium' || item.impact === 'low'
+              ? item.impact
+              : 'none',
+          actual: this.normalizeEconomicValue(item.actual),
+          forecast: this.normalizeEconomicValue(item.forecast),
+          previous: this.normalizeEconomicValue(item.previous)
+        }
+      })
     } catch (err) {
       console.warn('getCalendar unavailable:', this.formatProviderError(err))
       return []
@@ -983,65 +992,6 @@ export class PiaProvider {
   }): Promise<MacroMapResult | null> {
     if (!this.client) return null
     try {
-      const indicator = params?.indicator || 'inflation'
-      const query = new URLSearchParams()
-      query.set('indicator', indicator)
-      if (params?.period) query.set('period', params.period)
-
-      // Primary source: geo-economi microservice via Gateway L1 RAM cache
-      try {
-        const raw = await (this.client as any).transport.request(
-          `/api/v1/macro/map?${query.toString()}`,
-          'GET'
-        )
-        const res = raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw
-        if (res && Array.isArray(res.countries) && res.countries.length > 0) {
-          const parsedCountries: CountryMacroData[] = res.countries.map((c: any) => {
-            const hist: Record<number, number> = {}
-            if (c.history && typeof c.history === 'object') {
-              for (const [yr, val] of Object.entries(c.history)) {
-                const numYr = parseInt(yr, 10)
-                if (!isNaN(numYr) && typeof val === 'number') {
-                  hist[numYr] = val
-                }
-              }
-            }
-            return {
-              id: String(c.id || c.country_code || ''),
-              name: String(c.name || c.country_name || ''),
-              flag: String(c.flag || '🌐'),
-              region: (c.region || 'Unknown') as CountryMacroData['region'],
-              subregion: String(c.subregion || 'Global'),
-              ticker: String(c.ticker || c.id || ''),
-              value: typeof c.value === 'number' ? c.value : undefined,
-              prevValue: typeof c.prevValue === 'number' ? c.prevValue : typeof c.previous_value === 'number' ? c.previous_value : undefined,
-              change: typeof c.change === 'number' ? c.change : undefined,
-              unit: String(c.unit || res.unit || '%'),
-              period: String(c.period || res.period || '2025'),
-              history: hist,
-              rank: typeof c.rank === 'number' ? c.rank : undefined
-            }
-          })
-
-          return {
-            indicator: res.indicator || indicator,
-            indicatorName: res.indicatorName || res.indicator_name || 'Macroeconomic Indicator',
-            unit: res.unit || '%',
-            period: res.period || '2025',
-            minValue: res.minValue ?? res.min_value,
-            maxValue: res.maxValue ?? res.max_value,
-            timeline: Array.isArray(res.timeline) ? res.timeline : [],
-            countries: parsedCountries,
-            total: res.total || parsedCountries.length,
-            source: res.source || 'World Bank / GDELT / PIA Macro Core',
-            updatedAt: typeof res.updatedAt === 'number' ? res.updatedAt : Date.now(),
-            isLive: true
-          }
-        }
-      } catch (err) {
-        console.warn('[PiaProvider] /api/v1/macro/map request failed, trying economic.getMacroMap fallback:', err)
-      }
-
       const legacyIndicator = params?.indicator === 'gdp_growth' ? 'gdp' : params?.indicator
       const response = await this.client.economic.getMacroMap({ ...params, indicator: legacyIndicator })
       const liveResponse = response as typeof response & {
@@ -1088,7 +1038,7 @@ export class PiaProvider {
           }
         }),
         total: response.total,
-        source: response.source,
+        source: response.source ?? undefined,
         updatedAt: liveResponse.updated_at ? Date.parse(liveResponse.updated_at) : undefined,
         unavailableReason: liveResponse.unavailable_reason,
         errorCode: liveResponse.error_code,

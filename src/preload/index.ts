@@ -146,7 +146,8 @@ const terminalApi: TerminalAPI = {
 
   watchlist: {
     getAll: () => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_GET_ALL),
-    save: (watchlist: WatchlistGroup) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_SAVE, watchlist)
+    save: (watchlist: WatchlistGroup) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_SAVE, watchlist),
+    delete: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_DELETE, { id })
   },
 
   calendar: {

@@ -15,6 +15,7 @@ import {
   ClearDrawingsSchema,
   SaveIndicatorsSchema,
   WatchlistGroupSchema,
+  DeleteWatchlistSchema,
   GetCalendarSchema,
   GetNewsSchema,
   OpenExternalLinkSchema,
@@ -241,6 +242,12 @@ export function registerIpcHandlers(
     if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
     const watchlist = WatchlistGroupSchema.parse(rawWatchlist)
     return dbService.saveWatchlist(watchlist)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.WATCHLIST_DELETE, (event, rawInput) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    const { id } = DeleteWatchlistSchema.parse(rawInput)
+    return dbService.deleteWatchlist(id)
   })
 
   // --- Alerts Handlers ---

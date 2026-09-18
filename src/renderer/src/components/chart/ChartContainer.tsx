@@ -52,7 +52,7 @@ export const ChartContainer: React.FC = () => {
   const selectedOverlayIdRef = useRef<string | null>(null)
 
   const { theme } = useWorkspaceStore()
-  const { symbol, timeframe, setSelectedBar } = useMarketStore()
+  const { symbol, timeframe, setSelectedBar, setLatestBar, setIsLoadingCandles } = useMarketStore()
   const {
     chartType,
     activeTool,
@@ -234,6 +234,7 @@ export const ChartContainer: React.FC = () => {
         const tf = useMarketStore.getState().timeframe
         const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
         setHasHistoricalBars(bars.length > 0)
+        setIsLoadingCandles(false)
         callback(bars, true)
         await restoreDrawingsForSymbol(sym.ticker)
       },
@@ -247,7 +248,9 @@ export const ChartContainer: React.FC = () => {
 
     // Listen to CandleEngine updates for live tick forwarding & replay bar simulation
     const unsubEngine = candleEngine.addListener({
-      onHistoryLoaded: (): void => {
+      onHistoryLoaded: (_genId, bars): void => {
+        setLatestBar(bars.at(-1) ?? null)
+        setIsLoadingCandles(false)
         const isReplaying = candleEngine.getReplayState().isReplayMode
         // Only reset chart data when replay mode starts, jumps, or stops.
         // NEVER call resetData() during normal left panning or pagination!
@@ -259,6 +262,7 @@ export const ChartContainer: React.FC = () => {
         }
       },
       onBarUpdate: (_genId, bar): void => {
+        setLatestBar(bar)
         if (liveSubscriberRef.current) {
           liveSubscriberRef.current(bar)
         }
@@ -311,7 +315,7 @@ export const ChartContainer: React.FC = () => {
       liveSubscriberRef.current = null
       renderedIndicators.clear()
     }
-  }, [restoreDrawingsForSymbol, setSelectedBar])
+  }, [restoreDrawingsForSymbol, setIsLoadingCandles, setLatestBar, setSelectedBar])
 
   // Synchronize symbol changes with dynamic precision
   useEffect(() => {

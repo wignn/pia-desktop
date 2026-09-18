@@ -38,14 +38,22 @@ export const CalendarPanel: React.FC = () => {
     }
   }
 
-  const formatEventTime = (iso: string): string => {
-    try {
-      const d = new Date(iso)
-      if (isNaN(d.getTime())) return '12:00'
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-    } catch {
-      return iso
+  const formatEventTime = (time?: string, timestamp?: number): string => {
+    if (time && time.trim()) {
+      const clean = time.trim()
+      return clean.length > 5 && clean.includes(':') ? clean.substring(0, 5) : clean
     }
+    if (typeof timestamp === 'number' && !isNaN(timestamp) && timestamp > 0) {
+      try {
+        const d = new Date(timestamp)
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return '--:--'
   }
 
   // Group events chronologically by date
@@ -218,9 +226,22 @@ export const CalendarPanel: React.FC = () => {
                         fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
                         fontWeight: 600
                       }}
+                      title={ev.timestamp ? `Timestamp: ${ev.timestamp} (${new Date(ev.timestamp).toUTCString()})` : undefined}
                     >
-                      {formatEventTime(ev.date)}
+                      {formatEventTime(ev.time, ev.timestamp)}
                     </span>
+                    {typeof ev.timestamp === 'number' && ev.timestamp > 0 && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          color: THEME_TOKENS.colors.textMuted,
+                          fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace'
+                        }}
+                        title={`Provider Epoch: ${ev.timestamp}`}
+                      >
+                        {new Date(ev.timestamp).toISOString().substring(11, 16)} UTC
+                      </span>
+                    )}
                     <span
                       style={{
                         fontWeight: 700,

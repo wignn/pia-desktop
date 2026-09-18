@@ -19,8 +19,6 @@ export function timeframeToPeriod(tf: Timeframe): Period {
       return { type: 'day', span: 1 }
     case '1w':
       return { type: 'week', span: 1 }
-    case '1M':
-      return { type: 'month', span: 1 }
     default:
       return { type: 'minute', span: 1 }
   }

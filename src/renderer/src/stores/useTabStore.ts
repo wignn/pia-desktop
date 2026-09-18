@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand'
+import { TIMEFRAMES } from '@shared/types'
 import type { TerminalTabItem, Timeframe, ChartLayoutData, MacroMetricType } from '@shared/types'
 import { useMarketStore } from './useMarketStore'
 import { useChartStore } from './useChartStore'
@@ -36,8 +37,8 @@ const getInitialTabs = (): TerminalTabItem[] => {
     if (typeof localStorage !== 'undefined') {
       const savedSym = localStorage.getItem('pia_last_symbol')
       if (savedSym && savedSym.trim()) symbol = savedSym.trim().toUpperCase()
-      const savedTf = localStorage.getItem('pia_last_timeframe') as Timeframe
-      if (savedTf && ['1m', '5m', '15m', '1h', '4h', '1d', '1w'].includes(savedTf)) timeframe = savedTf
+      const savedTf = localStorage.getItem('pia_last_timeframe')
+      if (savedTf && TIMEFRAMES.includes(savedTf as Timeframe)) timeframe = savedTf as Timeframe
     }
   } catch {
     // ignore

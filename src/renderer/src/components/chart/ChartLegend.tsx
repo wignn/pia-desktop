@@ -4,7 +4,7 @@ import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 
 export const ChartLegend: React.FC = () => {
-  const { symbol, timeframe, selectedBar, prices, symbols } = useMarketStore()
+  const { symbol, timeframe, selectedBar, latestBar, prices, symbols } = useMarketStore()
   const livePrice = symbol ? prices[symbol]?.price : undefined
   const symInfo = symbols.find((s) => s.symbol === symbol)
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, livePrice)
@@ -26,11 +26,12 @@ export const ChartLegend: React.FC = () => {
     return val.toFixed(2)
   }
 
-  const open = selectedBar?.open
-  const high = selectedBar?.high
-  const low = selectedBar?.low
-  const close = selectedBar?.close ?? livePrice
-  const volume = selectedBar?.volume
+  const displayBar = selectedBar ?? latestBar
+  const open = displayBar?.open
+  const high = displayBar?.high
+  const low = displayBar?.low
+  const close = displayBar?.close ?? livePrice
+  const volume = displayBar?.volume
 
   const change = open !== undefined && close !== undefined ? close - open : 0
   const changePercent =

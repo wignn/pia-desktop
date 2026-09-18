@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand'
+import { TIMEFRAMES } from '@shared/types'
 import type { ConnectionState, PriceQuote, SymbolInfo, Timeframe } from '@shared/types'
 import { candleEngine } from '../services/candle-engine'
 import { useAlertsStore } from './useAlertsStore'
@@ -17,12 +18,15 @@ interface MarketState {
   prices: Record<string, PriceQuote>
   connectionState: ConnectionState
   selectedBar: KLineData | null
+  latestBar: KLineData | null
   isLoadingCandles: boolean
 
   // Actions
   setSymbol: (symbol: string | null) => void
   setTimeframe: (timeframe: Timeframe) => void
   setSelectedBar: (bar: KLineData | null) => void
+  setLatestBar: (bar: KLineData | null) => void
+  setIsLoadingCandles: (isLoading: boolean) => void
   fetchSymbols: () => Promise<void>
   subscribeToMarketEvents: () => () => void
 }
@@ -42,8 +46,8 @@ const loadInitialSymbol = (): string => {
 const loadInitialTimeframe = (): Timeframe => {
   try {
     if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('pia_last_timeframe') as Timeframe
-      if (saved && ['1m', '5m', '15m', '1h', '4h', '1d', '1w'].includes(saved)) return saved
+      const saved = localStorage.getItem('pia_last_timeframe')
+      if (saved && TIMEFRAMES.includes(saved as Timeframe)) return saved as Timeframe
     }
   } catch {
     // ignore
@@ -58,6 +62,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   prices: {},
   connectionState: { status: 'connecting' },
   selectedBar: null,
+  latestBar: null,
   isLoadingCandles: false,
 
   setSymbol: (newSymbol: string | null) => {
@@ -66,7 +71,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     if (oldSymbol === cleanSymbol) return
     if (!cleanSymbol) {
       if (oldSymbol) void window.api.market.unsubscribePrice(oldSymbol)
-      set({ symbol: null })
+      set({ symbol: null, selectedBar: null, latestBar: null, isLoadingCandles: false })
       return
     }
 
@@ -80,7 +85,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     if (oldSymbol) void window.api.market.unsubscribePrice(oldSymbol)
     void window.api.market.subscribePrice(cleanSymbol)
 
-    set({ symbol: cleanSymbol, isLoadingCandles: true })
+    set({ symbol: cleanSymbol, selectedBar: null, latestBar: null, isLoadingCandles: true })
   },
 
   setTimeframe: (newTimeframe: Timeframe) => {
@@ -92,11 +97,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       // ignore
     }
 
-    set({ timeframe: newTimeframe, isLoadingCandles: true })
+    set({ timeframe: newTimeframe, selectedBar: null, latestBar: null, isLoadingCandles: true })
   },
 
   setSelectedBar: (bar: KLineData | null) => {
     set({ selectedBar: bar })
+  },
+
+  setLatestBar: (bar: KLineData | null) => {
+    set({ latestBar: bar })
+  },
+
+  setIsLoadingCandles: (isLoading: boolean) => {
+    set({ isLoadingCandles: isLoading })
   },
 
   fetchSymbols: async () => {

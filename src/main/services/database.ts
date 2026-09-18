@@ -398,6 +398,18 @@ export class DatabaseService {
     }
   }
 
+  public deleteWatchlist(id: string): boolean {
+    if (!this.db) return false
+    try {
+      this.db.run('DELETE FROM watchlists WHERE id = ?', [id])
+      this.scheduleDiskWrite()
+      return true
+    } catch (err) {
+      console.error('Error deleting watchlist:', err)
+      return false
+    }
+  }
+
   // --- Alerts API ---
 
   public getAlerts(): PriceAlert[] {

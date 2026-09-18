@@ -3,18 +3,16 @@ import type { EconomicEvent } from '@shared/types'
 
 export const CalendarWidget: React.FC = () => {
   const [events, setEvents] = useState<EconomicEvent[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
-    setIsLoading(true)
 
     window.api.calendar
       .get({ limit: 12 })
       .then((res) => {
         if (cancelled) return
-        const list = Array.isArray(res) ? res : (res as any)?.items || (res as any)?.events || []
-        setEvents(list)
+        setEvents(res)
         setIsLoading(false)
       })
       .catch(() => {
@@ -31,9 +29,11 @@ export const CalendarWidget: React.FC = () => {
       {isLoading && <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>Loading calendar...</div>}
       {events.map((ev) => {
         const impactColor = ev.impact === 'high' ? '#f23645' : ev.impact === 'medium' ? '#ff9800' : '#787b86'
-        const timeStr = ev.date
-          ? `${new Date(ev.date).toLocaleDateString([], { month: 'short', day: 'numeric' })} ${new Date(ev.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
-          : 'Upcoming'
+        const timeStr = ev.time
+          ? `${ev.date ? ev.date.substring(5) + ' ' : ''}${ev.time}`
+          : ev.timestamp
+            ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+            : ev.date || 'Upcoming'
 
         return (
           <div

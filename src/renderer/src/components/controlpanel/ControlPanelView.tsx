@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, RotateCcw, X, Move, ChevronLeft, ChevronRight } from 'lucide-react'
 import { DashboardWidget, WIDGET_CATALOG, WidgetType } from './types'
 import { LiveTvWidget } from './widgets/LiveTvWidget'
@@ -10,6 +10,8 @@ import { DxyMacroWidget } from './widgets/DxyMacroWidget'
 import { OrderBookWidget } from './widgets/OrderBookWidget'
 import { CalendarWidget } from './widgets/CalendarWidget'
 import { EnergyWidget } from './widgets/EnergyWidget'
+import { useMarketStore } from '../../stores/useMarketStore'
+import { resolveControlWidgetSymbol } from '../../utils/control-panel-helpers'
 
 const STORAGE_KEY = 'pia_control_panel_widgets'
 
@@ -44,6 +46,10 @@ export const ControlPanelView: React.FC = () => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
+  const activeSymbol = useMarketStore((s) => s.symbol)
+  const symbols = useMarketStore((s) => s.symbols)
+  const activeTimeframe = useMarketStore((s) => s.timeframe)
+
   // Auto-persist widgets to localStorage
   useEffect(() => {
     try {
@@ -54,36 +60,49 @@ export const ControlPanelView: React.FC = () => {
   }, [widgets])
 
   // Remove widget
-  const handleRemoveWidget = (id: string) => {
+  const handleRemoveWidget = useCallback((id: string): void => {
     setWidgets((prev) => prev.filter((w) => w.id !== id))
-  }
+  }, [])
 
   // Reset to default war room layout
-  const handleResetLayout = () => {
+  const handleResetLayout = useCallback((): void => {
     setWidgets(DEFAULT_WIDGETS)
     localStorage.removeItem(STORAGE_KEY)
-  }
+  }, [])
 
   // Add new widget from catalog
-  const handleAddWidget = (type: WidgetType) => {
+  const handleAddWidget = useCallback((type: WidgetType): void => {
     const meta = WIDGET_CATALOG.find((c) => c.type === type)
     if (!meta) return
+
+    const validatedSymbol = resolveControlWidgetSymbol(activeSymbol, symbols, 'XAUUSD')
+    const config =
+      type === 'mini_chart'
+        ? { symbol: validatedSymbol, timeframe: activeTimeframe || '15m' }
+        : type === 'order_book'
+          ? { symbol: validatedSymbol }
+          : undefined
 
     const newWidget: DashboardWidget = {
       id: `w_${type}_${Date.now()}`,
       type,
-      title: meta.title,
+      title:
+        type === 'mini_chart'
+          ? `${validatedSymbol} Mini Chart`
+          : type === 'order_book'
+            ? `${validatedSymbol} Order Book`
+            : meta.title,
       colSpan: meta.defaultColSpan,
       minHeightPx: meta.defaultMinHeight,
-      config: type === 'mini_chart' ? { symbol: 'XAUUSD', timeframe: '15m' } : undefined
+      config
     }
 
     setWidgets((prev) => [newWidget, ...prev])
     setIsCatalogOpen(false)
-  }
+  }, [activeSymbol, symbols, activeTimeframe])
 
   // Change column span width (3 -> 4 -> 6 -> 8 -> 12 -> 3)
-  const handleAdjustWidth = (id: string, delta: number) => {
+  const handleAdjustWidth = useCallback((id: string, delta: number): void => {
     const steps = [3, 4, 6, 8, 12]
     setWidgets((prev) =>
       prev.map((w) => {
@@ -95,45 +114,40 @@ export const ControlPanelView: React.FC = () => {
         return { ...w, colSpan: steps[nextIdx] }
       })
     )
-  }
+  }, [])
 
   // Shift position left / right
-  const handleShiftPosition = (index: number, direction: -1 | 1) => {
-    const target = index + direction
-    if (target < 0 || target >= widgets.length) return
+  const handleShiftPosition = useCallback((index: number, direction: -1 | 1): void => {
     setWidgets((prev) => {
+      const target = index + direction
+      if (target < 0 || target >= prev.length) return prev
       const updated = [...prev]
       const [moved] = updated.splice(index, 1)
       updated.splice(target, 0, moved)
       return updated
     })
-  }
+  }, [])
 
   // HTML5 Drag and drop reordering
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  const handleDragStart = useCallback((e: React.DragEvent, index: number): void => {
     e.dataTransfer.setData('text/plain', String(index))
     e.dataTransfer.effectAllowed = 'move'
     setDraggedIndex(index)
-  }
+  }, [])
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, index: number): void => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    if (dragOverIndex !== index) {
-      setDragOverIndex(index)
-    }
-  }
+    setDragOverIndex((prev) => (prev !== index ? index : prev))
+  }, [])
 
-  const handleDrop = (e: React.DragEvent, index: number) => {
+  const handleDrop = useCallback((e: React.DragEvent, index: number): void => {
     e.preventDefault()
-    const fromIndex = draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer.getData('text/plain'), 10)
-    if (isNaN(fromIndex) || fromIndex === index || fromIndex < 0 || fromIndex >= widgets.length) {
-      setDraggedIndex(null)
-      setDragOverIndex(null)
-      return
-    }
-
     setWidgets((prev) => {
+      const fromIndex = draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer.getData('text/plain'), 10)
+      if (isNaN(fromIndex) || fromIndex === index || fromIndex < 0 || fromIndex >= prev.length) {
+        return prev
+      }
       const updated = [...prev]
       const [moved] = updated.splice(fromIndex, 1)
       updated.splice(index, 0, moved)
@@ -142,10 +156,10 @@ export const ControlPanelView: React.FC = () => {
 
     setDraggedIndex(null)
     setDragOverIndex(null)
-  }
+  }, [draggedIndex])
 
   // Render widget inner body based on type
-  const renderWidgetContent = (w: DashboardWidget) => {
+  const renderWidgetContent = (w: DashboardWidget): React.ReactNode => {
     switch (w.type) {
       case 'live_tv':
         return (
@@ -179,7 +193,11 @@ export const ControlPanelView: React.FC = () => {
       case 'dxy_macro':
         return <DxyMacroWidget />
       case 'order_book':
-        return <OrderBookWidget symbol={w.config?.symbol || 'XAUUSD'} />
+        return (
+          <OrderBookWidget
+            symbol={w.config?.symbol || resolveControlWidgetSymbol(activeSymbol, symbols, 'XAUUSD')}
+          />
+        )
       case 'economic_calendar':
         return <CalendarWidget />
       case 'energy_complex':
@@ -299,6 +317,10 @@ export const ControlPanelView: React.FC = () => {
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
               onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={() => {
+                setDraggedIndex(null)
+                setDragOverIndex(null)
+              }}
               style={{
                 gridColumn: `span ${Math.min(w.colSpan, 12)}`,
                 minHeight: w.minHeightPx || 280,
@@ -454,7 +476,14 @@ export const ControlPanelView: React.FC = () => {
               </div>
 
               {/* Card Body */}
-              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  position: 'relative',
+                  pointerEvents: draggedIndex !== null ? 'none' : 'auto'
+                }}
+              >
                 {renderWidgetContent(w)}
               </div>
             </div>

@@ -28,7 +28,8 @@ export interface SymbolInfo {
   minMove: number
 }
 
-export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1w' | '1M'
+export const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'] as const
+export type Timeframe = (typeof TIMEFRAMES)[number]
 
 /**
  * Normalized candlestick bar.
@@ -129,7 +130,7 @@ export interface EconomicEvent {
   countryCode?: string
   date: string
   time: string
-  timestamp: number
+  timestamp?: number
   impact: EconomicImpact
   actual?: string | number | null
   forecast?: string | number | null
@@ -456,8 +457,8 @@ export interface MacroMapResult {
   indicatorName: string
   unit: string
   period: string
-  minValue?: number
-  maxValue?: number
+  minValue?: number | null
+  maxValue?: number | null
   timeline?: string[]
   countries: CountryMacroData[]
   total: number

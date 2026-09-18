@@ -5,9 +5,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useLayoutStore } from '../../stores/useLayoutStore'
 import { useTabStore } from '../../stores/useTabStore'
 import { THEME_TOKENS } from '../../theme/tokens'
-import type { Timeframe } from '@shared/types'
-
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
+import { TIMEFRAMES } from '@shared/types'
 
 export const TopToolbar: React.FC = () => {
   const { symbol, timeframe, setTimeframe, prices } = useMarketStore()

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useWatchlistStore } from '../../stores/useWatchlistStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
+import { validateSymbolAgainstCatalog, canDeleteWatchlist } from '../../utils/watchlist-helpers'
 import type { AssetCategory, SymbolInfo } from '@shared/types'
 
 type WatchlistCategoryFilter = 'all' | AssetCategory | 'custom'
@@ -22,6 +23,9 @@ export const WatchlistPanel: React.FC = () => {
     watchlists,
     activeListId,
     loadWatchlists,
+    setActiveListId,
+    createWatchlist,
+    deleteWatchlist,
     addSymbolToActiveList,
     removeSymbolFromActiveList
   } = useWatchlistStore()
@@ -30,12 +34,35 @@ export const WatchlistPanel: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<WatchlistCategoryFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [newSymbolInput, setNewSymbolInput] = useState('')
+  const [isCreatingList, setIsCreatingList] = useState(false)
+  const [newListName, setNewListName] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
     loadWatchlists()
   }, [loadWatchlists])
 
   const activeGroup = watchlists.find((w) => w.id === activeListId) || watchlists[0]
+  const canDelete = canDeleteWatchlist(watchlists)
+
+  const handleCreateListSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    const trimmed = newListName.trim()
+    if (!trimmed) return
+    const created = await createWatchlist(trimmed)
+    if (created) {
+      setIsCreatingList(false)
+      setNewListName('')
+    }
+  }
+
+  const handleDeleteActiveList = async (): Promise<void> => {
+    if (!canDelete) return
+    const name = activeGroup?.name || 'this watchlist'
+    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
+      await deleteWatchlist(activeListId)
+    }
+  }
 
   // Only display symbols returned by the live PIA catalog.
   const allCatalogSymbols = useMemo(() => {
@@ -111,8 +138,15 @@ export const WatchlistPanel: React.FC = () => {
     e.preventDefault()
     const clean = newSymbolInput.trim().toUpperCase()
     if (!clean) return
-    addSymbolToActiveList(clean)
+    const { valid, symbol: resolvedSymbol } = validateSymbolAgainstCatalog(clean, marketSymbols)
+    if (!valid) {
+      setValidationError(`"${clean}" is not in the symbol catalog`)
+      return
+    }
+    setValidationError(null)
+    addSymbolToActiveList(resolvedSymbol)
     setNewSymbolInput('')
+    setSearchQuery('')
   }
 
   return (
@@ -188,7 +222,10 @@ export const WatchlistPanel: React.FC = () => {
               <button
                 key={cat.id}
                 type="button"
-                onClick={(): void => setActiveCategory(cat.id)}
+                onClick={(): void => {
+                  setActiveCategory(cat.id)
+                  setValidationError(null)
+                }}
                 className={`tv-btn ${isActive ? 'active' : ''}`}
                 style={{
                   fontSize: 11,
@@ -204,6 +241,143 @@ export const WatchlistPanel: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Multi-watchlist Selector & Manager (visible when custom category selected) */}
+      {activeCategory === 'custom' && (
+        <div
+          style={{
+            padding: '6px 12px',
+            backgroundColor: THEME_TOKENS.colors.bgApp,
+            borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6
+          }}
+        >
+          {isCreatingList ? (
+            <form onSubmit={handleCreateListSubmit} style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                placeholder="New watchlist name..."
+                value={newListName}
+                onChange={(e): void => setNewListName(e.target.value)}
+                autoFocus
+                style={{
+                  flex: 1,
+                  backgroundColor: THEME_TOKENS.colors.bgSurface,
+                  border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
+                  borderRadius: 3,
+                  color: THEME_TOKENS.colors.textPrimary,
+                  fontSize: 11,
+                  padding: '2px 6px',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="submit"
+                className="tv-btn active"
+                style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600 }}
+                disabled={!newListName.trim()}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="tv-btn"
+                onClick={(): void => {
+                  setIsCreatingList(false)
+                  setNewListName('')
+                }}
+                style={{ padding: '2px 8px', fontSize: 11 }}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 6
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flex: 1,
+                  minWidth: 0
+                }}
+              >
+                <span
+                  style={{
+                    color: THEME_TOKENS.colors.textSecondary,
+                    fontSize: 11,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  List:
+                </span>
+                <select
+                  value={activeListId}
+                  onChange={(e): void => setActiveListId(e.target.value)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    backgroundColor: THEME_TOKENS.colors.bgSurface,
+                    border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
+                    borderRadius: 3,
+                    color: THEME_TOKENS.colors.textBright,
+                    fontSize: 11,
+                    padding: '2px 4px',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {watchlists.map((wl) => (
+                    <option key={wl.id} value={wl.id}>
+                      {wl.name} ({wl.symbols.length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  type="button"
+                  className="tv-btn"
+                  onClick={(): void => setIsCreatingList(true)}
+                  title="Create new watchlist"
+                  style={{ padding: '2px 6px', fontSize: 11 }}
+                >
+                  + New
+                </button>
+                <button
+                  type="button"
+                  className="tv-btn"
+                  onClick={handleDeleteActiveList}
+                  disabled={!canDelete}
+                  title={
+                    canDelete
+                      ? `Delete "${activeGroup?.name}"`
+                      : 'Cannot delete the last remaining watchlist'
+                  }
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: 11,
+                    color: canDelete ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.textMuted,
+                    opacity: canDelete ? 1 : 0.4,
+                    cursor: canDelete ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search Filter & Add Input */}
       <div
@@ -250,6 +424,7 @@ export const WatchlistPanel: React.FC = () => {
               setSearchQuery(e.target.value)
               if (activeCategory === 'custom') {
                 setNewSymbolInput(e.target.value)
+                if (validationError) setValidationError(null)
               }
             }}
             style={{
@@ -267,6 +442,7 @@ export const WatchlistPanel: React.FC = () => {
               onClick={(): void => {
                 setSearchQuery('')
                 setNewSymbolInput('')
+                setValidationError(null)
               }}
               style={{
                 background: 'none',
@@ -293,6 +469,21 @@ export const WatchlistPanel: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Validation Error Feedback */}
+      {validationError && (
+        <div
+          style={{
+            padding: '4px 12px',
+            fontSize: 11,
+            color: THEME_TOKENS.colors.bearish,
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+          }}
+        >
+          {validationError}
+        </div>
+      )}
 
       {/* Table Header */}
       <div
