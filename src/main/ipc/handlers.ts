@@ -1,7 +1,3 @@
-/**
- * PIA Terminal - IPC Request Handlers with Strict Zod Validation & Frame Security
- */
-
 import { ipcMain, shell, type BrowserWindow } from 'electron'
 import {
   IPC_CHANNELS,

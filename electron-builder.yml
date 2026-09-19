@@ -1,5 +1,6 @@
 appId: com.pia.terminal
 productName: pia-terminal
+asar: true
 directories:
   buildResources: build
 files:

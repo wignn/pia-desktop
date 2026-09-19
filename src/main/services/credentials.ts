@@ -1,9 +1,3 @@
-/**
- * PIA Terminal - Secure Credential Storage Service
- * Manages API keys and gateway endpoints using Electron safeStorage where available.
- * Never leaks plaintext API keys to the renderer process.
- */
-
 import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -35,7 +29,9 @@ export class CredentialManager {
         if (safeStorage.isEncryptionAvailable()) {
           const decryptedJson = safeStorage.decryptString(encryptedBuffer)
           this.inMemoryCreds = JSON.parse(decryptedJson)
-          return
+          if (this.inMemoryCreds?.apiKey) {
+            return
+          }
         }
       }
     } catch {
@@ -43,7 +39,7 @@ export class CredentialManager {
       this.inMemoryCreds = null
     }
 
-    // Fallback: check environment variables (development only)
+    // Built-in build credentials / environment fallback
     if (process.env.PIA_API_KEY) {
       this.inMemoryCreds = {
         apiKey: process.env.PIA_API_KEY,

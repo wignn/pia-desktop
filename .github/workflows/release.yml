@@ -43,6 +43,9 @@ jobs:
       - name: Build & Publish Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIA_API_KEY: ${{ secrets.PIA_API_KEY }}
+          PIA_BASE_URL: ${{ secrets.PIA_BASE_URL }}
+          PIA_WS_URL: ${{ secrets.PIA_WS_URL }}
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             npm run build

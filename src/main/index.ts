@@ -101,6 +101,35 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Production anti-tamper & reverse engineering protections
+  if (!is.dev) {
+    // Disable right-click context menu (blocks "Inspect Element")
+    mainWindow.webContents.on('context-menu', (e) => {
+      e.preventDefault()
+    })
+
+    // Immediately close DevTools if triggered programmatically or via CLI args
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow?.webContents.closeDevTools()
+    })
+
+    // Block developer inspection shortcuts (F12, Ctrl+Shift+I/J/C, reload shortcuts)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      const isDevKey =
+        input.key === 'F12' ||
+        input.key === 'F5' ||
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i') ||
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'j') ||
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'c') ||
+        ((input.control || input.meta) && input.key.toLowerCase() === 'r') ||
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'r')
+
+      if (isDevKey) {
+        event.preventDefault()
+      }
+    })
+  }
+
   // HMR for renderer based on electron-vite cli
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -125,7 +154,9 @@ if (!gotTheLock) {
     electronApp.setAppUserModelId('com.pia.terminal')
 
     app.on('browser-window-created', (_, window) => {
-      optimizer.watchWindowShortcuts(window)
+      if (is.dev) {
+        optimizer.watchWindowShortcuts(window)
+      }
     })
 
     // Initialize Core Services
