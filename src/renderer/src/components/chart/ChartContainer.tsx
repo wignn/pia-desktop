@@ -64,12 +64,12 @@ export const ChartContainer: React.FC = () => {
     activeIndicators,
     drawingsClearSignal,
     snapshotSignal,
-    setActiveTool,
-    setSnapshotToast
+    setActiveTool
   } = useChartStore()
 
-  // Track currently active indicators rendered on chart
+
   const renderedIndicatorsRef = useRef<Set<string>>(new Set())
+  const lastHandledSnapshotSignalRef = useRef<number>(snapshotSignal)
 
   const handleOverlaySave = useCallback(async (overlay: Overlay): Promise<void> => {
     if (!overlay || !overlay.id) return
@@ -478,7 +478,9 @@ export const ChartContainer: React.FC = () => {
 
   // Handle Chart Image Snapshot (Save to PNG and Copy to Clipboard)
   useEffect(() => {
-    if (snapshotSignal === 0) return
+    if (snapshotSignal === 0 || snapshotSignal <= lastHandledSnapshotSignalRef.current) return
+    lastHandledSnapshotSignalRef.current = snapshotSignal
+
     const chart = chartRef.current
     if (!chart) return
 
@@ -491,7 +493,7 @@ export const ChartContainer: React.FC = () => {
     } catch (err) {
       console.error('Failed to take chart snapshot:', err)
     }
-  }, [snapshotSignal, symbol, timeframe, theme, setSnapshotToast])
+  }, [snapshotSignal, theme])
 
   return (
     <div
