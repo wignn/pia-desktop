@@ -2,16 +2,79 @@ name: Release CI/CD
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: Auto Tag & Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Next Version
+        id: version
+        run: |
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const baseVersion = pkg.version || "1.0.0";
+
+            let tags = [];
+            try {
+              const out = execSync("git tag -l \"v*\"", { encoding: "utf8" }).trim();
+              if (out) tags = out.split("\n").map(t => t.trim().replace(/^v/, ""));
+            } catch {}
+
+            let nextVersion = baseVersion;
+            if (tags.includes(baseVersion)) {
+              const [major, minor] = baseVersion.split(".").map(Number);
+              const patches = tags
+                .map(t => t.split(".").map(Number))
+                .filter(([maj, min, pat]) => maj === major && min === minor && !isNaN(pat))
+                .map(([,, pat]) => pat);
+              const maxPatch = patches.length > 0 ? Math.max(...patches) : 0;
+              nextVersion = `${major}.${minor}.${maxPatch + 1}`;
+            }
+
+            const tag = `v${nextVersion}`;
+            console.log(`Next release version: ${nextVersion} (Tag: ${tag})`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
+          '
+
+      - name: Create Git Tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release with Auto Changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes
+
   release:
     name: Build & Publish (${{ matrix.os }})
+    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,12 +84,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'npm'
+
+      - name: Sync package.json version
+        run: npm version ${{ needs.create-release.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
