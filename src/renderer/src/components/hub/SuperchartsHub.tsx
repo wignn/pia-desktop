@@ -39,7 +39,11 @@ export const SuperchartsHub: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newLayoutName, setNewLayoutName] = useState('')
   const [newLayoutSymbol, setNewLayoutSymbol] = useState(() =>
-    resolveControlWidgetSymbol(useMarketStore.getState().symbol, useMarketStore.getState().symbols, 'XAUUSD')
+    resolveControlWidgetSymbol(
+      useMarketStore.getState().symbol,
+      useMarketStore.getState().symbols,
+      'XAUUSD'
+    )
   )
   const [newLayoutTimeframe, setNewLayoutTimeframe] = useState<Timeframe>('1h')
   const [currentTimestamp] = useState<number>(() => Date.now())
@@ -52,7 +56,11 @@ export const SuperchartsHub: React.FC = () => {
     e.preventDefault()
     if (!newLayoutName.trim()) return
 
-    const validatedSymbol = resolveControlWidgetSymbol(newLayoutSymbol || activeSymbol, symbols, 'XAUUSD')
+    const validatedSymbol = resolveControlWidgetSymbol(
+      newLayoutSymbol || activeSymbol,
+      symbols,
+      'XAUUSD'
+    )
     const created = await createBlankLayout(
       newLayoutName.trim(),
       validatedSymbol,

@@ -6,9 +6,13 @@ import { useLayoutStore } from '../../stores/useLayoutStore'
 import { useTabStore } from '../../stores/useTabStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { TIMEFRAMES } from '@shared/types'
+import appLogo from '../../assets/logo.png'
 
 export const TopToolbar: React.FC = () => {
-  const { symbol, timeframe, setTimeframe, prices } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const timeframe = useMarketStore((state) => state.timeframe)
+  const setTimeframe = useMarketStore((state) => state.setTimeframe)
+  const quote = useMarketStore((state) => (state.symbol ? state.prices[state.symbol] : undefined))
   const {
     chartType,
     setChartType,
@@ -27,8 +31,8 @@ export const TopToolbar: React.FC = () => {
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false)
   const [saveToast, setSaveToast] = useState(false)
 
-  const currentPrice = symbol ? prices[symbol]?.price : undefined
-  const priceChange24h = symbol ? prices[symbol]?.change24hPercent ?? 0 : 0
+  const currentPrice = quote?.price
+  const priceChange24h = quote?.change24hPercent ?? 0
   const isUp = priceChange24h >= 0
 
   const handleSave = async (): Promise<void> => {
@@ -65,24 +69,17 @@ export const TopToolbar: React.FC = () => {
       }}
     >
       {/* Brand / Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
-        <div
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginRight: 8 }}>
+        <img
+          src={appLogo}
+          alt="PIA"
           style={{
-            width: 22,
-            height: 22,
-            borderRadius: 4,
-            backgroundColor: THEME_TOKENS.colors.accent,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ffffff',
-            fontWeight: 800,
-            fontSize: 12,
-            letterSpacing: 0.5
+            width: 24,
+            height: 24,
+            borderRadius: '50%',
+            objectFit: 'cover'
           }}
-        >
-          P
-        </div>
+        />
         <span
           style={{
             fontWeight: 700,

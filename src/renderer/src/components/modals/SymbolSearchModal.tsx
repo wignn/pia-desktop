@@ -6,7 +6,9 @@ import type { AssetCategory } from '@shared/types'
 
 const SymbolSearchDialog: React.FC = () => {
   const { setSymbolSearchOpen } = useWorkspaceStore()
-  const { symbols, setSymbol, prices } = useMarketStore()
+  const symbols = useMarketStore((state) => state.symbols)
+  const setSymbol = useMarketStore((state) => state.setSymbol)
+  const prices = useMarketStore((state) => state.prices)
 
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | AssetCategory>('all')

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveControlWidgetSymbol } from './control-panel-helpers'
+import { resolveControlWidgetSymbol, resolveControlWidgetTimeframe } from './control-panel-helpers'
 
 describe('control-panel-helpers', () => {
   describe('resolveControlWidgetSymbol', () => {
@@ -28,6 +28,20 @@ describe('control-panel-helpers', () => {
 
     it('accepts trimmed active symbol if catalog is empty/unloaded', () => {
       expect(resolveControlWidgetSymbol('solusdt', [])).toBe('SOLUSDT')
+    })
+  })
+
+  describe('resolveControlWidgetTimeframe', () => {
+    it('keeps every canonical timeframe', () => {
+      expect(resolveControlWidgetTimeframe('30m')).toBe('30m')
+      expect(resolveControlWidgetTimeframe('4h')).toBe('4h')
+      expect(resolveControlWidgetTimeframe('1w')).toBe('1w')
+    })
+
+    it('replaces invalid persisted values with the requested fallback', () => {
+      expect(resolveControlWidgetTimeframe('1M')).toBe('15m')
+      expect(resolveControlWidgetTimeframe('', '1h')).toBe('1h')
+      expect(resolveControlWidgetTimeframe(undefined)).toBe('15m')
     })
   })
 })

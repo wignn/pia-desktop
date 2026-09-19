@@ -65,6 +65,8 @@ import {
 import { parseCalendarTimestamp } from '@shared/calendar-helpers'
 import type { CredentialManager } from './credentials'
 
+const SYMBOL_CATALOG_TTL_MS = 60_000
+
 export class PiaProvider {
   private client: PiaClient | null = null
   private subscriptionCounts = new Map<string, number>()
@@ -73,6 +75,9 @@ export class PiaProvider {
   private connectionState: ConnectionState = { status: 'disconnected' }
   private lastLatencyCheck = 0
   private discoveredSymbols = new Map<string, SymbolInfo>()
+  private symbolsRefreshPromise: Promise<void> | null = null
+  private symbolsRefreshedAt = 0
+  private loggedSymbolCount: number | null = null
   private realtimeErrorDetail: string | null = null
   private candleCache = new Map<string, { bars: CandleBar[]; cachedAt: number }>()
 
@@ -86,6 +91,11 @@ export class PiaProvider {
     const apiKey = this.credManager.getApiKey()
     const baseUrl = this.credManager.getBaseUrl()
     const wsUrl = this.credManager.getWsUrl()
+
+    this.discoveredSymbols.clear()
+    this.symbolsRefreshPromise = null
+    this.symbolsRefreshedAt = 0
+    this.loggedSymbolCount = null
 
     if (this.client) {
       try {
@@ -150,6 +160,15 @@ export class PiaProvider {
       })
     })
 
+    rt.on('authenticated', () => {
+      const latency = Date.now() - this.lastLatencyCheck
+      this.setConnectionState({
+        status: 'connected',
+        latencyMs: latency > 0 && latency < 5000 ? latency : 35,
+        lastHeartbeat: Date.now()
+      })
+    })
+
     rt.on('disconnect', () => {
       this.setConnectionState({ status: 'disconnected' })
     })
@@ -167,13 +186,40 @@ export class PiaProvider {
 
       // Only transition connection state to error if the underlying socket is closed.
       // Transient stream errors or notices should not mark an active connection as failed.
-      const isSocketOpen = (rt as any).ws?.readyState === 1
+      const state = rt.getState()
+      const isSocketOpen =
+        state === 'AUTHENTICATED' || state === 'CONNECTING' || state === 'AUTHENTICATING'
       if (!isSocketOpen) {
         this.setConnectionState({ status: 'error', error: msg })
       }
     })
 
+    rt.on('snapshot', (snapshot) => {
+      if (this.connectionState.status !== 'connected') {
+        this.setConnectionState({
+          status: 'connected',
+          latencyMs: this.connectionState.latencyMs ?? 35,
+          lastHeartbeat: Date.now()
+        })
+      }
+      if (snapshot && Array.isArray(snapshot.items)) {
+        for (const item of snapshot.items) {
+          const quote = this.normalizeMarketPrice(item)
+          if (quote) {
+            this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
+          }
+        }
+      }
+    })
+
     rt.on('tick', (tick: MarketPrice) => {
+      if (this.connectionState.status !== 'connected') {
+        this.setConnectionState({
+          status: 'connected',
+          latencyMs: this.connectionState.latencyMs ?? 35,
+          lastHeartbeat: Date.now()
+        })
+      }
       const quote = this.normalizeMarketPrice(tick)
       if (quote) {
         this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
@@ -268,7 +314,9 @@ export class PiaProvider {
             ? Number(rawValue.volume)
             : undefined,
       volumeType:
-        rawValue.volume_type === 'exchange' || rawValue.volume_type === 'tick' || rawValue.volume_type === 'unavailable'
+        rawValue.volume_type === 'exchange' ||
+        rawValue.volume_type === 'tick' ||
+        rawValue.volume_type === 'unavailable'
           ? rawValue.volume_type
           : raw.volume_24h !== undefined
             ? 'exchange'
@@ -276,7 +324,8 @@ export class PiaProvider {
               ? 'exchange'
               : 'unavailable',
       volumeAvailable:
-        rawValue.volume_available ?? (raw.volume_24h !== undefined || rawValue.volume !== undefined),
+        rawValue.volume_available ??
+        (raw.volume_24h !== undefined || rawValue.volume !== undefined),
       change24h:
         raw.change_24h_pct !== undefined ? (price * Number(raw.change_24h_pct)) / 100 : undefined,
       change24hPercent: raw.change_24h_pct !== undefined ? Number(raw.change_24h_pct) : undefined,
@@ -378,72 +427,101 @@ export class PiaProvider {
   /**
    * Refreshes the discovered symbol catalog using live SDK discovery.
    */
-  public async refreshSymbolsCatalog(): Promise<void> {
+  public async refreshSymbolsCatalog(force = false): Promise<void> {
     if (!this.client) return
-
-    // 1. Fetch live multi-asset snapshot & symbol catalog via SDK
-    try {
-      const pageSize = 500
-      const firstPage = await this.client.market.getSymbols({ limit: pageSize, offset: 0 })
-      const allItems = [...(Array.isArray(firstPage.items) ? firstPage.items : [])]
-      for (let offset = allItems.length; offset < (firstPage.total ?? allItems.length); offset += pageSize) {
-        const page = await this.client.market.getSymbols({ limit: pageSize, offset })
-        if (!Array.isArray(page.items) || page.items.length === 0) break
-        allItems.push(...page.items)
-      }
-      console.log(`Available symbols: ${firstPage?.total ?? allItems.length}`)
-      for (const s of allItems) {
-        if (!s.symbol) continue
-        const category = mapPiaAssetTypeToCategory(s.asset_type || 'crypto', s.symbol)
-        const precision = getSymbolPrecision(s.symbol, category)
-        this.discoveredSymbols.set(s.symbol, {
-          symbol: s.symbol,
-          name: s.name || s.symbol,
-          category,
-          pricePrecision: s.price_precision ?? precision.pricePrecision,
-          volumePrecision: precision.volumePrecision,
-          exchange: s.exchange,
-          providerSymbol: s.source,
-          capabilities: capabilitiesForSymbol(s.symbol, category),
-          minMove: s.tick_size ?? precision.minMove
-        })
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.log('client.market.getSymbols note:', msg)
+    if (this.symbolsRefreshPromise) return this.symbolsRefreshPromise
+    if (
+      !force &&
+      this.discoveredSymbols.size > 0 &&
+      Date.now() - this.symbolsRefreshedAt < SYMBOL_CATALOG_TTL_MS
+    ) {
+      return
     }
 
-    // 2. Fetch all tracked assets & snapshot prices from SDK
-    try {
-      const pricesRes = await this.client.market.getPrices()
-      if (pricesRes && Array.isArray(pricesRes.items)) {
-        for (const item of pricesRes.items) {
-          if (!item.symbol) continue
-          const price = Number(item.price)
-          if (!isNaN(price) && price > 0) {
-            // The quote is used only to derive provider-supplied symbol precision.
-          }
-          const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
-          const session = (item as unknown as { session?: { exchange?: string } }).session
-          const exchange = session?.exchange || ''
-          const displayName = exchange ? `${item.symbol} · ${exchange}` : item.symbol
-
-          const precision = getSymbolPrecision(item.symbol, category, price)
-          const existing = this.discoveredSymbols.get(item.symbol)
-          this.discoveredSymbols.set(item.symbol, {
-            symbol: item.symbol,
-            name: existing?.name && existing.name !== existing.symbol ? existing.name : displayName,
+    const client = this.client
+    const refresh = async (): Promise<void> => {
+      // 1. Fetch live multi-asset snapshot & symbol catalog via SDK
+      try {
+        const pageSize = 500
+        const firstPage = await client.market.getSymbols({ limit: pageSize, offset: 0 })
+        const allItems = [...(Array.isArray(firstPage.items) ? firstPage.items : [])]
+        for (
+          let offset = allItems.length;
+          offset < (firstPage.total ?? allItems.length);
+          offset += pageSize
+        ) {
+          const page = await client.market.getSymbols({ limit: pageSize, offset })
+          if (!Array.isArray(page.items) || page.items.length === 0) break
+          allItems.push(...page.items)
+        }
+        const availableCount = firstPage.total ?? allItems.length
+        if (this.loggedSymbolCount !== availableCount) {
+          console.log(`Available symbols: ${availableCount}`)
+          this.loggedSymbolCount = availableCount
+        }
+        for (const s of allItems) {
+          if (!s.symbol) continue
+          const category = mapPiaAssetTypeToCategory(s.asset_type || 'crypto', s.symbol)
+          const precision = getSymbolPrecision(s.symbol, category)
+          this.discoveredSymbols.set(s.symbol, {
+            symbol: s.symbol,
+            name: s.name || s.symbol,
             category,
-            pricePrecision: precision.pricePrecision,
+            pricePrecision: s.price_precision ?? precision.pricePrecision,
             volumePrecision: precision.volumePrecision,
-            capabilities: capabilitiesForSymbol(item.symbol, category),
-            minMove: precision.minMove
+            exchange: s.exchange,
+            providerSymbol: s.source,
+            capabilities: capabilitiesForSymbol(s.symbol, category),
+            minMove: s.tick_size ?? precision.minMove
           })
         }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.log('client.market.getSymbols note:', msg)
       }
-    } catch (err: unknown) {
-      console.warn('Failed to refresh symbols from getPrices:', err)
+
+      // 2. Fetch all tracked assets & snapshot prices from SDK
+      try {
+        const pricesRes = await client.market.getPrices()
+        if (pricesRes && Array.isArray(pricesRes.items)) {
+          for (const item of pricesRes.items) {
+            if (!item.symbol) continue
+            const price = Number(item.price)
+            if (!isNaN(price) && price > 0) {
+              // The quote is used only to derive provider-supplied symbol precision.
+            }
+            const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
+            const session = (item as unknown as { session?: { exchange?: string } }).session
+            const exchange = session?.exchange || ''
+            const displayName = exchange ? `${item.symbol} · ${exchange}` : item.symbol
+
+            const precision = getSymbolPrecision(item.symbol, category, price)
+            const existing = this.discoveredSymbols.get(item.symbol)
+            this.discoveredSymbols.set(item.symbol, {
+              symbol: item.symbol,
+              name:
+                existing?.name && existing.name !== existing.symbol ? existing.name : displayName,
+              category,
+              pricePrecision: precision.pricePrecision,
+              volumePrecision: precision.volumePrecision,
+              capabilities: capabilitiesForSymbol(item.symbol, category),
+              minMove: precision.minMove
+            })
+          }
+        }
+      } catch (err: unknown) {
+        console.warn('Failed to refresh symbols from getPrices:', err)
+      }
+
+      if (this.client === client) {
+        this.symbolsRefreshedAt = Date.now()
+      }
     }
+
+    this.symbolsRefreshPromise = refresh().finally(() => {
+      this.symbolsRefreshPromise = null
+    })
+    return this.symbolsRefreshPromise
   }
 
   public async getSymbols(): Promise<SymbolInfo[]> {
@@ -536,7 +614,13 @@ export class PiaProvider {
       })
 
       const payload = (res || {}) as unknown as Record<string, unknown>
-      const rawRows = Array.isArray(payload.candles) ? payload.candles : Array.isArray(payload.items) ? payload.items : Array.isArray(payload.data) ? payload.data : []
+      const rawRows = Array.isArray(payload.candles)
+        ? payload.candles
+        : Array.isArray(payload.items)
+          ? payload.items
+          : Array.isArray(payload.data)
+            ? payload.data
+            : []
       if (rawRows.length === 0) return []
       const rows = rawRows as Candle[]
 
@@ -603,12 +687,20 @@ export class PiaProvider {
     const current = this.subscriptionCounts.get(clean) || 0
     this.subscriptionCounts.set(clean, current + 1)
 
-    if (current === 0 && this.client) {
+    if (this.client) {
       const state = this.client.realtime.getState()
-      if (state === 'AUTHENTICATED' || state === 'CONNECTING') {
-        this.client.realtime.subscribe(clean)
+      if (state === 'AUTHENTICATED' || state === 'CONNECTING' || state === 'AUTHENTICATING') {
+        if (current === 0) {
+          this.client.realtime.subscribe(clean)
+        }
       }
     }
+
+    // Re-broadcast connection status to ensure late-mounting components receive current state
+    if (this.connectionState.status !== 'disconnected') {
+      this.broadcast(IPC_CHANNELS.MARKET_ON_CONNECTION_STATE, this.connectionState)
+    }
+
     return true
   }
 
@@ -784,12 +876,17 @@ export class PiaProvider {
 
         const timeStr = item.created_at || item.posted_at || item.timestamp
         const timestamp = timeStr ? new Date(timeStr).getTime() : Date.now()
-        const author = item.author_display_name || item.author_username || item.author || 'MarketWatcher'
+        const author =
+          item.author_display_name || item.author_username || item.author || 'MarketWatcher'
         const handle = item.author_username || item.author_handle || item.handle
 
         return {
           id: item.id || item.event_id || item.post_id || `feed-${index}-${timestamp}`,
-          source: item.platform ? (item.platform === 'twitter' ? 'X / Twitter' : item.platform) : 'X / Twitter',
+          source: item.platform
+            ? item.platform === 'twitter'
+              ? 'X / Twitter'
+              : item.platform
+            : 'X / Twitter',
           author,
           handle: handle ? (handle.startsWith('@') ? handle : `@${handle}`) : undefined,
           content,
@@ -803,7 +900,10 @@ export class PiaProvider {
         }
       })
     } catch (err) {
-      console.warn('[PiaProvider] social.getFeed fallback to getSocialPosts:', this.formatProviderError(err))
+      console.warn(
+        '[PiaProvider] social.getFeed fallback to getSocialPosts:',
+        this.formatProviderError(err)
+      )
       return await this.getSocialPosts(params)
     }
   }
@@ -993,14 +1093,20 @@ export class PiaProvider {
     if (!this.client) return null
     try {
       const legacyIndicator = params?.indicator === 'gdp_growth' ? 'gdp' : params?.indicator
-      const response = await this.client.economic.getMacroMap({ ...params, indicator: legacyIndicator })
+      const response = await this.client.economic.getMacroMap({
+        ...params,
+        indicator: legacyIndicator
+      })
       const liveResponse = response as typeof response & {
         is_live?: boolean
         updated_at?: string
         unavailable_reason?: string
         error_code?: string
       }
-      const countryMeta: Record<string, { flag: string; region: CountryMacroData['region']; subregion: string }> = {
+      const countryMeta: Record<
+        string,
+        { flag: string; region: CountryMacroData['region']; subregion: string }
+      > = {
         US: { flag: '🇺🇸', region: 'G7', subregion: 'Americas' },
         GB: { flag: '🇬🇧', region: 'G7', subregion: 'Europe' },
         JP: { flag: '🇯🇵', region: 'G7', subregion: 'Asia' },
@@ -1089,8 +1195,11 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.intelligence.analyze({ symbol, query })
-        const payload = (raw as unknown as Record<string, unknown>)
-        const nested = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : payload
+        const payload = raw as unknown as Record<string, unknown>
+        const nested =
+          payload.data && typeof payload.data === 'object'
+            ? (payload.data as Record<string, unknown>)
+            : payload
         const candidateAnalysis =
           nested.analysis ||
           nested.summary ||
@@ -1103,18 +1212,29 @@ export class PiaProvider {
         const analysis = String(candidateAnalysis ?? '')
         if (analysis.trim()) {
           const sentimentValue = String(nested.sentiment ?? '').toLowerCase()
-          const sentiment = sentimentValue === 'bullish' || sentimentValue === 'bearish' ? sentimentValue : 'neutral'
+          const sentiment =
+            sentimentValue === 'bullish' || sentimentValue === 'bearish'
+              ? sentimentValue
+              : 'neutral'
           return {
             symbol: String(nested.symbol || symbol),
             sentiment,
             confidence: typeof nested.confidence === 'number' ? nested.confidence : undefined,
             analysis,
-            catalysts: Array.isArray(nested.catalysts) ? nested.catalysts.filter((item): item is string => typeof item === 'string') : [],
+            catalysts: Array.isArray(nested.catalysts)
+              ? nested.catalysts.filter((item): item is string => typeof item === 'string')
+              : [],
             keyLevels: {
-              support: Array.isArray((nested.key_levels as any)?.support) ? (nested.key_levels as any).support : [],
-              resistance: Array.isArray((nested.key_levels as any)?.resistance) ? (nested.key_levels as any).resistance : []
+              support: Array.isArray((nested.key_levels as any)?.support)
+                ? (nested.key_levels as any).support
+                : [],
+              resistance: Array.isArray((nested.key_levels as any)?.resistance)
+                ? (nested.key_levels as any).resistance
+                : []
             },
-            generatedAt: nested.generated_at ? new Date(String(nested.generated_at)).getTime() : Date.now()
+            generatedAt: nested.generated_at
+              ? new Date(String(nested.generated_at)).getTime()
+              : Date.now()
           }
         }
       } catch (err) {
@@ -1129,11 +1249,16 @@ export class PiaProvider {
       try {
         const raw = await this.client.intelligence.getInsights(symbol)
         const rawValue = raw as unknown as Record<string, unknown>
-        const payload = (rawValue.data && typeof rawValue.data === 'object' ? rawValue.data : rawValue) as Record<string, unknown>
-        const summary = String(payload.summary || payload.explanation || payload.headline || payload.analysis || '')
+        const payload = (
+          rawValue.data && typeof rawValue.data === 'object' ? rawValue.data : rawValue
+        ) as Record<string, unknown>
+        const summary = String(
+          payload.summary || payload.explanation || payload.headline || payload.analysis || ''
+        )
         if (summary.trim()) {
           const rawSentiment = String(payload.sentiment ?? '').toLowerCase()
-          const sentiment = rawSentiment === 'bullish' || rawSentiment === 'bearish' ? rawSentiment : 'neutral'
+          const sentiment =
+            rawSentiment === 'bullish' || rawSentiment === 'bearish' ? rawSentiment : 'neutral'
           const drivers = Array.isArray(payload.drivers)
             ? payload.drivers
                 .map((item: any) =>
@@ -1146,7 +1271,9 @@ export class PiaProvider {
             summary,
             sentiment,
             drivers,
-            timestamp: payload.timestamp ? new Date(String(payload.timestamp)).getTime() : Date.now()
+            timestamp: payload.timestamp
+              ? new Date(String(payload.timestamp)).getTime()
+              : Date.now()
           }
         }
       } catch (err) {
@@ -1162,7 +1289,9 @@ export class PiaProvider {
   public async getOptionsChain(symbol: string): Promise<OptionChainData | null> {
     if (this.client) {
       try {
-        console.info(`[PiaProvider] Fetching options chain for ${symbol} (underlying ${resolveOptionsUnderlying(symbol)})...`)
+        console.info(
+          `[PiaProvider] Fetching options chain for ${symbol} (underlying ${resolveOptionsUnderlying(symbol)})...`
+        )
         const res = await this.client.options.getChain(resolveOptionsUnderlying(symbol))
         if (res && res.contracts && res.underlying_price !== undefined) {
           const calls: OptionContractData[] = []
@@ -1249,19 +1378,59 @@ export class PiaProvider {
       try {
         const res = await this.client.options.getSummary()
         const payload = (res && typeof res === 'object' ? res : {}) as Record<string, any>
-        const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.items) ? payload.items : []
+        const rows = Array.isArray(payload.data)
+          ? payload.data
+          : Array.isArray(payload.items)
+            ? payload.items
+            : []
         const source = rows.length > 0 ? rows[0] : payload
-        const totalVolume = payload.total_volume ?? payload.totalVolume ?? rows.reduce((sum: number, row: any) => sum + Number(row.total_volume ?? row.volume ?? 0), 0)
-        const totalOpenInterest = payload.total_open_interest ?? payload.totalOpenInterest ?? rows.reduce((sum: number, row: any) => sum + Number(row.total_open_interest ?? row.open_interest ?? 0), 0)
-        const volumeWeightedPcr = rows.reduce((sum: number, row: any) => sum + Number(row.put_call_ratio ?? 0) * Number(row.total_volume ?? row.volume ?? 0), 0)
-        const putCallRatio = payload.put_call_ratio ?? payload.putCallRatio ?? (Number(totalVolume) > 0 ? volumeWeightedPcr / Number(totalVolume) : source.put_call_ratio)
-        const active = Array.isArray(source.most_active_symbols) ? source.most_active_symbols : Array.isArray(source.mostActiveSymbols) ? source.mostActiveSymbols : rows
-        if (totalVolume !== undefined || totalOpenInterest !== undefined || putCallRatio !== undefined || active.length > 0) {
+        const totalVolume =
+          payload.total_volume ??
+          payload.totalVolume ??
+          rows.reduce(
+            (sum: number, row: any) => sum + Number(row.total_volume ?? row.volume ?? 0),
+            0
+          )
+        const totalOpenInterest =
+          payload.total_open_interest ??
+          payload.totalOpenInterest ??
+          rows.reduce(
+            (sum: number, row: any) =>
+              sum + Number(row.total_open_interest ?? row.open_interest ?? 0),
+            0
+          )
+        const volumeWeightedPcr = rows.reduce(
+          (sum: number, row: any) =>
+            sum + Number(row.put_call_ratio ?? 0) * Number(row.total_volume ?? row.volume ?? 0),
+          0
+        )
+        const putCallRatio =
+          payload.put_call_ratio ??
+          payload.putCallRatio ??
+          (Number(totalVolume) > 0
+            ? volumeWeightedPcr / Number(totalVolume)
+            : source.put_call_ratio)
+        const active = Array.isArray(source.most_active_symbols)
+          ? source.most_active_symbols
+          : Array.isArray(source.mostActiveSymbols)
+            ? source.mostActiveSymbols
+            : rows
+        if (
+          totalVolume !== undefined ||
+          totalOpenInterest !== undefined ||
+          putCallRatio !== undefined ||
+          active.length > 0
+        ) {
           return {
             totalVolume: totalVolume === undefined ? undefined : Number(totalVolume),
-            totalOpenInterest: totalOpenInterest === undefined ? undefined : Number(totalOpenInterest),
+            totalOpenInterest:
+              totalOpenInterest === undefined ? undefined : Number(totalOpenInterest),
             putCallRatio: putCallRatio === undefined ? undefined : Number(putCallRatio),
-            mostActiveSymbols: active.map((s: any) => ({ symbol: String(s.symbol), volume: Number(s.volume ?? s.total_volume ?? 0), pcr: s.put_call_ratio !== undefined ? Number(s.put_call_ratio) : undefined }))
+            mostActiveSymbols: active.map((s: any) => ({
+              symbol: String(s.symbol),
+              volume: Number(s.volume ?? s.total_volume ?? 0),
+              pcr: s.put_call_ratio !== undefined ? Number(s.put_call_ratio) : undefined
+            }))
           }
         }
       } catch (err) {
@@ -1379,7 +1548,9 @@ export class PiaProvider {
         try {
           const raw = await this.client.macro.getCentralBankStance(b)
           const wrapped = raw as typeof raw & { data?: typeof raw }
-          const res = (wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw) as typeof raw
+          const res = (
+            wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
+          ) as typeof raw
           if (res) {
             const rawStance = res.stance?.toLowerCase()
             const stance: CentralBankStanceResult['stance'] =
@@ -1407,9 +1578,19 @@ export class PiaProvider {
     if (this.client) {
       try {
         const raw = await this.client.fixedIncome.getYieldCurve()
-        const wrapped = raw as typeof raw & { data?: unknown; points?: unknown[]; bonds?: unknown[]; as_of?: string }
+        const wrapped = raw as typeof raw & {
+          data?: unknown
+          points?: unknown[]
+          bonds?: unknown[]
+          as_of?: string
+        }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { points?: unknown[]; bonds?: unknown[]; as_of?: string; spreads?: unknown[] }
+        const payloadRecord = payload as typeof raw & {
+          points?: unknown[]
+          bonds?: unknown[]
+          as_of?: string
+          spreads?: unknown[]
+        }
         const pointRows = Array.isArray(payloadRecord.points)
           ? payloadRecord.points
           : Array.isArray(payloadRecord.bonds)
@@ -1420,10 +1601,13 @@ export class PiaProvider {
           yield: Number(p.yield ?? p.yield_value ?? p.value),
           previousYield: p.previous_yield !== undefined ? Number(p.previous_yield) : undefined
         })
-        const points = pointRows.map(normalizeYield).filter((p) => p.tenor && Number.isFinite(p.yield))
+        const points = pointRows
+          .map(normalizeYield)
+          .filter((p) => p.tenor && Number.isFinite(p.yield))
         if (points.length > 0) {
           return {
-            date: payloadRecord.date || payloadRecord.as_of || new Date().toISOString().split('T')[0],
+            date:
+              payloadRecord.date || payloadRecord.as_of || new Date().toISOString().split('T')[0],
             points,
             updatedAt: Date.now()
           }
@@ -1480,10 +1664,21 @@ export class PiaProvider {
       try {
         const raw = await this.client.fixedIncome.getSpreads()
         const payload = (raw?.data && typeof raw.data === 'object' ? raw.data : raw) as any
-        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.items) ? payload.items : []
+        const rows = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
         const valueOf = (short: string, long: string) => {
           const normalized = `${short}${long}`.toLowerCase()
-          const row = rows.find((item: any) => String(item?.spread ?? item?.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalized))
+          const row = rows.find((item: any) =>
+            String(item?.spread ?? item?.name ?? '')
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, '')
+              .includes(normalized)
+          )
           return row?.value !== undefined ? Number(row.value) : undefined
         }
         const spread2y10y = payload?.spread2y10y ?? payload?.spread_2y_10y ?? valueOf('2y', '10y')
@@ -1567,8 +1762,18 @@ export class PiaProvider {
         const raw = await this.client.geosignals.getMap()
         const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { layers?: unknown[]; items?: unknown[]; data?: unknown }
-        const layers = Array.isArray(payloadRecord.layers) ? payloadRecord.layers : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
+        const payloadRecord = payload as typeof raw & {
+          layers?: unknown[]
+          items?: unknown[]
+          data?: unknown
+        }
+        const layers = Array.isArray(payloadRecord.layers)
+          ? payloadRecord.layers
+          : Array.isArray(payloadRecord.items)
+            ? payloadRecord.items
+            : Array.isArray(payloadRecord.data)
+              ? payloadRecord.data
+              : []
         if (layers.length > 0) {
           return layers.map((l) => {
             const numScore = Number(l.risk_level ?? l.max_severity ?? l.avg_severity ?? 0)
@@ -1606,8 +1811,18 @@ export class PiaProvider {
         const raw = await this.client.geosignals.getAssetImpacts()
         const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { assets?: unknown[]; items?: unknown[]; data?: unknown }
-        const assets = Array.isArray(payloadRecord.assets) ? payloadRecord.assets : Array.isArray(payloadRecord.items) ? payloadRecord.items : Array.isArray(payloadRecord.data) ? payloadRecord.data : []
+        const payloadRecord = payload as typeof raw & {
+          assets?: unknown[]
+          items?: unknown[]
+          data?: unknown
+        }
+        const assets = Array.isArray(payloadRecord.assets)
+          ? payloadRecord.assets
+          : Array.isArray(payloadRecord.items)
+            ? payloadRecord.items
+            : Array.isArray(payloadRecord.data)
+              ? payloadRecord.data
+              : []
         if (assets.length > 0) {
           return assets.map((a) => {
             const rawScore = Number(a.risk_score ?? a.max_severity ?? a.avg_severity ?? 0)
@@ -1621,7 +1836,8 @@ export class PiaProvider {
             return {
               symbol: a.symbol || a.asset || '',
               riskScore,
-              primaryDriver: a.primary_risk_driver || a.category || 'Regional tension / Supply chain',
+              primaryDriver:
+                a.primary_risk_driver || a.category || 'Regional tension / Supply chain',
               supplyDisruptionRisk
             }
           })
@@ -1639,23 +1855,60 @@ export class PiaProvider {
         const raw = await this.client.energy.getDashboard()
         const wrapped = raw as typeof raw & { data?: unknown; items?: unknown[] }
         const payload = wrapped.data && typeof wrapped.data === 'object' ? wrapped.data : raw
-        const payloadRecord = payload as typeof raw & { items?: unknown[]; data?: unknown; crude_oil?: any; natural_gas?: any }
+        const payloadRecord = payload as typeof raw & {
+          items?: unknown[]
+          data?: unknown
+          crude_oil?: any
+          natural_gas?: any
+        }
         const items = Array.isArray(payloadRecord.items)
           ? payloadRecord.items
           : Array.isArray(payloadRecord.data)
             ? payloadRecord.data
             : []
-        const find = (terms: string[]) => items.find((x: any) => terms.some((t) => String(x?.series_id || x?.name || '').toLowerCase().includes(t)))
+        const find = (terms: string[]) =>
+          items.find((x: any) =>
+            terms.some((t) =>
+              String(x?.series_id || x?.name || '')
+                .toLowerCase()
+                .includes(t)
+            )
+          )
         const wti = find(['wti', 'usoil'])
         const brent = find(['brent', 'ukoil'])
         const gas = find(['henry', 'natural gas'])
         const prices = await this.client.market.getPrices()
         const marketItems = Array.isArray(prices?.items) ? prices.items : []
-        const marketPrice = (symbols: string[]) => marketItems.find((item: any) => symbols.includes(String(item.symbol).toUpperCase()))?.price
-        const wtiPrice = payloadRecord.crude_oil?.wti_price ?? wti?.latest_value ?? marketPrice(['USOIL', 'WTI'])
-        const brentPrice = payloadRecord.crude_oil?.brent_price ?? brent?.latest_value ?? marketPrice(['UKOIL', 'BRENT'])
+        const marketPrice = (symbols: string[]) =>
+          marketItems.find((item: any) => symbols.includes(String(item.symbol).toUpperCase()))
+            ?.price
+        const wtiPrice =
+          payloadRecord.crude_oil?.wti_price ?? wti?.latest_value ?? marketPrice(['USOIL', 'WTI'])
+        const brentPrice =
+          payloadRecord.crude_oil?.brent_price ??
+          brent?.latest_value ??
+          marketPrice(['UKOIL', 'BRENT'])
         const storage = payloadRecord.natural_gas?.storage_bcf ?? gas?.latest_value
-        const data = { ...payloadRecord, crude_oil: { ...payloadRecord.crude_oil, wti_price: wtiPrice, brent_price: brentPrice, spread: payloadRecord.crude_oil?.spread ?? (wtiPrice !== undefined && brentPrice !== undefined ? wtiPrice - brentPrice : undefined) }, natural_gas: { ...payloadRecord.natural_gas, henry_hub_price: payloadRecord.natural_gas?.henry_hub_price ?? marketPrice(['NATGAS', 'NGAS', 'HENRYHUB']), storage_bcf: storage } }
+        const data = {
+          ...payloadRecord,
+          crude_oil: {
+            ...payloadRecord.crude_oil,
+            wti_price: wtiPrice,
+            brent_price: brentPrice,
+            spread:
+              payloadRecord.crude_oil?.spread ??
+              (wtiPrice !== undefined && brentPrice !== undefined
+                ? wtiPrice - brentPrice
+                : undefined)
+          },
+          natural_gas: {
+            ...payloadRecord.natural_gas,
+            henry_hub_price:
+              payloadRecord.natural_gas?.henry_hub_price ??
+              marketPrice(['NATGAS', 'NGAS', 'HENRYHUB']),
+            storage_bcf: storage
+          }
+        }
         if (data) {
           return {
             wtiPrice: data.crude_oil?.wti_price,
@@ -1704,7 +1957,11 @@ export class PiaProvider {
         return items.map((i) => {
           const rawForm = i.form_type
           const formType: SecFilingItemData['formType'] =
-            rawForm === '10-K' || rawForm === '10-Q' || rawForm === '8-K' || rawForm === '4' || rawForm === '13F'
+            rawForm === '10-K' ||
+            rawForm === '10-Q' ||
+            rawForm === '8-K' ||
+            rawForm === '4' ||
+            rawForm === '13F'
               ? rawForm
               : 'OTHER'
           const companyName = i.company_name || i.raw_json?.companyName || i.title || i.ticker || ''

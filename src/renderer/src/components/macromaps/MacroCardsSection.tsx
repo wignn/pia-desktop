@@ -107,7 +107,8 @@ export const MacroCardsSection: React.FC<MacroCardsSectionProps> = ({
   onScrollToTop,
   onSelectSymbol
 }) => {
-  const { prices, symbols } = useMarketStore()
+  const prices = useMarketStore((state) => state.prices)
+  const symbols = useMarketStore((state) => state.symbols)
   const [benchmarkCandles, setBenchmarkCandles] = useState<Record<string, CandleBar[]>>({})
   const [yieldCurve, setYieldCurve] = useState<YieldCurveResult | null>(null)
   const [yieldSpreads, setYieldSpreads] = useState<YieldSpreadResult | null>(null)

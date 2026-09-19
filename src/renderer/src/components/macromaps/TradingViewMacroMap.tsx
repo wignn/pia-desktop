@@ -420,14 +420,13 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
         macro?.history && typeof macro.history[selectedYear] === 'number'
           ? macro.history[selectedYear]
           : macro?.value
-      const valStr = activeVal !== undefined && !isNaN(activeVal) ? `${activeVal.toFixed(1)}%` : 'Unavailable'
+      const valStr =
+        activeVal !== undefined && !isNaN(activeVal) ? `${activeVal.toFixed(1)}%` : 'Unavailable'
       const flag = macro?.flag || '🌐'
       const periodStr = String(macro?.period || selectedYear || '2025')
       const chg = macro?.change
       const chgStr =
-        chg !== undefined && !isNaN(chg)
-          ? `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%`
-          : ''
+        chg !== undefined && !isNaN(chg) ? `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : ''
 
       setHoverInfo({
         country: macro,
@@ -458,28 +457,34 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
     isDraggingRef.current = false
   }
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault()
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = canvas.getBoundingClientRect()
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
 
-    // Zoom centered around cursor position
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87
-    const nextZoom = Math.min(Math.max(transform.zoom * zoomFactor, 0.4), 10.0)
+      setTransform((prev) => {
+        const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87
+        const nextZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.4), 10.0)
+        const nextX = mouseX - (mouseX - prev.x) * (nextZoom / prev.zoom)
+        const nextY = mouseY - (mouseY - prev.y) * (nextZoom / prev.zoom)
+        return {
+          x: nextX,
+          y: nextY,
+          zoom: nextZoom
+        }
+      })
+    }
 
-    const nextX = mouseX - (mouseX - transform.x) * (nextZoom / transform.zoom)
-    const nextY = mouseY - (mouseY - transform.y) * (nextZoom / transform.zoom)
-
-    setTransform({
-      x: nextX,
-      y: nextY,
-      zoom: nextZoom
-    })
-  }
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      canvas.removeEventListener('wheel', onWheel)
+    }
+  }, [])
 
   const handleClick = () => {
     if (hoverInfo?.iso) {
@@ -533,12 +538,11 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
       {/* High-Performance 2D Canvas */}
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block' }}
+        style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         onClick={handleClick}
       />
 
@@ -707,7 +711,15 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
               marginBottom: 4
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700, color: '#ffffff' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontWeight: 700,
+                color: '#ffffff'
+              }}
+            >
               <span style={{ fontSize: 14 }}>{hoverInfo.flag}</span>
               <span>{hoverInfo.name}</span>
             </div>
@@ -735,10 +747,14 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
               marginBottom: 3
             }}
           >
-            <span style={{ color: '#787b86', textTransform: 'uppercase', fontSize: 9, fontWeight: 600 }}>
+            <span
+              style={{ color: '#787b86', textTransform: 'uppercase', fontSize: 9, fontWeight: 600 }}
+            >
               {selectedMetric.replace('_', ' ')}:
             </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#2962ff' }}>{hoverInfo.valStr}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#2962ff' }}>
+              {hoverInfo.valStr}
+            </span>
           </div>
 
           <div
@@ -755,7 +771,9 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           >
             <span>Period: {hoverInfo.periodStr}</span>
             {hoverInfo.chgStr ? (
-              <span style={{ color: hoverInfo.chgPositive ? '#089981' : '#f23645', fontWeight: 600 }}>
+              <span
+                style={{ color: hoverInfo.chgPositive ? '#089981' : '#f23645', fontWeight: 600 }}
+              >
                 1Y: {hoverInfo.chgStr}
               </span>
             ) : null}

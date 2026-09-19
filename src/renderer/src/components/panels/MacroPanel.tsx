@@ -9,7 +9,7 @@ import type {
 } from '@shared/types'
 
 export const MacroPanel: React.FC = () => {
-  const { symbol } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
   const [fearGreed, setFearGreed] = useState<FearGreedResult | null>(null)
   const [fgHistory, setFgHistory] = useState<FearGreedHistoryItem[]>([])
   const [cot, setCot] = useState<CotReportResult | null>(null)

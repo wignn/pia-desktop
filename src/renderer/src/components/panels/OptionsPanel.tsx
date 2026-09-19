@@ -5,8 +5,10 @@ import type { OptionChainData, OptionGexData, OptionSummaryData } from '@shared/
 import { pairOptionContractsByStrike, resolveValidExpiration } from '../../utils/options-helpers'
 
 export const OptionsPanel: React.FC = () => {
-  const { symbol, symbols } = useMarketStore()
-  const symInfo = symbol ? symbols.find((item) => item.symbol === symbol) : undefined
+  const symbol = useMarketStore((state) => state.symbol)
+  const symInfo = useMarketStore((state) =>
+    state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
+  )
   const [chain, setChain] = useState<OptionChainData | null>(null)
   const [gex, setGex] = useState<OptionGexData | null>(null)
   const [summary, setSummary] = useState<OptionSummaryData | null>(null)
@@ -20,7 +22,9 @@ export const OptionsPanel: React.FC = () => {
       try {
         if (showLoading) setIsLoading(true)
         const [cData, gData, sData] = await Promise.all([
-          symInfo?.capabilities.options ? window.api.options.getChain(symbol) : Promise.resolve(null),
+          symInfo?.capabilities.options
+            ? window.api.options.getChain(symbol)
+            : Promise.resolve(null),
           symInfo?.capabilities.gex ? window.api.options.getGex(symbol) : Promise.resolve(null),
           window.api.options.getSummary()
         ])

@@ -11,6 +11,7 @@ import icon from '../../resources/icon.png?asset'
 import { CredentialManager } from './services/credentials'
 import { DatabaseService } from './services/database'
 import { PiaProvider } from './services/pia-provider'
+import { AppUpdaterService } from './services/auto-updater'
 import { registerIpcHandlers } from './ipc/handlers'
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,7 @@ let mainWindow: BrowserWindow | null = null
 let dbService: DatabaseService | null = null
 let piaProvider: PiaProvider | null = null
 let credManager: CredentialManager | null = null
+let updaterService: AppUpdaterService | null = null
 
 function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -58,13 +60,12 @@ function createWindow(): void {
     autoHideMenuBar: true,
     backgroundColor: '#0f0f0f',
     title: 'PIA Terminal',
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false,
-      webviewTag: true
+      nodeIntegration: false
     }
   })
 
@@ -133,11 +134,13 @@ if (!gotTheLock) {
     await dbService.initialize()
 
     piaProvider = new PiaProvider(credManager, getMainWindow)
+    updaterService = new AppUpdaterService(getMainWindow)
 
     // Register strictly typed IPC handlers
-    registerIpcHandlers(getMainWindow, credManager, dbService, piaProvider)
+    registerIpcHandlers(getMainWindow, credManager, dbService, piaProvider, updaterService)
 
     createWindow()
+    updaterService.startStartupCheck(10000)
 
     app.on('activate', function () {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

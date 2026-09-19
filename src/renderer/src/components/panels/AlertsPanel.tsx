@@ -5,7 +5,9 @@ import { THEME_TOKENS } from '../../theme/tokens'
 
 export const AlertsPanel: React.FC = () => {
   const { alerts, loadAlerts, createAlert, deleteAlert, isLoading } = useAlertsStore()
-  const { symbol, prices } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const prices = useMarketStore((state) => state.prices)
+  const currentPrice = symbol ? prices[symbol]?.price : undefined
 
   const [isCreating, setIsCreating] = useState(false)
   const [alertSymbol, setAlertSymbol] = useState(symbol ?? '')
@@ -20,7 +22,6 @@ export const AlertsPanel: React.FC = () => {
 
   // Pre-fill target price when opening creation form or changing symbol
   const handleOpenCreate = (): void => {
-    const currentPrice = symbol ? prices[symbol]?.price : undefined
     setAlertSymbol(symbol ?? '')
     setTargetPrice(currentPrice ? currentPrice.toString() : '')
     setFormError(null)

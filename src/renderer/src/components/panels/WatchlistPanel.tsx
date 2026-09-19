@@ -29,7 +29,10 @@ export const WatchlistPanel: React.FC = () => {
     addSymbolToActiveList,
     removeSymbolFromActiveList
   } = useWatchlistStore()
-  const { symbol: currentSymbol, setSymbol, symbols: marketSymbols, prices } = useMarketStore()
+  const currentSymbol = useMarketStore((state) => state.symbol)
+  const setSymbol = useMarketStore((state) => state.setSymbol)
+  const marketSymbols = useMarketStore((state) => state.symbols)
+  const prices = useMarketStore((state) => state.prices)
 
   const [activeCategory, setActiveCategory] = useState<WatchlistCategoryFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')

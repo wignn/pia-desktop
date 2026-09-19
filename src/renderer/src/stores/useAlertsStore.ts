@@ -35,11 +35,12 @@ function playAlertSound(): void {
   }
 }
 
+const previousPrices: Record<string, number> = {}
+
 interface AlertsState {
   alerts: PriceAlert[]
   isLoading: boolean
   lastTriggeredAlert: PriceAlert | null
-  previousPrices: Record<string, number>
 
   loadAlerts: () => Promise<void>
   createAlert: (params: {
@@ -57,7 +58,6 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
   alerts: [],
   isLoading: false,
   lastTriggeredAlert: null,
-  previousPrices: {},
 
   loadAlerts: async () => {
     set({ isLoading: true })
@@ -116,18 +116,11 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
   dismissBanner: () => set({ lastTriggeredAlert: null }),
 
   checkPriceAlerts: (quote: PriceQuote) => {
-    const { alerts, previousPrices } = get()
+    const { alerts } = get()
     const currentPrice = quote.price
-    const prevPrice = previousPrices[quote.symbol] ?? currentPrice
     const symbol = quote.symbol
-
-    // Update previous price record
-    set((state) => ({
-      previousPrices: {
-        ...state.previousPrices,
-        [symbol]: currentPrice
-      }
-    }))
+    const prevPrice = previousPrices[symbol] ?? currentPrice
+    previousPrices[symbol] = currentPrice
 
     const pendingAlerts = alerts.filter((a) => !a.triggered && a.symbol === symbol)
     if (pendingAlerts.length === 0) return

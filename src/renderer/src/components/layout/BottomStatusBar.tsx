@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
 export const BottomStatusBar: React.FC = () => {
-  const { connectionState, symbol, timeframe, isLoadingCandles } = useMarketStore()
+  const connectionState = useMarketStore((state) => state.connectionState)
+  const symbol = useMarketStore((state) => state.symbol)
+  const timeframe = useMarketStore((state) => state.timeframe)
+  const isLoadingCandles = useMarketStore((state) => state.isLoadingCandles)
+  const updaterStatus = useUpdaterStore((state) => state.status)
+  const installUpdate = useUpdaterStore((state) => state.installUpdate)
   const [utcTime, setUtcTime] = useState('')
 
   useEffect(() => {
@@ -114,6 +120,58 @@ export const BottomStatusBar: React.FC = () => {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      {/* Auto-Updater Status Pill */}
+      {updaterStatus.state === 'downloading' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginRight: 16,
+            color: THEME_TOKENS.colors.accent,
+            fontSize: 10,
+            fontWeight: 600
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: THEME_TOKENS.colors.accent,
+              boxShadow: `0 0 6px ${THEME_TOKENS.colors.accent}`
+            }}
+          />
+          Updating {updaterStatus.progressPercent ?? 0}%
+        </div>
+      )}
+
+      {updaterStatus.state === 'downloaded' && (
+        <button
+          type="button"
+          onClick={() => installUpdate()}
+          title="Click to restart and install update"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginRight: 16,
+            padding: '2px 8px',
+            backgroundColor: THEME_TOKENS.colors.bullish,
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: 4,
+            fontSize: 10,
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 0 6px rgba(14, 203, 129, 0.4)'
+          }}
+        >
+          <span>Update Ready [Restart]</span>
+        </button>
+      )}
 
       {/* Bar Engine */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 16 }}>

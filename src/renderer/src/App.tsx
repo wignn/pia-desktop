@@ -1,8 +1,5 @@
-import React, { useEffect } from 'react'
+import React, { Suspense, lazy, useEffect } from 'react'
 import { TabBar } from './components/layout/TabBar'
-import { SuperchartsHub } from './components/hub/SuperchartsHub'
-import { MacroMapsView } from './components/macromaps/MacroMapsView'
-import { ControlPanelView } from './components/controlpanel/ControlPanelView'
 import { TopToolbar } from './components/layout/TopToolbar'
 import { LeftDrawingToolbar } from './components/layout/LeftDrawingToolbar'
 import { RightIconRail } from './components/layout/RightIconRail'
@@ -35,28 +32,64 @@ import { useChartStore } from './stores/useChartStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useAlertsStore } from './stores/useAlertsStore'
 import { useTabStore } from './stores/useTabStore'
+import { useUpdaterStore } from './stores/useUpdaterStore'
 import { THEME_TOKENS } from './theme/tokens'
 
+const SuperchartsHub = lazy(() =>
+  import('./components/hub/SuperchartsHub').then((module) => ({ default: module.SuperchartsHub }))
+)
+const MacroMapsView = lazy(() =>
+  import('./components/macromaps/MacroMapsView').then((module) => ({
+    default: module.MacroMapsView
+  }))
+)
+const ControlPanelView = lazy(() =>
+  import('./components/controlpanel/ControlPanelView').then((module) => ({
+    default: module.ControlPanelView
+  }))
+)
+
+const featureFallback = (
+  <div
+    style={{
+      display: 'grid',
+      placeItems: 'center',
+      flex: 1,
+      color: THEME_TOKENS.colors.textSecondary
+    }}
+  >
+    Loading workspace…
+  </div>
+)
+
 export function App(): React.JSX.Element {
-  const { fetchSymbols, subscribeToMarketEvents } = useMarketStore()
-  const { tabs, activeTabId } = useTabStore()
-  const activeTabItem = tabs.find((t) => t.id === activeTabId) || tabs[0]
+  const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
+  const subscribeToMarketEvents = useMarketStore((state) => state.subscribeToMarketEvents)
+  const tabs = useTabStore((state) => state.tabs)
+  const activeTabId = useTabStore((state) => state.activeTabId)
+  const activeTabItem = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
   const isHubActive = activeTabItem?.type === 'hub'
   const isMacroMapsActive = activeTabItem?.type === 'macromaps'
   const isControlPanelActive = activeTabItem?.type === 'controlpanel'
-  const {
-    activeTab,
-    isRightPanelOpen,
-    setSymbolSearchOpen,
-    setIndicatorModalOpen,
-    setSettingsModalOpen,
-    isSnapshotModalOpen,
-    closeSnapshotModal,
-    snapshotDataUrl
-  } = useWorkspaceStore()
-  const { setActiveTool } = useChartStore()
-  const { loadCredentials } = useSettingsStore()
-  const { lastTriggeredAlert, dismissBanner } = useAlertsStore()
+  const activeTab = useWorkspaceStore((state) => state.activeTab)
+  const isRightPanelOpen = useWorkspaceStore((state) => state.isRightPanelOpen)
+  const setSymbolSearchOpen = useWorkspaceStore((state) => state.setSymbolSearchOpen)
+  const setIndicatorModalOpen = useWorkspaceStore((state) => state.setIndicatorModalOpen)
+  const setSettingsModalOpen = useWorkspaceStore((state) => state.setSettingsModalOpen)
+  const isSnapshotModalOpen = useWorkspaceStore((state) => state.isSnapshotModalOpen)
+  const closeSnapshotModal = useWorkspaceStore((state) => state.closeSnapshotModal)
+  const snapshotDataUrl = useWorkspaceStore((state) => state.snapshotDataUrl)
+  const setActiveTool = useChartStore((state) => state.setActiveTool)
+  const loadCredentials = useSettingsStore((state) => state.loadCredentials)
+  const lastTriggeredAlert = useAlertsStore((state) => state.lastTriggeredAlert)
+  const dismissBanner = useAlertsStore((state) => state.dismissBanner)
+  const initUpdaterListener = useUpdaterStore((state) => state.initUpdaterListener)
+
+  // Initialize background update listener
+  useEffect(() => {
+    const unsub = initUpdaterListener()
+    return unsub
+  }, [initUpdaterListener])
 
   // Auto-dismiss triggered alert notification banner after 6 seconds
   useEffect(() => {
@@ -128,11 +161,17 @@ export function App(): React.JSX.Element {
       <TabBar />
 
       {isHubActive ? (
-        <SuperchartsHub />
+        <Suspense fallback={featureFallback}>
+          <SuperchartsHub />
+        </Suspense>
       ) : isMacroMapsActive ? (
-        <MacroMapsView />
+        <Suspense fallback={featureFallback}>
+          <MacroMapsView />
+        </Suspense>
       ) : isControlPanelActive ? (
-        <ControlPanelView />
+        <Suspense fallback={featureFallback}>
+          <ControlPanelView />
+        </Suspense>
       ) : (
         <>
           {/* Top TradingView Toolbar */}

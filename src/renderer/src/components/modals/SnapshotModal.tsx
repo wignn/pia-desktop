@@ -9,7 +9,8 @@ interface SnapshotModalProps {
 }
 
 export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, dataUrl }) => {
-  const { symbol, timeframe } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const timeframe = useMarketStore((state) => state.timeframe)
   const [copyStatus, setCopyStatus] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState<boolean>(false)
   const [cloudUrl, setCloudUrl] = useState<string | null>(null)
@@ -75,7 +76,9 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
   }
 
   const handleTweet = () => {
-    const text = encodeURIComponent(`Trading analysis on $${symbol || 'MARKET'} (${timeframe}) via @PIATerminal\n\n`)
+    const text = encodeURIComponent(
+      `Trading analysis on $${symbol || 'MARKET'} (${timeframe}) via @PIATerminal\n\n`
+    )
     const url = encodeURIComponent(cloudUrl || 'https://terminal.wign.dev')
     window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank')
   }
@@ -211,7 +214,14 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
             className="tv-btn"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
@@ -245,7 +255,14 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
             className="tv-btn"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
@@ -278,7 +295,14 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
             className="tv-btn"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
@@ -289,7 +313,9 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
                 </div>
               </div>
             </div>
-            <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>Clipboard</span>
+            <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+              Clipboard
+            </span>
           </button>
 
           {/* 4. Tweet / Share on X */}

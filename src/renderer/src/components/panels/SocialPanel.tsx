@@ -4,7 +4,8 @@ import { THEME_TOKENS } from '../../theme/tokens'
 import type { SocialPostItemData } from '@shared/types'
 
 export const SocialPanel: React.FC = () => {
-  const { symbol, setSymbol } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const setSymbol = useMarketStore((state) => state.setSymbol)
   const [posts, setPosts] = useState<SocialPostItemData[]>([])
   const [filterBySymbol, setFilterBySymbol] = useState<boolean>(false)
   const [selectedSentiment, setSelectedSentiment] = useState<'all' | 'bullish' | 'bearish'>('all')

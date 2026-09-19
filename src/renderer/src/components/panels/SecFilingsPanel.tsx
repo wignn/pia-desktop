@@ -4,7 +4,8 @@ import { THEME_TOKENS } from '../../theme/tokens'
 import type { SecFilingItemData } from '@shared/types'
 
 export const SecFilingsPanel: React.FC = () => {
-  const { symbol, setSymbol } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const setSymbol = useMarketStore((state) => state.setSymbol)
   const [filings, setFilings] = useState<SecFilingItemData[]>([])
   const [selectedForm, setSelectedForm] = useState<string>('ALL')
   const [filterBySymbol, setFilterBySymbol] = useState<boolean>(false)

@@ -13,7 +13,7 @@ export const TabBar: React.FC = () => {
     openMacroMapsInNewTab,
     openControlPanelInNewTab
   } = useTabStore()
-  const { prices } = useMarketStore()
+  const prices = useMarketStore((state) => state.prices)
 
   const formatPrice = (p?: number): string => {
     if (p === undefined || p === null) return ''

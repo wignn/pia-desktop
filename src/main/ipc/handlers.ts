@@ -46,13 +46,15 @@ import {
 import type { CredentialManager } from '../services/credentials'
 import type { DatabaseService } from '../services/database'
 import type { PiaProvider } from '../services/pia-provider'
+import type { AppUpdaterService } from '../services/auto-updater'
 import type { ChartLayoutData } from '@shared/types'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   credManager: CredentialManager,
   dbService: DatabaseService,
-  piaProvider: PiaProvider
+  piaProvider: PiaProvider,
+  updaterService: AppUpdaterService
 ): void {
   // Security helper to verify sender frame origin
   const verifySender = (event: Electron.IpcMainInvokeEvent): boolean => {
@@ -518,5 +520,22 @@ export function registerIpcHandlers(
     const { url } = OpenExternalLinkSchema.parse(rawInput)
     await shell.openExternal(url)
     return true
+  })
+
+  // --- Auto-Updater Handlers ---
+
+  ipcMain.handle(IPC_CHANNELS.UPDATER_CHECK, async (event) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    return await updaterService.checkForUpdates()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.UPDATER_GET_STATUS, (event) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    return updaterService.getStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.UPDATER_INSTALL, async (event) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    return await updaterService.installUpdate()
   })
 }

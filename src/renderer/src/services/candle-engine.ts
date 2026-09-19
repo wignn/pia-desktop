@@ -22,6 +22,7 @@ export class CandleEngine {
   private listeners = new Set<CandleEngineListener>()
   private inFlightKey = ''
   private inFlightPromise: Promise<KLineData[]> | null = null
+  private lastLoadError: unknown = null
 
   // Replay mode state
   private isReplayMode = false
@@ -56,6 +57,10 @@ export class CandleEngine {
     return [...this.activeBars]
   }
 
+  public getLastLoadError(): unknown {
+    return this.lastLoadError
+  }
+
   /**
    * Switch active symbol and timeframe, incrementing generation ID to discard
    * in-flight requests from prior view states.
@@ -77,6 +82,7 @@ export class CandleEngine {
       this.currentSymbol = symbol
       this.currentTimeframe = timeframe
       this.isLoading = true
+      this.lastLoadError = null
       this.tickBuffer = []
       this.activeBars = []
       this.isReplayMode = false
@@ -111,6 +117,7 @@ export class CandleEngine {
 
       if (normalizedBars.length === 0) {
         this.isLoading = false
+        this.lastLoadError = lastError ?? null
         if (lastError) {
           console.error(
             `[CandleEngine] Failed to load candles for ${symbol} [${timeframe}]:`,
@@ -125,6 +132,7 @@ export class CandleEngine {
       }
 
       this.activeBars = normalizedBars
+      this.lastLoadError = null
 
       // Reconcile buffered ticks only after a valid historical series exists.
       for (const tick of this.tickBuffer) {
@@ -448,5 +456,21 @@ export class CandleEngine {
   }
 }
 
-// Export singleton instance for the terminal application
+const candleEngines = new Set<CandleEngine>()
+
+export function registerCandleEngine(engine: CandleEngine): () => void {
+  candleEngines.add(engine)
+  return () => {
+    candleEngines.delete(engine)
+  }
+}
+
+export function dispatchCandleTick(quote: PriceQuote): void {
+  for (const engine of candleEngines) {
+    engine.handleTick(quote)
+  }
+}
+
+// Export singleton instance for the main terminal chart and replay controls.
 export const candleEngine = new CandleEngine()
+registerCandleEngine(candleEngine)

@@ -10,10 +10,7 @@ export const YieldCurveWidget: React.FC = () => {
     let cancelled = false
     setIsLoading(true)
 
-    Promise.all([
-      window.api.fixedIncome.getYieldCurve(),
-      window.api.fixedIncome.getSpreads()
-    ])
+    Promise.all([window.api.fixedIncome.getYieldCurve(), window.api.fixedIncome.getSpreads()])
       .then(([curveRes, spreadsRes]) => {
         if (cancelled) return
         const pts = Array.isArray(curveRes) ? curveRes : (curveRes as any)?.points || []
@@ -44,24 +41,77 @@ export const YieldCurveWidget: React.FC = () => {
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#131722', padding: '10px 14px', overflowY: 'auto' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#131722',
+        padding: '10px 14px',
+        overflowY: 'auto'
+      }}
+    >
       {/* Header Stat: 2s10s Spread */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 8, borderBottom: '1px solid #2a2e39', marginBottom: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingBottom: 8,
+          borderBottom: '1px solid #2a2e39',
+          marginBottom: 10
+        }}
+      >
         <div>
-          <div style={{ fontSize: 10, color: '#787b86', textTransform: 'uppercase', fontWeight: 600 }}>2Y-10Y Benchmark Spread</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: spread2s10s !== null && spread2s10s >= 0 ? '#089981' : '#f23645' }}>
-            {spread2s10s !== null ? `${spread2s10s >= 0 ? '+' : ''}${spread2s10s.toFixed(2)} bps` : '-- bps'}
+          <div
+            style={{ fontSize: 10, color: '#787b86', textTransform: 'uppercase', fontWeight: 600 }}
+          >
+            2Y-10Y Benchmark Spread
+          </div>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              color: spread2s10s !== null && spread2s10s >= 0 ? '#089981' : '#f23645'
+            }}
+          >
+            {spread2s10s !== null
+              ? `${spread2s10s >= 0 ? '+' : ''}${spread2s10s.toFixed(2)} bps`
+              : '-- bps'}
           </div>
         </div>
-        <div style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, backgroundColor: spread2s10s !== null && spread2s10s < 0 ? 'rgba(242, 54, 69, 0.2)' : 'rgba(8, 153, 129, 0.2)', color: spread2s10s !== null && spread2s10s < 0 ? '#f23645' : '#089981', fontWeight: 700 }}>
+        <div
+          style={{
+            fontSize: 10,
+            padding: '2px 6px',
+            borderRadius: 3,
+            backgroundColor:
+              spread2s10s !== null && spread2s10s < 0
+                ? 'rgba(242, 54, 69, 0.2)'
+                : 'rgba(8, 153, 129, 0.2)',
+            color: spread2s10s !== null && spread2s10s < 0 ? '#f23645' : '#089981',
+            fontWeight: 700
+          }}
+        >
           {spread2s10s !== null && spread2s10s < 0 ? 'INVERTED CURVE' : 'NORMAL SLOPE'}
         </div>
       </div>
 
-      {isLoading && <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>Loading treasury yields...</div>}
+      {isLoading && (
+        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+          Loading treasury yields...
+        </div>
+      )}
 
       {/* Tenor Rates Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+          gap: 6
+        }}
+      >
         {sortedPoints.map((pt) => {
           const chg = pt.previousYield !== undefined ? (pt.yield - pt.previousYield) * 100 : 0
           const isPos = chg >= 0
@@ -79,9 +129,12 @@ export const YieldCurveWidget: React.FC = () => {
               }}
             >
               <span style={{ fontSize: 10, color: '#787b86', fontWeight: 600 }}>{pt.tenor}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{pt.yield.toFixed(2)}%</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>
+                {pt.yield.toFixed(2)}%
+              </span>
               <span style={{ fontSize: 9, color: isPos ? '#089981' : '#f23645' }}>
-                {isPos ? '+' : ''}{chg.toFixed(1)} bp
+                {isPos ? '+' : ''}
+                {chg.toFixed(1)} bp
               </span>
             </div>
           )

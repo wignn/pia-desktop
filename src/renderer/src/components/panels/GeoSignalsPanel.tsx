@@ -4,7 +4,7 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import type { GeoSignalEventItem, GeoSignalsMapRegion, GeoAssetImpactItem } from '@shared/types'
 
 export const GeoSignalsPanel: React.FC = () => {
-  const { setSymbol } = useMarketStore()
+  const setSymbol = useMarketStore((state) => state.setSymbol)
   const [events, setEvents] = useState<GeoSignalEventItem[]>([])
   const [regions, setRegions] = useState<GeoSignalsMapRegion[]>([])
   const [impacts, setImpacts] = useState<GeoAssetImpactItem[]>([])

@@ -22,7 +22,8 @@ export function resolveOptionsUnderlying(symbol: string): string {
 }
 export function capabilitiesForSymbol(symbol: string, category: AssetCategory): MarketCapabilities {
   const clean = symbol.toUpperCase()
-  const optionsUnderlying = clean === 'XAUUSD' || clean === 'GOLD' || clean === 'XAGUSD' || clean === 'SILVER'
+  const optionsUnderlying =
+    clean === 'XAUUSD' || clean === 'GOLD' || clean === 'XAGUSD' || clean === 'SILVER'
   return {
     ...DEFAULT_MARKET_CAPABILITIES,
     orderBook: true,

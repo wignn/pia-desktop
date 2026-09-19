@@ -16,14 +16,26 @@ function isUnsupportedOrderBookError(error: unknown): boolean {
 }
 
 export const OrderBookPanel: React.FC = () => {
-  const { symbol, prices, symbols } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const currentPrice = useMarketStore((state) =>
+    state.symbol ? state.prices[state.symbol]?.price : undefined
+  )
+  const symInfo = useMarketStore((state) =>
+    state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
+  )
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true)
   const [unsupportedSymbol, setUnsupportedSymbol] = useState<string | null>(null)
+  const [prevSymbol, setPrevSymbol] = useState<string | null>(symbol)
 
-  const currentPrice = symbol ? prices[symbol]?.price : undefined
-  const symInfo = symbol ? symbols.find((s) => s.symbol === symbol) : undefined
+  if (symbol !== prevSymbol) {
+    setPrevSymbol(symbol)
+    setUnsupportedSymbol(null)
+    setOrderBook(null)
+    setIsLoading(Boolean(symbol && symInfo?.capabilities.orderBook))
+  }
+
   const precision = getSymbolPrecision(symbol || 'XAUUSD', symInfo?.category, currentPrice)
 
   const loadBook = useCallback(
@@ -50,10 +62,7 @@ export const OrderBookPanel: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false
-    setUnsupportedSymbol(null)
-    setOrderBook(null)
     if (!symbol || !symInfo?.capabilities.orderBook) {
-      setIsLoading(false)
       return () => {
         cancelled = true
       }
@@ -81,16 +90,22 @@ export const OrderBookPanel: React.FC = () => {
     return () => {
       cancelled = true
     }
-  }, [symbol])
+  }, [symbol, symInfo?.capabilities.orderBook])
 
   useEffect(() => {
-    if (!autoRefresh || !symbol || unsupportedSymbol === symbol || !symInfo?.capabilities.orderBook) {
+    if (
+      !autoRefresh ||
+      !symbol ||
+      unsupportedSymbol === symbol ||
+      !symInfo?.capabilities.orderBook
+    ) {
       return undefined
     }
 
     let inFlight = false
+    let interval: ReturnType<typeof setInterval> | null = null
     const poll = async (): Promise<void> => {
-      if (inFlight) return
+      if (document.hidden || inFlight) return
       inFlight = true
       try {
         const data = await window.api.orderbook.get(symbol)
@@ -108,10 +123,27 @@ export const OrderBookPanel: React.FC = () => {
       }
     }
 
-    const interval = setInterval(() => {
+    const stopPolling = (): void => {
+      if (interval !== null) clearInterval(interval)
+      interval = null
+    }
+    const startPolling = (): void => {
+      stopPolling()
+      if (document.hidden) return
       void poll()
-    }, 2500)
-    return () => clearInterval(interval)
+      interval = setInterval(() => void poll(), 2500)
+    }
+    const handleVisibilityChange = (): void => {
+      if (document.hidden) stopPolling()
+      else startPolling()
+    }
+
+    startPolling()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      stopPolling()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [autoRefresh, symbol, symInfo, unsupportedSymbol])
 
   // Calculate cumulative sizes and max totals for visual depth bars
@@ -152,7 +184,11 @@ export const OrderBookPanel: React.FC = () => {
   }
 
   if (!symbol) {
-    return <div style={{ padding: 24, textAlign: 'center', color: THEME_TOKENS.colors.textSecondary }}>Select a symbol to view order book depth.</div>
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: THEME_TOKENS.colors.textSecondary }}>
+        Select a symbol to view order book depth.
+      </div>
+    )
   }
 
   if (unsupportedSymbol === symbol || !symInfo?.capabilities.orderBook) {

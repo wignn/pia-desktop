@@ -1,95 +1,205 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { dispose, init, type Chart, type KLineData } from 'klinecharts'
+import { TIMEFRAMES } from '@shared/types'
+import type { Timeframe } from '@shared/types'
+import { getSymbolPrecision } from '@shared/market-utils'
 import { useMarketStore } from '../../../stores/useMarketStore'
-import type { CandleBar } from '@shared/types'
+import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
+import { CandleEngine, registerCandleEngine } from '../../../services/candle-engine'
+import { timeframeToPeriod } from '../../../utils/timeframe'
+import { resolveControlWidgetTimeframe } from '../../../utils/control-panel-helpers'
+import { getChartThemeStyles } from '../../../theme/tokens'
 
-const POPULAR_SYMBOLS = ['XAUUSD', 'BTCUSDT', 'ETHUSDT', 'NVDA', 'SPY', 'DXY', 'AAPL', 'TSLA']
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '1d']
+const PREFERRED_SYMBOLS = ['XAUUSD', 'BTCUSDT', 'ETHUSDT', 'NVDA', 'SPY', 'DXY', 'AAPL', 'TSLA']
 
-export const MiniChartWidget: React.FC<{
+interface MiniChartWidgetProps {
   symbol?: string
-  timeframe?: string
-  onUpdateConfig?: (cfg: { symbol?: string; timeframe?: string }) => void
-}> = ({ symbol = 'XAUUSD', timeframe = '15m', onUpdateConfig }) => {
-  const [activeSymbol, setActiveSymbol] = useState(symbol)
-  const [activeTf, setActiveTf] = useState(timeframe)
-  const [candles, setCandles] = useState<CandleBar[]>([])
-  const [hoveredBar, setHoveredBar] = useState<CandleBar | null>(null)
+  timeframe?: Timeframe
+  onUpdateConfig?: (config: { symbol?: string; timeframe?: Timeframe }) => void
+}
+
+export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
+  symbol,
+  timeframe = '15m',
+  onUpdateConfig
+}) => {
+  const symbols = useMarketStore((state) => state.symbols)
+  const prices = useMarketStore((state) => state.prices)
+  const theme = useWorkspaceStore((state) => state.theme)
+  const activeTimeframe = resolveControlWidgetTimeframe(timeframe)
+  const [displayBar, setDisplayBar] = useState<KLineData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<Chart | null>(null)
+  const subscriberRef = useRef<((bar: KLineData) => void) | null>(null)
+  const timeframeRef = useRef(activeTimeframe)
+  const [engine] = useState(() => new CandleEngine('', activeTimeframe))
 
-  const { prices } = useMarketStore()
+  const selectableSymbols = useMemo(() => {
+    const preferred = new Map(PREFERRED_SYMBOLS.map((item, index) => [item, index]))
+    return [...symbols]
+      .filter((item) => item.capabilities.candles)
+      .sort((left, right) => {
+        const leftRank = preferred.get(left.symbol) ?? Number.MAX_SAFE_INTEGER
+        const rightRank = preferred.get(right.symbol) ?? Number.MAX_SAFE_INTEGER
+        return leftRank - rightRank || left.symbol.localeCompare(right.symbol)
+      })
+      .slice(0, 12)
+  }, [symbols])
+
+  const requestedSymbol = symbol?.trim().toUpperCase() ?? ''
+  const activeSymbol = symbols.some(
+    (item) => item.symbol === requestedSymbol && item.capabilities.candles
+  )
+    ? requestedSymbol
+    : (selectableSymbols[0]?.symbol ?? '')
+  const activeSymbolInfo = symbols.find((item) => item.symbol === activeSymbol)
   const currentQuote = prices[activeSymbol]
-  const containerRef = useRef<HTMLDivElement | null>(null)
+  const precision = getSymbolPrecision(
+    activeSymbol,
+    activeSymbolInfo?.category,
+    currentQuote?.price ?? displayBar?.close
+  )
 
-  // Fetch candle data
+  useEffect(() => registerCandleEngine(engine), [engine])
+
   useEffect(() => {
-    let cancelled = false
-    setIsLoading(true)
+    if (!activeSymbol || !activeSymbolInfo?.capabilities.candles) return
 
-    window.api.market
-      .getCandles({
-        symbol: activeSymbol,
-        timeframe: activeTf as any,
-        limit: 80
-      })
-      .then((bars) => {
-        if (cancelled) return
-        setCandles(bars || [])
+    void window.api.market.subscribePrice(activeSymbol)
+    return (): void => {
+      void window.api.market.unsubscribePrice(activeSymbol)
+    }
+  }, [activeSymbol, activeSymbolInfo?.capabilities.candles])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const chart = init(container, { styles: getChartThemeStyles(theme) })
+    if (!chart) return
+    chartRef.current = chart
+
+    chart.setDataLoader({
+      getBars: async ({ type, timestamp, symbol: chartSymbol, callback }): Promise<void> => {
+        if (!chartSymbol.ticker) {
+          callback([], false)
+          return
+        }
+
+        if (type === 'forward') {
+          if (!timestamp) {
+            callback([], false)
+            return
+          }
+          const result = await engine.fetchOlderBars(timestamp, 300)
+          callback(result.bars, result.hasMore)
+          return
+        }
+
+        if (type === 'backward') {
+          callback([], false)
+          return
+        }
+
+        setIsLoading(true)
+        setStatusMessage(null)
+        setDisplayBar(null)
+        const bars = await engine.setSymbolAndTimeframe(
+          chartSymbol.ticker,
+          timeframeRef.current,
+          500
+        )
         setIsLoading(false)
-      })
-      .catch(() => {
-        if (!cancelled) setIsLoading(false)
-      })
+        if (bars.length === 0) {
+          setStatusMessage(
+            engine.getLastLoadError() ? 'Failed to load candles' : 'Candle data unavailable'
+          )
+        }
+        callback(bars, bars.length > 0)
+      },
+      subscribeBar: ({ callback }): void => {
+        subscriberRef.current = callback
+      },
+      unsubscribeBar: (): void => {
+        subscriberRef.current = null
+      }
+    })
 
-    return () => {
-      cancelled = true
+    const removeEngineListener = engine.addListener({
+      onHistoryLoaded: (_generationId, bars): void => {
+        setDisplayBar(bars.at(-1) ?? null)
+      },
+      onBarUpdate: (_generationId, bar): void => {
+        setDisplayBar(bar)
+        subscriberRef.current?.(bar)
+      }
+    })
+
+    const resizeObserver = new ResizeObserver((): void => chart.resize())
+    resizeObserver.observe(container)
+
+    return (): void => {
+      removeEngineListener()
+      resizeObserver.disconnect()
+      subscriberRef.current = null
+      dispose(container)
+      chartRef.current = null
     }
-  }, [activeSymbol, activeTf])
+  }, [engine])
 
-  const handleSelectSymbol = (sym: string) => {
-    setActiveSymbol(sym)
-    if (onUpdateConfig) onUpdateConfig({ symbol: sym, timeframe: activeTf })
+  useEffect(() => {
+    chartRef.current?.setStyles(getChartThemeStyles(theme))
+  }, [theme])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !activeSymbol || !activeSymbolInfo?.capabilities.candles) return
+
+    timeframeRef.current = activeTimeframe
+    setDisplayBar(null)
+    setStatusMessage(null)
+    chart.setPeriod(timeframeToPeriod(activeTimeframe))
+    chart.setSymbol({
+      ticker: activeSymbol,
+      pricePrecision: precision.pricePrecision,
+      volumePrecision: precision.volumePrecision
+    })
+  }, [
+    activeSymbol,
+    activeTimeframe,
+    activeSymbolInfo?.capabilities.candles,
+    precision.pricePrecision,
+    precision.volumePrecision
+  ])
+
+  const handleSelectSymbol = (nextSymbol: string): void => {
+    if (nextSymbol === activeSymbol) return
+    onUpdateConfig?.({ symbol: nextSymbol, timeframe: activeTimeframe })
   }
 
-  const handleSelectTf = (tf: string) => {
-    setActiveTf(tf)
-    if (onUpdateConfig) onUpdateConfig({ symbol: activeSymbol, timeframe: tf })
+  const handleSelectTimeframe = (nextTimeframe: Timeframe): void => {
+    if (nextTimeframe === activeTimeframe) return
+    timeframeRef.current = nextTimeframe
+    onUpdateConfig?.({ symbol: activeSymbol, timeframe: nextTimeframe })
   }
 
-  // Calculate high, low, and SVG candle geometry
-  const chartData = useMemo(() => {
-    if (candles.length === 0) return null
-    let minPrice = Infinity
-    let maxPrice = -Infinity
-    let maxVol = 0
+  const formatPrice = (value?: number): string => {
+    if (value === undefined || !Number.isFinite(value)) return '--'
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: precision.pricePrecision,
+      maximumFractionDigits: precision.pricePrecision
+    })
+  }
 
-    for (const b of candles) {
-      if (b.low < minPrice) minPrice = b.low
-      if (b.high > maxPrice) maxPrice = b.high
-      if (b.volume && b.volume > maxVol) maxVol = b.volume
-    }
-
-    const priceRange = maxPrice - minPrice || 1
-    return { minPrice, maxPrice, priceRange, maxVol }
-  }, [candles])
-
-  const latestBar = candles[candles.length - 1]
-  const displayPrice =
-    currentQuote?.price !== undefined
-      ? currentQuote.price
-      : latestBar?.close !== undefined
-        ? latestBar.close
-        : 0
-  const displayChange =
-    currentQuote?.change24hPercent !== undefined
-      ? currentQuote.change24hPercent
-      : latestBar && candles.length > 1
-        ? ((latestBar.close - candles[0].open) / candles[0].open) * 100
-        : 0
-  const isPositive = displayChange >= 0
+  const open = displayBar?.open
+  const close = displayBar?.close ?? currentQuote?.price
+  const change = open !== undefined && close !== undefined ? close - open : 0
+  const changePercent = open !== undefined && open > 0 ? (change / open) * 100 : 0
 
   return (
     <div
-      ref={containerRef}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -100,190 +210,125 @@ export const MiniChartWidget: React.FC<{
         overflow: 'hidden'
       }}
     >
-      {/* Top Header: Symbol Pills & Timeframe */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          gap: 6,
           padding: '6px 10px',
           backgroundColor: '#181d28',
           borderBottom: '1px solid #2a2e39',
-          gap: 6,
           flexWrap: 'wrap',
           flexShrink: 0
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {POPULAR_SYMBOLS.map((sym) => {
-            const isSel = sym === activeSymbol
-            return (
-              <button
-                key={sym}
-                type="button"
-                onClick={() => handleSelectSymbol(sym)}
-                style={{
-                  padding: '1px 6px',
-                  borderRadius: 3,
-                  fontSize: 10,
-                  fontWeight: isSel ? 700 : 500,
-                  border: isSel ? '1px solid #2962ff' : '1px solid transparent',
-                  backgroundColor: isSel ? 'rgba(41, 98, 255, 0.2)' : 'transparent',
-                  color: isSel ? '#2962ff' : '#787b86',
-                  cursor: 'pointer'
-                }}
-              >
-                {sym}
-              </button>
-            )
-          })}
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {selectableSymbols.map((item) => (
+            <button
+              key={item.symbol}
+              type="button"
+              onClick={() => handleSelectSymbol(item.symbol)}
+              style={{
+                padding: '1px 6px',
+                borderRadius: 3,
+                fontSize: 10,
+                fontWeight: item.symbol === activeSymbol ? 700 : 500,
+                border:
+                  item.symbol === activeSymbol ? '1px solid #2962ff' : '1px solid transparent',
+                backgroundColor:
+                  item.symbol === activeSymbol ? 'rgba(41, 98, 255, 0.2)' : 'transparent',
+                color: item.symbol === activeSymbol ? '#2962ff' : '#787b86',
+                cursor: 'pointer'
+              }}
+            >
+              {item.symbol}
+            </button>
+          ))}
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto' }}>
-          {TIMEFRAMES.map((tf) => {
-            const isSel = tf === activeTf
-            return (
-              <button
-                key={tf}
-                type="button"
-                onClick={() => handleSelectTf(tf)}
-                style={{
-                  padding: '1px 5px',
-                  borderRadius: 2,
-                  fontSize: 9,
-                  fontWeight: isSel ? 700 : 500,
-                  backgroundColor: isSel ? '#2a2e39' : 'transparent',
-                  color: isSel ? '#ffffff' : '#787b86',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {tf}
-              </button>
-            )
-          })}
+        <div
+          style={{
+            display: 'flex',
+            gap: 3,
+            marginLeft: 'auto',
+            overflowX: 'auto',
+            scrollbarWidth: 'none'
+          }}
+        >
+          {TIMEFRAMES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => handleSelectTimeframe(item)}
+              style={{
+                padding: '1px 5px',
+                borderRadius: 2,
+                fontSize: 9,
+                fontWeight: item === activeTimeframe ? 700 : 500,
+                backgroundColor: item === activeTimeframe ? '#2a2e39' : 'transparent',
+                color: item === activeTimeframe ? '#ffffff' : '#787b86',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {item}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Stats Sub-header */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
-          padding: '6px 12px',
+          alignItems: 'center',
+          gap: 8,
+          padding: '5px 10px',
+          minHeight: 27,
           borderBottom: '1px solid #1e222d',
+          fontSize: 10,
+          flexWrap: 'wrap',
           flexShrink: 0
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-            {displayPrice >= 1000
-              ? displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              : displayPrice.toFixed(displayPrice >= 1 ? 3 : 5)}
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: isPositive ? '#089981' : '#f23645'
-            }}
-          >
-            {isPositive ? '+' : ''}
-            {displayChange.toFixed(2)}%
-          </span>
-        </div>
-
-        {hoveredBar && (
-          <div style={{ fontSize: 10, color: '#787b86', display: 'flex', gap: 8 }}>
-            <span>O: <strong style={{ color: '#d1d4dc' }}>{hoveredBar.open}</strong></span>
-            <span>H: <strong style={{ color: '#d1d4dc' }}>{hoveredBar.high}</strong></span>
-            <span>L: <strong style={{ color: '#d1d4dc' }}>{hoveredBar.low}</strong></span>
-            <span>C: <strong style={{ color: '#d1d4dc' }}>{hoveredBar.close}</strong></span>
-          </div>
-        )}
+        <strong style={{ color: '#ffffff', fontSize: 13 }}>{formatPrice(close)}</strong>
+        <span style={{ color: change >= 0 ? '#089981' : '#f23645', fontWeight: 700 }}>
+          {change >= 0 ? '+' : ''}
+          {changePercent.toFixed(2)}%
+        </span>
+        <span>
+          O <strong>{formatPrice(open)}</strong>
+        </span>
+        <span>
+          H <strong>{formatPrice(displayBar?.high)}</strong>
+        </span>
+        <span>
+          L <strong>{formatPrice(displayBar?.low)}</strong>
+        </span>
+        <span>
+          C <strong>{formatPrice(close)}</strong>
+        </span>
       </div>
 
-      {/* SVG Candlestick Canvas Area */}
-      <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          width: '100%',
-          minHeight: 0,
-          backgroundColor: '#131722',
-          padding: '4px 8px'
-        }}
-      >
-        {isLoading && (
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        {(isLoading || statusMessage || symbols.length === 0) && (
           <div
             style={{
               position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
+              inset: 0,
+              display: 'grid',
+              placeItems: 'center',
+              pointerEvents: 'none',
+              color: statusMessage ? '#f23645' : '#787b86',
               fontSize: 11,
-              color: '#787b86'
+              backgroundColor: statusMessage ? 'rgba(19, 23, 34, 0.78)' : 'transparent'
             }}
           >
-            Loading candles...
+            {symbols.length === 0
+              ? 'Loading symbol catalog...'
+              : isLoading
+                ? 'Loading candles...'
+                : statusMessage}
           </div>
-        )}
-
-        {chartData && candles.length > 0 && (
-          <svg
-            style={{ width: '100%', height: '100%', overflow: 'visible' }}
-            viewBox={`0 0 1000 300`}
-            preserveAspectRatio="none"
-          >
-            {/* Horizontal Grid lines */}
-            <line x1="0" y1="75" x2="1000" y2="75" stroke="#1e222d" strokeWidth="1" strokeDasharray="3 3" />
-            <line x1="0" y1="150" x2="1000" y2="150" stroke="#1e222d" strokeWidth="1" strokeDasharray="3 3" />
-            <line x1="0" y1="225" x2="1000" y2="225" stroke="#1e222d" strokeWidth="1" strokeDasharray="3 3" />
-
-            {candles.map((bar, idx) => {
-              const candleW = 1000 / candles.length
-              const x = idx * candleW + candleW * 0.15
-              const bodyW = Math.max(candleW * 0.7, 1.5)
-              const centerX = x + bodyW / 2
-
-              const chartH = 240 // upper 80% for price, lower 20% for volume
-              const scaleY = (p: number) =>
-                chartH - ((p - chartData.minPrice) / chartData.priceRange) * (chartH - 20) - 10
-
-              const yOpen = scaleY(bar.open)
-              const yClose = scaleY(bar.close)
-              const yHigh = scaleY(bar.high)
-              const yLow = scaleY(bar.low)
-
-              const isUp = bar.close >= bar.open
-              const color = isUp ? '#089981' : '#f23645'
-              const bodyY = Math.min(yOpen, yClose)
-              const bodyH = Math.max(Math.abs(yOpen - yClose), 1.5)
-
-              // Volume bar in lower section
-              const volH = chartData.maxVol > 0 ? ((bar.volume || 0) / chartData.maxVol) * 45 : 0
-              const volY = 295 - volH
-
-              return (
-                <g
-                  key={bar.timestamp}
-                  onMouseEnter={() => setHoveredBar(bar)}
-                  onMouseLeave={() => setHoveredBar(null)}
-                  style={{ cursor: 'crosshair' }}
-                >
-                  {/* Volume Bar */}
-                  <rect x={x} y={volY} width={bodyW} height={volH} fill={color} opacity="0.3" />
-
-                  {/* Wick */}
-                  <line x1={centerX} y1={yHigh} x2={centerX} y2={yLow} stroke={color} strokeWidth="1.2" />
-
-                  {/* Candle Body */}
-                  <rect x={x} y={bodyY} width={bodyW} height={bodyH} fill={color} />
-                </g>
-              )
-            })}
-          </svg>
         )}
       </div>
     </div>

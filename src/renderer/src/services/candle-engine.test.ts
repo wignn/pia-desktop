@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CandleEngine } from './candle-engine'
+import { CandleEngine, dispatchCandleTick, registerCandleEngine } from './candle-engine'
 import type { CandleBar, PriceQuote } from '@shared/types'
 
 const history: CandleBar[] = [
@@ -84,5 +84,31 @@ describe('CandleEngine', () => {
     const engine = new CandleEngine()
     expect(engine.timeframeToMs('30m')).toBe(30 * 60 * 1000)
     expect(engine.timeframeToMs('1w')).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it('dispatches ticks to independent registered engines and cleans them up', async () => {
+    const goldEngine = new CandleEngine()
+    const bitcoinEngine = new CandleEngine()
+    const goldUpdate = vi.fn()
+    const bitcoinUpdate = vi.fn()
+    goldEngine.addListener({ onHistoryLoaded: vi.fn(), onBarUpdate: goldUpdate })
+    bitcoinEngine.addListener({ onHistoryLoaded: vi.fn(), onBarUpdate: bitcoinUpdate })
+
+    await goldEngine.setSymbolAndTimeframe('XAUUSD', '1m')
+    await bitcoinEngine.setSymbolAndTimeframe('BTCUSDT', '30m')
+    const unregisterGold = registerCandleEngine(goldEngine)
+    const unregisterBitcoin = registerCandleEngine(bitcoinEngine)
+    const goldTimestamp = goldEngine.getActiveBars().at(-1)!.timestamp + 1_000
+
+    dispatchCandleTick({ symbol: 'XAUUSD', price: 112, timestamp: goldTimestamp })
+
+    expect(goldUpdate).toHaveBeenCalledOnce()
+    expect(bitcoinUpdate).not.toHaveBeenCalled()
+
+    unregisterGold()
+    dispatchCandleTick({ symbol: 'XAUUSD', price: 113, timestamp: goldTimestamp + 1_000 })
+    expect(goldUpdate).toHaveBeenCalledOnce()
+
+    unregisterBitcoin()
   })
 })

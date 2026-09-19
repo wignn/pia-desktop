@@ -57,9 +57,29 @@ export const EnergyWidget: React.FC = () => {
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#131722', padding: '10px 14px', overflowY: 'auto' }}>
-      {isLoading && <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>Loading energy complex...</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#131722',
+        padding: '10px 14px',
+        overflowY: 'auto'
+      }}
+    >
+      {isLoading && (
+        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+          Loading energy complex...
+        </div>
+      )}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+          gap: 8
+        }}
+      >
         {items.map((item) => {
           const isPos = item.change >= 0
           return (
@@ -77,11 +97,14 @@ export const EnergyWidget: React.FC = () => {
             >
               <span style={{ fontSize: 10, color: '#787b86', fontWeight: 600 }}>{item.name}</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 16, fontWeight: 800, color: '#ffffff' }}>${item.price.toFixed(2)}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#ffffff' }}>
+                  ${item.price.toFixed(2)}
+                </span>
                 <span style={{ fontSize: 9, color: '#787b86' }}>{item.unit}</span>
               </div>
               <span style={{ fontSize: 10, fontWeight: 700, color: isPos ? '#089981' : '#f23645' }}>
-                {isPos ? '▲ +' : '▼ '}{item.change.toFixed(2)}
+                {isPos ? '▲ +' : '▼ '}
+                {item.change.toFixed(2)}
               </span>
             </div>
           )

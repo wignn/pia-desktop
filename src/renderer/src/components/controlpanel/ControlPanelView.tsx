@@ -11,19 +11,73 @@ import { OrderBookWidget } from './widgets/OrderBookWidget'
 import { CalendarWidget } from './widgets/CalendarWidget'
 import { EnergyWidget } from './widgets/EnergyWidget'
 import { useMarketStore } from '../../stores/useMarketStore'
-import { resolveControlWidgetSymbol } from '../../utils/control-panel-helpers'
+import {
+  resolveControlWidgetSymbol,
+  resolveControlWidgetTimeframe
+} from '../../utils/control-panel-helpers'
 
 const STORAGE_KEY = 'pia_control_panel_widgets'
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
-  { id: 'w_live_tv_1', type: 'live_tv', title: 'Live Financial TV Broadcast', colSpan: 6, minHeightPx: 330, config: { channelId: 'bloomberg_live' } },
-  { id: 'w_chart_gold', type: 'mini_chart', title: 'XAUUSD (Spot Gold)', colSpan: 6, minHeightPx: 330, config: { symbol: 'XAUUSD', timeframe: '15m' } },
-  { id: 'w_chart_btc', type: 'mini_chart', title: 'BTCUSDT (Bitcoin)', colSpan: 4, minHeightPx: 290, config: { symbol: 'BTCUSDT', timeframe: '15m' } },
-  { id: 'w_yields', type: 'yield_curve', title: 'US Treasury Yields & 2s10s', colSpan: 4, minHeightPx: 290 },
-  { id: 'w_dxy', type: 'dxy_macro', title: 'DXY Dollar Index & Major FX', colSpan: 4, minHeightPx: 290 },
-  { id: 'w_news', type: 'breaking_news', title: 'Breaking Market Wire', colSpan: 4, minHeightPx: 280 },
-  { id: 'w_social', type: 'social_x', title: 'X / Twitter Sentiment Radar', colSpan: 4, minHeightPx: 280 },
-  { id: 'w_cal', type: 'economic_calendar', title: 'Economic Calendar Events', colSpan: 4, minHeightPx: 280 }
+  {
+    id: 'w_live_tv_1',
+    type: 'live_tv',
+    title: 'Live Financial TV Broadcast',
+    colSpan: 6,
+    minHeightPx: 330,
+    config: { channelId: 'bloomberg_live' }
+  },
+  {
+    id: 'w_chart_gold',
+    type: 'mini_chart',
+    title: 'XAUUSD (Spot Gold)',
+    colSpan: 6,
+    minHeightPx: 330,
+    config: { symbol: 'XAUUSD', timeframe: '15m' }
+  },
+  {
+    id: 'w_chart_btc',
+    type: 'mini_chart',
+    title: 'BTCUSDT (Bitcoin)',
+    colSpan: 4,
+    minHeightPx: 290,
+    config: { symbol: 'BTCUSDT', timeframe: '15m' }
+  },
+  {
+    id: 'w_yields',
+    type: 'yield_curve',
+    title: 'US Treasury Yields & 2s10s',
+    colSpan: 4,
+    minHeightPx: 290
+  },
+  {
+    id: 'w_dxy',
+    type: 'dxy_macro',
+    title: 'DXY Dollar Index & Major FX',
+    colSpan: 4,
+    minHeightPx: 290
+  },
+  {
+    id: 'w_news',
+    type: 'breaking_news',
+    title: 'Breaking Market Wire',
+    colSpan: 4,
+    minHeightPx: 280
+  },
+  {
+    id: 'w_social',
+    type: 'social_x',
+    title: 'X / Twitter Sentiment Radar',
+    colSpan: 4,
+    minHeightPx: 280
+  },
+  {
+    id: 'w_cal',
+    type: 'economic_calendar',
+    title: 'Economic Calendar Events',
+    colSpan: 4,
+    minHeightPx: 280
+  }
 ]
 
 export const ControlPanelView: React.FC = () => {
@@ -33,7 +87,19 @@ export const ControlPanelView: React.FC = () => {
         const saved = localStorage.getItem(STORAGE_KEY)
         if (saved) {
           const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((widget: DashboardWidget) =>
+              widget.type === 'mini_chart'
+                ? {
+                    ...widget,
+                    config: {
+                      ...widget.config,
+                      timeframe: resolveControlWidgetTimeframe(widget.config?.timeframe)
+                    }
+                  }
+                : widget
+            )
+          }
         }
       }
     } catch {
@@ -71,35 +137,38 @@ export const ControlPanelView: React.FC = () => {
   }, [])
 
   // Add new widget from catalog
-  const handleAddWidget = useCallback((type: WidgetType): void => {
-    const meta = WIDGET_CATALOG.find((c) => c.type === type)
-    if (!meta) return
+  const handleAddWidget = useCallback(
+    (type: WidgetType): void => {
+      const meta = WIDGET_CATALOG.find((c) => c.type === type)
+      if (!meta) return
 
-    const validatedSymbol = resolveControlWidgetSymbol(activeSymbol, symbols, 'XAUUSD')
-    const config =
-      type === 'mini_chart'
-        ? { symbol: validatedSymbol, timeframe: activeTimeframe || '15m' }
-        : type === 'order_book'
-          ? { symbol: validatedSymbol }
-          : undefined
-
-    const newWidget: DashboardWidget = {
-      id: `w_${type}_${Date.now()}`,
-      type,
-      title:
+      const validatedSymbol = resolveControlWidgetSymbol(activeSymbol, symbols, 'XAUUSD')
+      const config =
         type === 'mini_chart'
-          ? `${validatedSymbol} Mini Chart`
+          ? { symbol: validatedSymbol, timeframe: activeTimeframe || '15m' }
           : type === 'order_book'
-            ? `${validatedSymbol} Order Book`
-            : meta.title,
-      colSpan: meta.defaultColSpan,
-      minHeightPx: meta.defaultMinHeight,
-      config
-    }
+            ? { symbol: validatedSymbol }
+            : undefined
 
-    setWidgets((prev) => [newWidget, ...prev])
-    setIsCatalogOpen(false)
-  }, [activeSymbol, symbols, activeTimeframe])
+      const newWidget: DashboardWidget = {
+        id: `w_${type}_${Date.now()}`,
+        type,
+        title:
+          type === 'mini_chart'
+            ? `${validatedSymbol} Mini Chart`
+            : type === 'order_book'
+              ? `${validatedSymbol} Order Book`
+              : meta.title,
+        colSpan: meta.defaultColSpan,
+        minHeightPx: meta.defaultMinHeight,
+        config
+      }
+
+      setWidgets((prev) => [newWidget, ...prev])
+      setIsCatalogOpen(false)
+    },
+    [activeSymbol, symbols, activeTimeframe]
+  )
 
   // Change column span width (3 -> 4 -> 6 -> 8 -> 12 -> 3)
   const handleAdjustWidth = useCallback((id: string, delta: number): void => {
@@ -141,22 +210,26 @@ export const ControlPanelView: React.FC = () => {
     setDragOverIndex((prev) => (prev !== index ? index : prev))
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent, index: number): void => {
-    e.preventDefault()
-    setWidgets((prev) => {
-      const fromIndex = draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer.getData('text/plain'), 10)
-      if (isNaN(fromIndex) || fromIndex === index || fromIndex < 0 || fromIndex >= prev.length) {
-        return prev
-      }
-      const updated = [...prev]
-      const [moved] = updated.splice(fromIndex, 1)
-      updated.splice(index, 0, moved)
-      return updated
-    })
+  const handleDrop = useCallback(
+    (e: React.DragEvent, index: number): void => {
+      e.preventDefault()
+      setWidgets((prev) => {
+        const fromIndex =
+          draggedIndex !== null ? draggedIndex : parseInt(e.dataTransfer.getData('text/plain'), 10)
+        if (isNaN(fromIndex) || fromIndex === index || fromIndex < 0 || fromIndex >= prev.length) {
+          return prev
+        }
+        const updated = [...prev]
+        const [moved] = updated.splice(fromIndex, 1)
+        updated.splice(index, 0, moved)
+        return updated
+      })
 
-    setDraggedIndex(null)
-    setDragOverIndex(null)
-  }, [draggedIndex])
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+    },
+    [draggedIndex]
+  )
 
   // Render widget inner body based on type
   const renderWidgetContent = (w: DashboardWidget): React.ReactNode => {
@@ -167,7 +240,9 @@ export const ControlPanelView: React.FC = () => {
             channelId={w.config?.channelId}
             onUpdateChannel={(chId) => {
               setWidgets((prev) =>
-                prev.map((item) => (item.id === w.id ? { ...item, config: { ...item.config, channelId: chId } } : item))
+                prev.map((item) =>
+                  item.id === w.id ? { ...item, config: { ...item.config, channelId: chId } } : item
+                )
               )
             }}
           />
@@ -179,7 +254,9 @@ export const ControlPanelView: React.FC = () => {
             timeframe={w.config?.timeframe}
             onUpdateConfig={(cfg) => {
               setWidgets((prev) =>
-                prev.map((item) => (item.id === w.id ? { ...item, config: { ...item.config, ...cfg } } : item))
+                prev.map((item) =>
+                  item.id === w.id ? { ...item, config: { ...item.config, ...cfg } } : item
+                )
               )
             }}
           />
@@ -235,12 +312,31 @@ export const ControlPanelView: React.FC = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#089981', boxShadow: '0 0 8px #089981' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: '#089981',
+                boxShadow: '0 0 8px #089981'
+              }}
+            />
+            <span
+              style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}
+            >
               CONTROL PANEL & WAR ROOM
             </span>
           </div>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, backgroundColor: '#1e222d', color: '#787b86', border: '1px solid #2a2e39' }}>
+          <span
+            style={{
+              fontSize: 11,
+              padding: '2px 8px',
+              borderRadius: 3,
+              backgroundColor: '#1e222d',
+              color: '#787b86',
+              border: '1px solid #2a2e39'
+            }}
+          >
             {widgets.length} Widgets Active
           </span>
           <span style={{ fontSize: 10, color: '#787b86', display: 'none' }} className="sm-show">
@@ -325,9 +421,7 @@ export const ControlPanelView: React.FC = () => {
                 gridColumn: `span ${Math.min(w.colSpan, 12)}`,
                 minHeight: w.minHeightPx || 280,
                 backgroundColor: '#131722',
-                border: isDragOver
-                  ? '2px dashed #2962ff'
-                  : '1px solid #2a2e39',
+                border: isDragOver ? '2px dashed #2962ff' : '1px solid #2a2e39',
                 borderRadius: 6,
                 overflow: 'hidden',
                 display: 'flex',
@@ -402,10 +496,14 @@ export const ControlPanelView: React.FC = () => {
                     ▶
                   </button>
 
-                  <div style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }} />
+                  <div
+                    style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }}
+                  />
 
                   {/* Width adjust buttons */}
-                  <span style={{ fontSize: 9, color: '#787b86', marginRight: 2 }}>{w.colSpan}/12 col</span>
+                  <span style={{ fontSize: 9, color: '#787b86', marginRight: 2 }}>
+                    {w.colSpan}/12 col
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleAdjustWidth(w.id, -1)}
@@ -447,7 +545,9 @@ export const ControlPanelView: React.FC = () => {
                     <ChevronRight size={11} />
                   </button>
 
-                  <div style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }} />
+                  <div
+                    style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }}
+                  />
 
                   {/* Close Widget */}
                   <button
@@ -532,7 +632,9 @@ export const ControlPanelView: React.FC = () => {
                 borderBottom: '1px solid #2a2e39'
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>Add Financial Widget</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>
+                Add Financial Widget
+              </span>
               <button
                 type="button"
                 onClick={() => setIsCatalogOpen(false)}
@@ -542,7 +644,16 @@ export const ControlPanelView: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}
+            >
               {WIDGET_CATALOG.map((cat) => (
                 <div
                   key={cat.type}
@@ -570,8 +681,12 @@ export const ControlPanelView: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontSize: 20 }}>{cat.icon}</span>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>{cat.title}</div>
-                      <div style={{ fontSize: 11, color: '#787b86', marginTop: 2 }}>{cat.description}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>
+                        {cat.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#787b86', marginTop: 2 }}>
+                        {cat.description}
+                      </div>
                     </div>
                   </div>
 

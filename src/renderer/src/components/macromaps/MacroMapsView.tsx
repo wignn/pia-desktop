@@ -1,11 +1,14 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { Suspense, lazy, useState, useMemo, useEffect, useCallback } from 'react'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { MACRO_METRICS } from './macroDataset'
-import { MacroMapLibre } from './MacroMapLibre'
 import { TradingViewMacroMap } from './TradingViewMacroMap'
 import { useTabStore } from '../../stores/useTabStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import type { MacroMetricType, CountryMacroData } from '@shared/types'
+
+const MacroMapLibre = lazy(() =>
+  import('./MacroMapLibre').then((module) => ({ default: module.MacroMapLibre }))
+)
 
 const HISTORICAL_YEARS = [
   1914, 1929, 1945, 1971, 1980, 1990, 2000, 2008, 2015, 2020, 2022, 2024, 2026
@@ -37,6 +40,7 @@ export const MacroMapsView: React.FC = () => {
   const [selectedCountryId, setSelectedCountryId] = useState<string>('US')
   const [liveMacroData, setLiveMacroData] = useState<CountryMacroData[] | null>(null)
   const [isLiveData, setIsLiveData] = useState(false)
+  const [unavailableReason, setUnavailableReason] = useState<string | null>(null)
   const [mapEngine, setMapEngine] = useState<'canvas' | 'globe'>('canvas')
 
   // Historical animation playback loop
@@ -66,15 +70,18 @@ export const MacroMapsView: React.FC = () => {
         if (result?.countries?.length && result.isLive) {
           setLiveMacroData(result.countries)
           setIsLiveData(true)
+          setUnavailableReason(null)
         } else {
           setLiveMacroData(null)
           setIsLiveData(false)
+          setUnavailableReason(result?.unavailableReason ?? 'No synchronized macro observations')
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
           setLiveMacroData(null)
           setIsLiveData(false)
+          setUnavailableReason(error instanceof Error ? error.message : 'Macro data request failed')
         }
       })
     return () => {
@@ -92,9 +99,7 @@ export const MacroMapsView: React.FC = () => {
         const isG7 = ['US', 'CA', 'GB', 'FR', 'DE', 'IT', 'JP'].includes(id)
         const isBRICS = ['BR', 'RU', 'IN', 'CN', 'ZA', 'EG', 'ET', 'IR', 'AE', 'SA'].includes(id)
         const isG20 =
-          isG7 ||
-          isBRICS ||
-          ['ID', 'KR', 'SA', 'TR', 'AU', 'AR', 'MX', 'EU'].includes(id)
+          isG7 || isBRICS || ['ID', 'KR', 'SA', 'TR', 'AU', 'AR', 'MX', 'EU'].includes(id)
 
         if (selectedRegion === 'G20' && !isG20 && c.region !== 'G20') return false
         if (selectedRegion === 'G7' && !isG7 && c.region !== 'G7') return false
@@ -102,14 +107,56 @@ export const MacroMapsView: React.FC = () => {
         if (
           selectedRegion === 'Europe' &&
           c.region !== 'Europe' &&
-          !['GB', 'FR', 'DE', 'IT', 'EU', 'ES', 'NL', 'CH', 'SE', 'NO', 'PL', 'IE', 'BE', 'AT', 'PT', 'GR', 'FI', 'DK', 'CZ', 'RO', 'HU', 'UA'].includes(id)
+          ![
+            'GB',
+            'FR',
+            'DE',
+            'IT',
+            'EU',
+            'ES',
+            'NL',
+            'CH',
+            'SE',
+            'NO',
+            'PL',
+            'IE',
+            'BE',
+            'AT',
+            'PT',
+            'GR',
+            'FI',
+            'DK',
+            'CZ',
+            'RO',
+            'HU',
+            'UA'
+          ].includes(id)
         ) {
           return false
         }
         if (
           selectedRegion === 'Asia' &&
           c.region !== 'Asia' &&
-          !['CN', 'IN', 'JP', 'KR', 'ID', 'SG', 'TH', 'MY', 'VN', 'PH', 'SA', 'TR', 'AE', 'PK', 'BD', 'IL', 'TW', 'HK'].includes(id)
+          ![
+            'CN',
+            'IN',
+            'JP',
+            'KR',
+            'ID',
+            'SG',
+            'TH',
+            'MY',
+            'VN',
+            'PH',
+            'SA',
+            'TR',
+            'AE',
+            'PK',
+            'BD',
+            'IL',
+            'TW',
+            'HK'
+          ].includes(id)
         ) {
           return false
         }
@@ -245,7 +292,7 @@ export const MacroMapsView: React.FC = () => {
               color: isLiveData ? '#26a69a' : THEME_TOKENS.colors.textSecondary
             }}
           >
-            {isLiveData ? 'LIVE' : 'LIVE DATA UNAVAILABLE'}
+            {isLiveData ? 'LIVE' : (unavailableReason ?? 'LIVE DATA UNAVAILABLE')}
           </div>
         </div>
       </div>
@@ -272,16 +319,32 @@ export const MacroMapsView: React.FC = () => {
               onSwitchToGlobe={() => setMapEngine('globe')}
             />
           ) : (
-            <MacroMapLibre
-              selectedMetric={selectedMetric}
-              selectedYear={selectedYear}
-              macroData={macroData}
-              selectedCountryId={selectedCountryId}
-              onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
-              onHoverCountry={() => {}}
-              onOpenChart={handleOpenChart}
-              onSwitchToCanvas={() => setMapEngine('canvas')}
-            />
+            <Suspense
+              fallback={
+                <div
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: '100%',
+                    height: '100%',
+                    color: THEME_TOKENS.colors.textSecondary
+                  }}
+                >
+                  Loading map…
+                </div>
+              }
+            >
+              <MacroMapLibre
+                selectedMetric={selectedMetric}
+                selectedYear={selectedYear}
+                macroData={macroData}
+                selectedCountryId={selectedCountryId}
+                onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
+                onHoverCountry={() => {}}
+                onOpenChart={handleOpenChart}
+                onSwitchToCanvas={() => setMapEngine('canvas')}
+              />
+            </Suspense>
           )}
         </div>
 

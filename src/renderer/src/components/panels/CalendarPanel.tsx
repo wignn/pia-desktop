@@ -226,7 +226,11 @@ export const CalendarPanel: React.FC = () => {
                         fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
                         fontWeight: 600
                       }}
-                      title={ev.timestamp ? `Timestamp: ${ev.timestamp} (${new Date(ev.timestamp).toUTCString()})` : undefined}
+                      title={
+                        ev.timestamp
+                          ? `Timestamp: ${ev.timestamp} (${new Date(ev.timestamp).toUTCString()})`
+                          : undefined
+                      }
                     >
                       {formatEventTime(ev.time, ev.timestamp)}
                     </span>

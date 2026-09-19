@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
 const SettingsModalContent: React.FC = () => {
@@ -14,6 +15,13 @@ const SettingsModalContent: React.FC = () => {
     saveApiKey,
     clearApiKey
   } = useSettingsStore()
+
+  const {
+    status: updaterStatus,
+    isChecking: isCheckingUpdate,
+    checkForUpdates,
+    installUpdate
+  } = useUpdaterStore()
 
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [baseUrlInput, setBaseUrlInput] = useState('')
@@ -165,6 +173,97 @@ const SettingsModalContent: React.FC = () => {
               >
                 {credentials?.hasApiKey ? 'API Key Configured & Active' : 'No API Key Configured'}
               </span>
+            </div>
+          </div>
+
+          {/* Software Updates card */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 6,
+              backgroundColor: THEME_TOKENS.colors.bgApp,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span
+                style={{ fontSize: 12, fontWeight: 600, color: THEME_TOKENS.colors.textPrimary }}
+              >
+                Software Updates:
+              </span>
+              <span
+                style={{
+                  fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
+                  fontSize: 11,
+                  color: THEME_TOKENS.colors.textSecondary
+                }}
+              >
+                Version: v{updaterStatus.currentVersion}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 11,
+                color: THEME_TOKENS.colors.textSecondary
+              }}
+            >
+              <span style={{ maxWidth: '65%' }}>
+                {updaterStatus.state === 'idle' && 'Automatic background updates enabled'}
+                {updaterStatus.state === 'checking' && 'Checking for updates...'}
+                {updaterStatus.state === 'available' &&
+                  `New release v${updaterStatus.availableVersion || ''} found. Downloading...`}
+                {updaterStatus.state === 'downloading' &&
+                  `Downloading update (${updaterStatus.progressPercent ?? 0}%)...`}
+                {updaterStatus.state === 'downloaded' &&
+                  `v${updaterStatus.availableVersion || ''} ready to apply.`}
+                {updaterStatus.state === 'not-available' && 'Application is up to date.'}
+                {updaterStatus.state === 'error' && (updaterStatus.error || 'Check failed')}
+              </span>
+
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {updaterStatus.state === 'downloaded' ? (
+                  <button
+                    type="button"
+                    onClick={(): void => {
+                      installUpdate()
+                    }}
+                    className="tv-btn active"
+                    style={{
+                      backgroundColor: THEME_TOKENS.colors.bullish,
+                      color: '#ffffff',
+                      fontSize: 11,
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontWeight: 600
+                    }}
+                  >
+                    Restart & Install
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(): void => {
+                      checkForUpdates()
+                    }}
+                    disabled={isCheckingUpdate || updaterStatus.state === 'downloading'}
+                    className="tv-btn"
+                    style={{
+                      fontSize: 11,
+                      padding: '3px 8px',
+                      border: `1px solid ${THEME_TOKENS.colors.borderMedium}`
+                    }}
+                  >
+                    {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

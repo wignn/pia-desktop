@@ -6,7 +6,7 @@
 import { create } from 'zustand'
 import { TIMEFRAMES } from '@shared/types'
 import type { ConnectionState, PriceQuote, SymbolInfo, Timeframe } from '@shared/types'
-import { candleEngine } from '../services/candle-engine'
+import { dispatchCandleTick } from '../services/candle-engine'
 import { useAlertsStore } from './useAlertsStore'
 import { usePaperTradingStore } from './usePaperTradingStore'
 import type { KLineData } from 'klinecharts'
@@ -131,6 +131,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       }
       set({ prices: priceMap })
 
+      if (
+        (symbols.length > 0 || pricesList.length > 0) &&
+        get().connectionState.status === 'connecting'
+      ) {
+        set({
+          connectionState: {
+            status: 'connected',
+            latencyMs: 35,
+            lastHeartbeat: Date.now()
+          }
+        })
+      }
+
       // Re-fetch symbols if more were discovered during getPrices
       if (symbols.length < 50) {
         const updatedSymbols = await window.api.market.getSymbols()
@@ -144,39 +157,66 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   },
 
   subscribeToMarketEvents: () => {
-    // Subscribe only when the provider has supplied an active symbol.
-    const activeSymbol = get().symbol
-    if (activeSymbol) void window.api.market.subscribePrice(activeSymbol)
-
-    // Subscribe to realtime price ticks
-    const cleanupPrices = window.api.market.onPriceUpdate((quote: PriceQuote) => {
-      set((state) => ({
-        prices: {
-          ...state.prices,
-          [quote.symbol]: quote
-        }
-      }))
-
-      // Feed into candle engine
-      candleEngine.handleTick(quote)
-
-      // Evaluate price alerts
-      useAlertsStore.getState().checkPriceAlerts(quote)
-
-      // Evaluate paper trading SL/TP triggers
-      usePaperTradingStore.getState().checkPositionsSLTP(quote)
-    })
-
-    // Subscribe to connection state changes
     const cleanupConn = window.api.market.onConnectionState((state: ConnectionState) => {
       set({ connectionState: state })
     })
 
+    let frameId: number | null = null
+    let pendingPrices: Record<string, PriceQuote> = {}
+
+    const flushPrices = (): void => {
+      frameId = null
+      if (Object.keys(pendingPrices).length === 0) return
+
+      const updates = pendingPrices
+      pendingPrices = {}
+      set((state) => ({ prices: { ...state.prices, ...updates } }))
+    }
+
+    const schedulePriceFlush = (): void => {
+      if (document.hidden || frameId !== null) return
+      frameId = requestAnimationFrame(flushPrices)
+    }
+
+    // Publish visual quote state once per frame. Candle, alert, and position
+    // evaluation below still receives every tick synchronously.
+    const cleanupPrices = window.api.market.onPriceUpdate((quote: PriceQuote) => {
+      if (get().connectionState.status !== 'connected') {
+        set({
+          connectionState: {
+            status: 'connected',
+            latencyMs: get().connectionState.latencyMs ?? 35,
+            lastHeartbeat: Date.now()
+          }
+        })
+      }
+
+      pendingPrices[quote.symbol] = quote
+      schedulePriceFlush()
+
+      dispatchCandleTick(quote)
+      useAlertsStore.getState().checkPriceAlerts(quote)
+      usePaperTradingStore.getState().checkPositionsSLTP(quote)
+    })
+
+    const handleVisibilityChange = (): void => {
+      if (!document.hidden) schedulePriceFlush()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Subscribe only when the provider has supplied an active symbol and listeners are active.
+    const activeSymbol = get().symbol
+    if (activeSymbol) void window.api.market.subscribePrice(activeSymbol)
+
     return () => {
       cleanupPrices()
       cleanupConn()
-      const activeSymbol = get().symbol
-      if (activeSymbol) void window.api.market.unsubscribePrice(activeSymbol)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      frameId = null
+      pendingPrices = {}
+      const currentSymbol = get().symbol
+      if (currentSymbol) void window.api.market.unsubscribePrice(currentSymbol)
     }
   }
 }))

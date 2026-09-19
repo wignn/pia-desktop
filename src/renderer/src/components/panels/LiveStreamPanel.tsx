@@ -91,11 +91,13 @@ export const LiveStreamPanel: React.FC = () => {
     return ''
   })
   const [isMuted, setIsMuted] = useState<boolean>(true)
+  const [isPlaying, setIsPlaying] = useState(false)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hasMountedRef = useRef(false)
 
   const handleSelectChannel = (id: string): void => {
+    setIsPlaying(false)
     setSelectedChannel(id)
     try {
       localStorage.setItem('pia-live-stream', id)
@@ -110,6 +112,7 @@ export const LiveStreamPanel: React.FC = () => {
     if (clean) {
       setCustomYoutubeId(clean)
       setSelectedChannel('custom')
+      setIsPlaying(true)
       try {
         localStorage.setItem('pia-live-stream', 'custom')
         localStorage.setItem('pia-live-custom', clean)
@@ -207,7 +210,23 @@ export const LiveStreamPanel: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             type="button"
+            onClick={() => setIsPlaying((playing) => !playing)}
+            title={isPlaying ? 'Stop and unload stream' : 'Play stream'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: isPlaying ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bullish,
+              fontSize: 12,
+              fontWeight: 700
+            }}
+          >
+            {isPlaying ? '■ Stop' : '▶ Play'}
+          </button>
+          <button
+            type="button"
             onClick={() => setIsMuted(!isMuted)}
+            disabled={!isPlaying}
             title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
             style={{
               background: 'transparent',
@@ -355,22 +374,44 @@ export const LiveStreamPanel: React.FC = () => {
           overflow: 'hidden'
         }}
       >
-        <iframe
-          ref={iframeRef}
-          key={currentVideoId}
-          src={embedSrc}
-          title={activeChannel?.name || 'YouTube Live'}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            border: 'none'
-          }}
-        />
+        {isPlaying ? (
+          <iframe
+            ref={iframeRef}
+            key={currentVideoId}
+            src={embedSrc}
+            title={activeChannel?.name || 'YouTube Live'}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              border: 'none'
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsPlaying(true)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              margin: 'auto',
+              width: 120,
+              height: 42,
+              borderRadius: 6,
+              border: `1px solid ${THEME_TOKENS.colors.accent}`,
+              backgroundColor: THEME_TOKENS.colors.bgSurface,
+              color: THEME_TOKENS.colors.textBright,
+              cursor: 'pointer',
+              fontWeight: 700
+            }}
+          >
+            ▶ Play Stream
+          </button>
+        )}
       </div>
 
       {/* Footer Info */}

@@ -4,12 +4,12 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import {
-  IPC_CHANNELS,
-  type TerminalAPI,
-  type SaveApiKeyInput,
-  type GetCandlesInput,
-  type GetPricesInput
+import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type {
+  TerminalAPI,
+  SaveApiKeyInput,
+  GetCandlesInput,
+  GetPricesInput
 } from '@shared/contracts'
 import type {
   PriceQuote,
@@ -19,7 +19,8 @@ import type {
   WatchlistGroup,
   PriceAlert,
   PaperAccount,
-  ChartLayoutData
+  ChartLayoutData,
+  UpdaterStatus
 } from '@shared/types'
 
 const terminalApi: TerminalAPI = {
@@ -192,6 +193,21 @@ const terminalApi: TerminalAPI = {
 
   ws: {
     createTicket: () => ipcRenderer.invoke(IPC_CHANNELS.WS_CREATE_TICKET)
+  },
+
+  updater: {
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_CHECK),
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_GET_STATUS),
+    install: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATER_INSTALL),
+    onStatus: (callback: (status: UpdaterStatus) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: UpdaterStatus): void => {
+        callback(status)
+      }
+      ipcRenderer.on(IPC_CHANNELS.UPDATER_ON_STATUS, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.UPDATER_ON_STATUS, handler)
+      }
+    }
   }
 }
 

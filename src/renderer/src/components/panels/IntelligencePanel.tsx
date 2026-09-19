@@ -5,14 +5,18 @@ import { getSymbolPrecision } from '@shared/market-utils'
 import type { IntelligenceAnalyzeResult, MarketInsightResult } from '@shared/types'
 
 export const IntelligencePanel: React.FC = () => {
-  const { symbol, prices, symbols } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const currentPrice = useMarketStore((state) =>
+    state.symbol ? state.prices[state.symbol]?.price : undefined
+  )
+  const symInfo = useMarketStore((state) =>
+    state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
+  )
   const [analysis, setAnalysis] = useState<IntelligenceAnalyzeResult | null>(null)
   const [insight, setInsight] = useState<MarketInsightResult | null>(null)
   const [queryInput, setQueryInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(true)
 
-  const currentPrice = symbol ? prices[symbol]?.price : undefined
-  const symInfo = symbols.find((s) => s.symbol === symbol)
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, currentPrice)
 
   const formatPrice = (val: number): string => {

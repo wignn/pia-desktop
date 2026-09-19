@@ -27,8 +27,21 @@ export const NewsWireWidget: React.FC = () => {
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: '#131722', overflowY: 'auto' }}>
-      {isLoading && <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>Streaming news wire...</div>}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#131722',
+        overflowY: 'auto'
+      }}
+    >
+      {isLoading && (
+        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+          Streaming news wire...
+        </div>
+      )}
       {articles.map((art) => (
         <div
           key={art.id}
@@ -40,11 +53,26 @@ export const NewsWireWidget: React.FC = () => {
             gap: 3
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: '#787b86' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 10,
+              color: '#787b86'
+            }}
+          >
             <span style={{ fontWeight: 600, color: '#2962ff' }}>{art.source}</span>
-            <span>{new Date(art.publishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <span>
+              {new Date(art.publishedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </span>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#ffffff', lineHeight: '15px' }}>{art.title}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#ffffff', lineHeight: '15px' }}>
+            {art.title}
+          </div>
         </div>
       ))}
     </div>

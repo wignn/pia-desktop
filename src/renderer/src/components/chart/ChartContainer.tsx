@@ -51,8 +51,12 @@ export const ChartContainer: React.FC = () => {
   const isClearingForSymbolSwitchRef = useRef(false)
   const selectedOverlayIdRef = useRef<string | null>(null)
 
-  const { theme } = useWorkspaceStore()
-  const { symbol, timeframe, setSelectedBar, setLatestBar, setIsLoadingCandles } = useMarketStore()
+  const theme = useWorkspaceStore((state) => state.theme)
+  const symbol = useMarketStore((state) => state.symbol)
+  const timeframe = useMarketStore((state) => state.timeframe)
+  const setSelectedBar = useMarketStore((state) => state.setSelectedBar)
+  const setLatestBar = useMarketStore((state) => state.setLatestBar)
+  const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
   const {
     chartType,
     activeTool,
@@ -235,6 +239,15 @@ export const ChartContainer: React.FC = () => {
         const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
         setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
+        if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
+          useMarketStore.setState({
+            connectionState: {
+              status: 'connected',
+              latencyMs: 35,
+              lastHeartbeat: Date.now()
+            }
+          })
+        }
         callback(bars, true)
         await restoreDrawingsForSymbol(sym.ticker)
       },
@@ -251,6 +264,15 @@ export const ChartContainer: React.FC = () => {
       onHistoryLoaded: (_genId, bars): void => {
         setLatestBar(bars.at(-1) ?? null)
         setIsLoadingCandles(false)
+        if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
+          useMarketStore.setState({
+            connectionState: {
+              status: 'connected',
+              latencyMs: 35,
+              lastHeartbeat: Date.now()
+            }
+          })
+        }
         const isReplaying = candleEngine.getReplayState().isReplayMode
         // Only reset chart data when replay mode starts, jumps, or stops.
         // NEVER call resetData() during normal left panning or pagination!
@@ -478,7 +500,8 @@ export const ChartContainer: React.FC = () => {
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: THEME_TOKENS.colors.bgApp
+        backgroundColor: THEME_TOKENS.colors.bgApp,
+        touchAction: 'none'
       }}
     >
       <ChartLegend />
@@ -502,7 +525,8 @@ export const ChartContainer: React.FC = () => {
         ref={containerRef}
         style={{
           width: '100%',
-          height: '100%'
+          height: '100%',
+          touchAction: 'none'
         }}
       />
     </div>

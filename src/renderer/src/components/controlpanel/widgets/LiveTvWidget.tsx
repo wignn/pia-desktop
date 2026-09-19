@@ -47,6 +47,7 @@ export const LiveTvWidget: React.FC<{
   const [isCustomInputOpen, setIsCustomInputOpen] = useState(false)
   const [customInputVal, setCustomInputVal] = useState('')
   const [isMuted, setIsMuted] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hasMountedRef = useRef(false)
@@ -100,6 +101,7 @@ export const LiveTvWidget: React.FC<{
   }, [isMuted])
 
   const handleSelectChannel = (id: string): void => {
+    setIsPlaying(false)
     setActiveChannelId(id)
     if (onUpdateChannel) onUpdateChannel(id)
   }
@@ -112,6 +114,7 @@ export const LiveTvWidget: React.FC<{
     setCustomYtId(vid)
     setActiveChannelId('custom')
     setIsCustomInputOpen(false)
+    setIsPlaying(true)
     if (onUpdateChannel) onUpdateChannel(`custom:${vid}`)
   }
 
@@ -198,10 +201,30 @@ export const LiveTvWidget: React.FC<{
 
         <button
           type="button"
-          onClick={() => setIsMuted((prev) => !prev)}
-          title={isMuted ? 'Click to Unmute Audio' : 'Click to Mute Audio'}
+          onClick={() => setIsPlaying((playing) => !playing)}
+          title={isPlaying ? 'Stop and unload stream' : 'Play stream'}
           style={{
             marginLeft: 'auto',
+            padding: '2px 8px',
+            borderRadius: 3,
+            fontSize: 10,
+            fontWeight: 600,
+            border: '1px solid #2a2e39',
+            backgroundColor: '#1e222d',
+            color: isPlaying ? '#f23645' : '#089981',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {isPlaying ? '■ STOP' : '▶ PLAY'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsMuted((prev) => !prev)}
+          disabled={!isPlaying}
+          title={isMuted ? 'Click to Unmute Audio' : 'Click to Mute Audio'}
+          style={{
             padding: '2px 8px',
             borderRadius: 3,
             fontSize: 10,
@@ -293,22 +316,44 @@ export const LiveTvWidget: React.FC<{
           backgroundColor: '#000'
         }}
       >
-        <iframe
-          ref={iframeRef}
-          key={currentVideoId}
-          src={embedSrc}
-          title="Financial Live Broadcast"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            border: 'none'
-          }}
-        />
+        {isPlaying ? (
+          <iframe
+            ref={iframeRef}
+            key={currentVideoId}
+            src={embedSrc}
+            title="Financial Live Broadcast"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              border: 'none'
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsPlaying(true)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              margin: 'auto',
+              width: 120,
+              height: 38,
+              border: '1px solid #2962ff',
+              borderRadius: 4,
+              backgroundColor: '#1e222d',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontWeight: 700
+            }}
+          >
+            ▶ Play Stream
+          </button>
+        )}
       </div>
     </div>
   )

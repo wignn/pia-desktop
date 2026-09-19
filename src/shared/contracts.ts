@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 import { TIMEFRAMES } from './types'
+export { IPC_CHANNELS } from './ipc-channels'
 import type {
   CandleBar,
   PriceQuote,
@@ -52,127 +53,9 @@ import type {
   RateLimitStatus,
   FixedIncomeRateData,
   FixedIncomeHistoryData,
-  WsTicketData
+  WsTicketData,
+  UpdaterStatus
 } from './types'
-
-// Channel constant definitions
-export const IPC_CHANNELS = {
-  // Market & Candlesticks
-  MARKET_GET_SYMBOLS: 'market:get-symbols',
-  MARKET_GET_CANDLES: 'market:get-candles',
-  MARKET_GET_PRICES: 'market:get-prices',
-  MARKET_GET_PRICE: 'market:get-price',
-  MARKET_GET_SESSION: 'market:get-session',
-  MARKET_GET_DATA_QUALITY: 'market:get-data-quality',
-  MARKET_GET_SPIKES: 'market:get-spikes',
-  MARKET_GET_ALERTS: 'market:get-alerts',
-  MARKET_GET_SMART_ALERTS: 'market:get-smart-alerts',
-  MARKET_GET_TRADING_HALTS: 'market:get-trading-halts',
-  MARKET_GET_CORPORATE_ACTIONS: 'market:get-corporate-actions',
-  MARKET_GET_VOLATILITY: 'market:get-volatility',
-  MARKET_SUBSCRIBE_PRICE: 'market:subscribe-price',
-  MARKET_UNSUBSCRIBE_PRICE: 'market:unsubscribe-price',
-  MARKET_ON_PRICE_UPDATE: 'market:on-price-update',
-  MARKET_ON_CONNECTION_STATE: 'market:on-connection-state',
-  MARKET_UPLOAD_SNAPSHOT: 'market:upload-snapshot',
-
-  // Order Book & Microstructure
-  ORDERBOOK_GET: 'orderbook:get',
-
-  // Intelligence & AI Analysis
-  INTELLIGENCE_ANALYZE: 'intelligence:analyze',
-  INTELLIGENCE_GET_INSIGHTS: 'intelligence:get-insights',
-
-  // Options & Derivatives
-  OPTIONS_GET_CHAIN: 'options:get-chain',
-  OPTIONS_GET_GEX: 'options:get-gex',
-  OPTIONS_GET_SUMMARY: 'options:get-summary',
-
-  // Macro & Central Bank Economics
-  MACRO_GET_FEAR_GREED: 'macro:get-fear-greed',
-  MACRO_GET_FEAR_GREED_HISTORY: 'macro:get-fear-greed-history',
-  MACRO_GET_COT: 'macro:get-cot',
-  MACRO_GET_CENTRAL_BANKS: 'macro:get-central-banks',
-  MACRO_GET_MAP: 'macro:get-map',
-
-  // Fixed Income & Sovereign Rates
-  FIXED_INCOME_GET_YIELD_CURVE: 'fixed-income:get-yield-curve',
-  FIXED_INCOME_GET_SPREADS: 'fixed-income:get-spreads',
-  FIXED_INCOME_GET_RATE: 'fixed-income:get-rate',
-  FIXED_INCOME_GET_HISTORY: 'fixed-income:get-history',
-
-  // Geopolitical Signals
-  GEOSIGNALS_GET_EVENTS: 'geosignals:get-events',
-  GEOSIGNALS_GET_MAP: 'geosignals:get-map',
-  GEOSIGNALS_GET_ASSET_IMPACTS: 'geosignals:get-asset-impacts',
-
-  // Energy Markets
-  ENERGY_GET_DASHBOARD: 'energy:get-dashboard',
-  ENERGY_GET_SERIES: 'energy:get-series',
-
-  // SEC EDGAR Filings
-  SEC_GET_FILINGS: 'sec:get-filings',
-  SEC_GET_COMPANY: 'sec:get-company',
-
-  // WebSocket authentication
-  WS_CREATE_TICKET: 'ws:create-ticket',
-
-  // Social Intelligence Feed
-  SOCIAL_GET_POSTS: 'social:get-posts',
-  SOCIAL_GET_FEED: 'social:get-feed',
-
-  // Chart Layouts
-  LAYOUTS_GET_ALL: 'layouts:get-all',
-  LAYOUTS_GET: 'layouts:get',
-  LAYOUTS_SAVE: 'layouts:save',
-  LAYOUTS_DELETE: 'layouts:delete',
-
-  // Drawings & Annotations
-  DRAWINGS_GET: 'drawings:get',
-  DRAWINGS_SAVE: 'drawings:save',
-  DRAWINGS_DELETE: 'drawings:delete',
-  DRAWINGS_CLEAR: 'drawings:clear',
-
-  // Indicators & Chart Settings
-  CHART_GET_INDICATORS: 'chart:get-indicators',
-  CHART_SAVE_INDICATORS: 'chart:save-indicators',
-
-  // Watchlists
-  WATCHLIST_GET_ALL: 'watchlist:get-all',
-  WATCHLIST_SAVE: 'watchlist:save',
-  WATCHLIST_DELETE: 'watchlist:delete',
-
-  // Economic Calendar & News
-  CALENDAR_GET: 'calendar:get',
-  NEWS_GET: 'news:get',
-  NEWS_GET_LATEST: 'news:get-latest',
-  NEWS_GET_BY_ID: 'news:get-by-id',
-
-  // Economic Metadata
-  ECONOMIC_GET_INDICATORS: 'economic:get-indicators',
-  ECONOMIC_GET_CATEGORIES: 'economic:get-categories',
-  ECONOMIC_GET_COUNTRIES: 'economic:get-countries',
-
-  // SDK telemetry
-  SYSTEM_GET_RATE_LIMIT: 'system:get-rate-limit',
-
-  // Alerts
-  ALERTS_GET: 'alerts:get',
-  ALERTS_SAVE: 'alerts:save',
-  ALERTS_DELETE: 'alerts:delete',
-
-  // Paper Trading
-  PAPER_GET_ACCOUNT: 'paper:get-account',
-  PAPER_SAVE_ACCOUNT: 'paper:save-account',
-
-  // Credentials & Settings
-  SETTINGS_GET_CREDENTIALS: 'settings:get-credentials',
-  SETTINGS_SAVE_API_KEY: 'settings:save-api-key',
-  SETTINGS_CLEAR_API_KEY: 'settings:clear-api-key',
-
-  // System & Utilities
-  SYSTEM_OPEN_EXTERNAL: 'system:open-external'
-} as const
 
 // Zod validation schemas for incoming IPC requests
 
@@ -562,5 +445,11 @@ export interface TerminalAPI {
   }
   ws: {
     createTicket: () => Promise<WsTicketData | null>
+  }
+  updater: {
+    check: () => Promise<UpdaterStatus>
+    getStatus: () => Promise<UpdaterStatus>
+    install: () => Promise<boolean>
+    onStatus: (callback: (status: UpdaterStatus) => void) => () => void
   }
 }

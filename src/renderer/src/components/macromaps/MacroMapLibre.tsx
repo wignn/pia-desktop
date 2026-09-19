@@ -246,13 +246,15 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
         map.setFilter('countries-hover', ['==', ['get', 'iso_a2'], iso])
 
         const macro = macroByIso.get(iso) || null
-        const name = (feature.properties.countryName as string) || (feature.properties.name as string) || iso
+        const name =
+          (feature.properties.countryName as string) || (feature.properties.name as string) || iso
         const flag = (feature.properties.flag as string) || macro?.flag || '🌐'
         const rawVal =
           feature.properties.metricValue !== null && feature.properties.metricValue !== undefined
             ? Number(feature.properties.metricValue)
             : macro?.value
-        const valStr = rawVal !== undefined && !isNaN(rawVal) ? `${rawVal.toFixed(1)}%` : 'Unavailable'
+        const valStr =
+          rawVal !== undefined && !isNaN(rawVal) ? `${rawVal.toFixed(1)}%` : 'Unavailable'
 
         const chgVal = macro?.change
         const chgStr =

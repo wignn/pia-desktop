@@ -13,7 +13,8 @@ export const PaperTradingPanel: React.FC = () => {
     lastExecutedAction,
     clearActionNotification
   } = usePaperTradingStore()
-  const { symbol, prices } = useMarketStore()
+  const symbol = useMarketStore((state) => state.symbol)
+  const prices = useMarketStore((state) => state.prices)
 
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [size, setSize] = useState('1')

@@ -1,3 +1,5 @@
+import type { Timeframe } from '@shared/types'
+
 export type WidgetType =
   | 'live_tv'
   | 'mini_chart'
@@ -17,7 +19,7 @@ export interface DashboardWidget {
   minHeightPx?: number
   config?: {
     symbol?: string
-    timeframe?: string
+    timeframe?: Timeframe
     channelId?: string
   }
 }

@@ -4,9 +4,16 @@ import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 
 export const ChartLegend: React.FC = () => {
-  const { symbol, timeframe, selectedBar, latestBar, prices, symbols } = useMarketStore()
-  const livePrice = symbol ? prices[symbol]?.price : undefined
-  const symInfo = symbols.find((s) => s.symbol === symbol)
+  const symbol = useMarketStore((state) => state.symbol)
+  const timeframe = useMarketStore((state) => state.timeframe)
+  const selectedBar = useMarketStore((state) => state.selectedBar)
+  const latestBar = useMarketStore((state) => state.latestBar)
+  const livePrice = useMarketStore((state) =>
+    state.symbol ? state.prices[state.symbol]?.price : undefined
+  )
+  const symInfo = useMarketStore((state) =>
+    state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
+  )
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, livePrice)
 
   // Format numbers nicely
