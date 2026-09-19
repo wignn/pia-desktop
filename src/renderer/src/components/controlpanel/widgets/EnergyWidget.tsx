@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { EnergyDashboardData } from '@shared/types'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const EnergyWidget: React.FC = () => {
   const [data, setData] = useState<EnergyDashboardData | null>(null)
@@ -63,13 +64,13 @@ export const EnergyWidget: React.FC = () => {
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
         padding: '10px 14px',
         overflowY: 'auto'
       }}
     >
       {isLoading && (
-        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+        <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, textAlign: 'center', padding: 20 }}>
           Loading energy complex...
         </div>
       )}
@@ -86,8 +87,8 @@ export const EnergyWidget: React.FC = () => {
             <div
               key={item.ticker}
               style={{
-                backgroundColor: '#1e222d',
-                border: '1px solid #2a2e39',
+                backgroundColor: THEME_TOKENS.colors.bgApp,
+                border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                 borderRadius: 5,
                 padding: '8px 10px',
                 display: 'flex',
@@ -95,14 +96,20 @@ export const EnergyWidget: React.FC = () => {
                 gap: 2
               }}
             >
-              <span style={{ fontSize: 10, color: '#787b86', fontWeight: 600 }}>{item.name}</span>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, fontWeight: 600 }}>{item.name}</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 16, fontWeight: 800, color: '#ffffff' }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: THEME_TOKENS.colors.textBright }}>
                   ${item.price.toFixed(2)}
                 </span>
-                <span style={{ fontSize: 9, color: '#787b86' }}>{item.unit}</span>
+                <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textSecondary }}>{item.unit}</span>
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: isPos ? '#089981' : '#f23645' }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: isPos ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                }}
+              >
                 {isPos ? '▲ +' : '▼ '}
                 {item.change.toFixed(2)}
               </span>

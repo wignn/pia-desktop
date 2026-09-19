@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { OrderBookData } from '@shared/types'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUSD' }) => {
   const [book, setBook] = useState<OrderBookData | null>(null)
@@ -30,7 +31,7 @@ export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUS
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
         padding: '8px 12px',
         fontSize: 11,
         overflowY: 'auto'
@@ -40,11 +41,11 @@ export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUS
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          color: '#787b86',
+          color: THEME_TOKENS.colors.textSecondary,
           fontSize: 10,
           fontWeight: 600,
           paddingBottom: 4,
-          borderBottom: '1px solid #1e222d'
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
         }}
       >
         <span>PRICE</span>
@@ -60,13 +61,13 @@ export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUS
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              color: '#f23645',
+              color: THEME_TOKENS.colors.bearish,
               fontFamily: 'monospace'
             }}
           >
             <span>{a.price.toFixed(2)}</span>
-            <span style={{ color: '#d1d4dc' }}>{a.size.toFixed(2)}</span>
-            <span style={{ color: '#787b86' }}>
+            <span style={{ color: THEME_TOKENS.colors.textPrimary }}>{a.size.toFixed(2)}</span>
+            <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
               {a.total !== undefined ? a.total.toFixed(2) : a.size.toFixed(2)}
             </span>
           </div>
@@ -78,8 +79,8 @@ export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUS
         style={{
           padding: '4px 0',
           textAlign: 'center',
-          backgroundColor: '#1e222d',
-          color: '#ffffff',
+          backgroundColor: THEME_TOKENS.colors.bgApp,
+          color: THEME_TOKENS.colors.textBright,
           fontWeight: 700,
           borderRadius: 2,
           margin: '2px 0'
@@ -96,13 +97,13 @@ export const OrderBookWidget: React.FC<{ symbol?: string }> = ({ symbol = 'XAUUS
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              color: '#089981',
+              color: THEME_TOKENS.colors.bullish,
               fontFamily: 'monospace'
             }}
           >
             <span>{b.price.toFixed(2)}</span>
-            <span style={{ color: '#d1d4dc' }}>{b.size.toFixed(2)}</span>
-            <span style={{ color: '#787b86' }}>
+            <span style={{ color: THEME_TOKENS.colors.textPrimary }}>{b.size.toFixed(2)}</span>
+            <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
               {b.total !== undefined ? b.total.toFixed(2) : b.size.toFixed(2)}
             </span>
           </div>

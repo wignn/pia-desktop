@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { NewsArticle } from '@shared/types'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const NewsWireWidget: React.FC = () => {
   const [articles, setArticles] = useState<NewsArticle[]>([])
@@ -33,12 +34,12 @@ export const NewsWireWidget: React.FC = () => {
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
         overflowY: 'auto'
       }}
     >
       {isLoading && (
-        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+        <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, textAlign: 'center', padding: 20 }}>
           Streaming news wire...
         </div>
       )}
@@ -47,7 +48,7 @@ export const NewsWireWidget: React.FC = () => {
           key={art.id}
           style={{
             padding: '8px 12px',
-            borderBottom: '1px solid #1e222d',
+            borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
             display: 'flex',
             flexDirection: 'column',
             gap: 3
@@ -59,10 +60,10 @@ export const NewsWireWidget: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'space-between',
               fontSize: 10,
-              color: '#787b86'
+              color: THEME_TOKENS.colors.textSecondary
             }}
           >
-            <span style={{ fontWeight: 600, color: '#2962ff' }}>{art.source}</span>
+            <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.accent }}>{art.source}</span>
             <span>
               {new Date(art.publishedAt).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -70,7 +71,7 @@ export const NewsWireWidget: React.FC = () => {
               })}
             </span>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#ffffff', lineHeight: '15px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: THEME_TOKENS.colors.textBright, lineHeight: '15px' }}>
             {art.title}
           </div>
         </div>

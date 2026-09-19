@@ -3,6 +3,8 @@ import rawWorldGeoJson from './world-countries.json'
 import type { CountryMacroData, MacroMetricType } from '@shared/types'
 import { MACRO_METRICS, getChoroplethColor } from './macroDataset'
 import { ZoomIn, ZoomOut, RotateCcw, Compass, Globe } from 'lucide-react'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { THEME_TOKENS } from '../../theme/tokens'
 
 export interface TradingViewMacroMapProps {
   selectedMetric: MacroMetricType
@@ -97,6 +99,8 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
   onHoverCountry,
   onSwitchToGlobe
 }) => {
+  const theme = useWorkspaceStore((state) => state.theme)
+  const isLight = theme === 'light'
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -290,8 +294,8 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
     ctx.save()
     ctx.scale(dpr, dpr)
 
-    // 1. Deep Matte Ocean Background (TradingView Standard #0d111a)
-    ctx.fillStyle = '#0d111a'
+    // 1. Ocean Background (Dynamic Theme)
+    ctx.fillStyle = isLight ? '#e0e3eb' : '#0d111a'
     ctx.fillRect(0, 0, rect.width, rect.height)
 
     // 2. Apply Camera Matrix Transformation
@@ -312,14 +316,18 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           : macro?.value
 
       const choroplethColor =
-        activeValue === undefined ? '#181d28' : getChoroplethColor(activeValue, selectedMetric)
+        activeValue === undefined
+          ? isLight
+            ? '#d5d9e3'
+            : '#181d28'
+          : getChoroplethColor(activeValue, selectedMetric)
 
       // Country Fill
       ctx.fillStyle = choroplethColor
       ctx.fill(item.path)
 
       // Country Border
-      ctx.strokeStyle = '#282f42'
+      ctx.strokeStyle = isLight ? '#bcc1cf' : '#282f42'
       ctx.lineWidth = 0.75 / transform.zoom
       ctx.stroke(item.path)
 
@@ -333,14 +341,14 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
 
     // 4. Highlight Hovered Country Outline
     if (hoveredItem) {
-      ctx.strokeStyle = '#ffffff'
+      ctx.strokeStyle = isLight ? '#131722' : '#ffffff'
       ctx.lineWidth = 1.8 / transform.zoom
       ctx.stroke(hoveredItem.path)
     }
 
-    // 5. Highlight Selected Country Outline (TradingView Blue #2962ff)
+    // 5. Highlight Selected Country Outline (Accent Color)
     if (selectedItem) {
-      ctx.strokeStyle = '#2962ff'
+      ctx.strokeStyle = THEME_TOKENS.colors.accent
       ctx.lineWidth = 2.6 / transform.zoom
       ctx.stroke(selectedItem.path)
     }
@@ -354,7 +362,8 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
     selectedYear,
     transform,
     hoverInfo?.iso,
-    selectedCountryId
+    selectedCountryId,
+    isLight
   ])
 
   // -------------------------------------------------------------------------
@@ -531,7 +540,7 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
-        backgroundColor: '#0d111a',
+        backgroundColor: THEME_TOKENS.colors.bgApp,
         userSelect: 'none'
       }}
     >
@@ -554,11 +563,11 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           left: 16,
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: '#1e222d',
-          border: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgSurface,
+          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           borderRadius: 6,
           overflow: 'hidden',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          boxShadow: isLight ? '0 4px 16px rgba(0,0,0,0.1)' : '0 4px 16px rgba(0,0,0,0.5)',
           zIndex: 15
         }}
       >
@@ -571,19 +580,19 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             height: 32,
             border: 'none',
             backgroundColor: 'transparent',
-            color: '#d1d4dc',
+            color: THEME_TOKENS.colors.textPrimary,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2e39')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <ZoomIn size={16} />
         </button>
 
-        <div style={{ height: 1, backgroundColor: '#2a2e39' }} />
+        <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle }} />
 
         <button
           type="button"
@@ -594,19 +603,19 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             height: 32,
             border: 'none',
             backgroundColor: 'transparent',
-            color: '#d1d4dc',
+            color: THEME_TOKENS.colors.textPrimary,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2e39')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <ZoomOut size={16} />
         </button>
 
-        <div style={{ height: 1, backgroundColor: '#2a2e39' }} />
+        <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle }} />
 
         <button
           type="button"
@@ -617,13 +626,13 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             height: 32,
             border: 'none',
             backgroundColor: 'transparent',
-            color: '#d1d4dc',
+            color: THEME_TOKENS.colors.textPrimary,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2e39')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <RotateCcw size={15} />
@@ -631,7 +640,7 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
 
         {onSwitchToGlobe && (
           <>
-            <div style={{ height: 1, backgroundColor: '#2a2e39' }} />
+            <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle }} />
             <button
               type="button"
               onClick={onSwitchToGlobe}
@@ -641,13 +650,13 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
                 height: 32,
                 border: 'none',
                 backgroundColor: 'transparent',
-                color: '#d1d4dc',
+                color: THEME_TOKENS.colors.textPrimary,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2e39')}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover)}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               <Globe size={16} />
@@ -665,37 +674,37 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          backgroundColor: '#1e222d',
-          border: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgSurface,
+          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           borderRadius: 4,
           padding: '4px 10px',
           fontSize: 11,
           fontWeight: 600,
-          color: '#d1d4dc',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          color: THEME_TOKENS.colors.textPrimary,
+          boxShadow: isLight ? '0 2px 8px rgba(0,0,0,0.06)' : '0 2px 8px rgba(0,0,0,0.4)',
           zIndex: 15,
           pointerEvents: 'none'
         }}
       >
         <Compass size={13} color="#089981" />
         <span>Canvas 2D Engine</span>
-        <span style={{ color: '#787b86' }}>•</span>
+        <span style={{ color: THEME_TOKENS.colors.textSecondary }}>•</span>
         <span style={{ color: '#089981' }}>144 FPS Ultra-Fast</span>
       </div>
 
-      {/* Zero-Lag TradingView Matte Dark Tooltip */}
+      {/* Zero-Lag TradingView Matte Tooltip */}
       {hoverInfo && (
         <div
           style={{
             position: 'absolute',
             left: Math.min(hoverInfo.x + 14, (containerRef.current?.clientWidth || 800) - 180),
             top: Math.max(hoverInfo.y - 65, 16),
-            backgroundColor: '#1e222d',
-            border: '1px solid #2a2e39',
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
             borderRadius: 6,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            boxShadow: isLight ? '0 8px 24px rgba(0,0,0,0.12)' : '0 8px 24px rgba(0,0,0,0.6)',
             padding: '7px 11px',
-            color: '#d1d4dc',
+            color: THEME_TOKENS.colors.textPrimary,
             fontSize: 11,
             pointerEvents: 'none',
             zIndex: 100,
@@ -717,7 +726,7 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
                 alignItems: 'center',
                 gap: 5,
                 fontWeight: 700,
-                color: '#ffffff'
+                color: THEME_TOKENS.colors.textBright
               }}
             >
               <span style={{ fontSize: 14 }}>{hoverInfo.flag}</span>
@@ -728,8 +737,8 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
                 style={{
                   fontSize: 9,
                   padding: '1px 4px',
-                  backgroundColor: '#131722',
-                  color: '#787b86',
+                  backgroundColor: THEME_TOKENS.colors.bgApp,
+                  color: THEME_TOKENS.colors.textSecondary,
                   borderRadius: 2
                 }}
               >
@@ -748,11 +757,11 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             }}
           >
             <span
-              style={{ color: '#787b86', textTransform: 'uppercase', fontSize: 9, fontWeight: 600 }}
+              style={{ color: THEME_TOKENS.colors.textSecondary, textTransform: 'uppercase', fontSize: 9, fontWeight: 600 }}
             >
               {selectedMetric.replace('_', ' ')}:
             </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#2962ff' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: THEME_TOKENS.colors.accent }}>
               {hoverInfo.valStr}
             </span>
           </div>
@@ -763,8 +772,8 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
               justifyContent: 'space-between',
               alignItems: 'center',
               fontSize: 9,
-              color: '#787b86',
-              borderTop: '1px solid #2a2e39',
+              color: THEME_TOKENS.colors.textSecondary,
+              borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
               paddingTop: 4,
               marginTop: 2
             }}
@@ -772,7 +781,7 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             <span>Period: {hoverInfo.periodStr}</span>
             {hoverInfo.chgStr ? (
               <span
-                style={{ color: hoverInfo.chgPositive ? '#089981' : '#f23645', fontWeight: 600 }}
+                style={{ color: hoverInfo.chgPositive ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontWeight: 600 }}
               >
                 1Y: {hoverInfo.chgStr}
               </span>
@@ -787,14 +796,14 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           position: 'absolute',
           bottom: 16,
           left: 16,
-          backgroundColor: '#1e222d',
-          border: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgSurface,
+          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           borderRadius: 6,
           padding: '8px 12px',
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          boxShadow: isLight ? '0 4px 16px rgba(0,0,0,0.08)' : '0 4px 16px rgba(0,0,0,0.4)',
           zIndex: 15
         }}
       >
@@ -802,14 +811,14 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
           style={{
             fontSize: 11,
             fontWeight: 600,
-            color: '#d1d4dc',
+            color: THEME_TOKENS.colors.textBright,
             display: 'flex',
             alignItems: 'center',
             gap: 6
           }}
         >
           <span>{activeMetricConfig.label}</span>
-          <span style={{ color: '#787b86', fontSize: 10 }}>({activeMetricConfig.unit})</span>
+          <span style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10 }}>({activeMetricConfig.unit})</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           {activeMetricConfig.colorRamp.map((step, idx) => (
@@ -830,7 +839,7 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             fontSize: 9,
-            color: '#787b86'
+            color: THEME_TOKENS.colors.textSecondary
           }}
         >
           <span>

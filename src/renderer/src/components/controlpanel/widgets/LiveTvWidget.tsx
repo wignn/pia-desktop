@@ -4,6 +4,7 @@ import {
   buildYouTubeEmbedUrl,
   sendYouTubePlayerCommand
 } from '../../../utils/youtube'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 interface StreamChannel {
   id: string
@@ -135,8 +136,8 @@ export const LiveTvWidget: React.FC<{
           alignItems: 'center',
           gap: 5,
           padding: '5px 8px',
-          backgroundColor: '#131722',
-          borderBottom: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgSurface,
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           overflowX: 'auto',
           scrollbarWidth: 'none',
           flexShrink: 0
@@ -146,13 +147,13 @@ export const LiveTvWidget: React.FC<{
           style={{
             fontSize: 10,
             fontWeight: 700,
-            color: '#f23645',
+            color: THEME_TOKENS.colors.bearish,
             display: 'flex',
             alignItems: 'center',
             gap: 4
           }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#f23645' }} />
+          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: THEME_TOKENS.colors.bearish }} />
           LIVE
         </span>
 
@@ -168,9 +169,9 @@ export const LiveTvWidget: React.FC<{
                 borderRadius: 3,
                 fontSize: 10,
                 fontWeight: isActive ? 700 : 500,
-                border: isActive ? '1px solid #2962ff' : '1px solid #2a2e39',
-                backgroundColor: isActive ? 'rgba(41, 98, 255, 0.2)' : '#1e222d',
-                color: isActive ? '#2962ff' : '#d1d4dc',
+                border: isActive ? `1px solid ${THEME_TOKENS.colors.accent}` : `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                backgroundColor: isActive ? 'rgba(41, 98, 255, 0.2)' : THEME_TOKENS.colors.bgSurfaceHover,
+                color: isActive ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap'
               }}
@@ -189,9 +190,9 @@ export const LiveTvWidget: React.FC<{
             borderRadius: 3,
             fontSize: 10,
             fontWeight: activeChannelId === 'custom' ? 700 : 500,
-            border: activeChannelId === 'custom' ? '1px solid #089981' : '1px solid #2a2e39',
-            backgroundColor: activeChannelId === 'custom' ? 'rgba(8, 153, 129, 0.2)' : '#1e222d',
-            color: activeChannelId === 'custom' ? '#089981' : '#787b86',
+            border: activeChannelId === 'custom' ? `1px solid ${THEME_TOKENS.colors.bullish}` : `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            backgroundColor: activeChannelId === 'custom' ? 'rgba(8, 153, 129, 0.2)' : THEME_TOKENS.colors.bgSurfaceHover,
+            color: activeChannelId === 'custom' ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.textSecondary,
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
@@ -209,9 +210,9 @@ export const LiveTvWidget: React.FC<{
             borderRadius: 3,
             fontSize: 10,
             fontWeight: 600,
-            border: '1px solid #2a2e39',
-            backgroundColor: '#1e222d',
-            color: isPlaying ? '#f23645' : '#089981',
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            backgroundColor: THEME_TOKENS.colors.bgSurfaceHover,
+            color: isPlaying ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bullish,
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
@@ -229,9 +230,9 @@ export const LiveTvWidget: React.FC<{
             borderRadius: 3,
             fontSize: 10,
             fontWeight: 600,
-            border: isMuted ? '1px solid #f23645' : '1px solid #089981',
+            border: isMuted ? `1px solid ${THEME_TOKENS.colors.bearish}` : `1px solid ${THEME_TOKENS.colors.bullish}`,
             backgroundColor: isMuted ? 'rgba(242, 54, 69, 0.15)' : 'rgba(8, 153, 129, 0.15)',
-            color: isMuted ? '#f23645' : '#089981',
+            color: isMuted ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bullish,
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
@@ -248,9 +249,9 @@ export const LiveTvWidget: React.FC<{
             padding: '2px 6px',
             borderRadius: 3,
             fontSize: 10,
-            color: '#787b86',
-            border: '1px solid #2a2e39',
-            backgroundColor: '#1e222d',
+            color: THEME_TOKENS.colors.textSecondary,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            backgroundColor: THEME_TOKENS.colors.bgSurfaceHover,
             textDecoration: 'none',
             cursor: 'pointer'
           }}
@@ -268,8 +269,8 @@ export const LiveTvWidget: React.FC<{
             alignItems: 'center',
             gap: 6,
             padding: '4px 8px',
-            backgroundColor: '#181d28',
-            borderBottom: '1px solid #2a2e39'
+            backgroundColor: THEME_TOKENS.colors.bgApp,
+            borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
           }}
         >
           <input
@@ -279,12 +280,12 @@ export const LiveTvWidget: React.FC<{
             placeholder="Paste YouTube live link (e.g. https://www.youtube.com/live/...)"
             style={{
               flex: 1,
-              backgroundColor: '#131722',
-              border: '1px solid #2a2e39',
+              backgroundColor: THEME_TOKENS.colors.bgSurface,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
               borderRadius: 3,
               padding: '3px 8px',
               fontSize: 10,
-              color: '#ffffff',
+              color: THEME_TOKENS.colors.textBright,
               outline: 'none'
             }}
           />
@@ -293,7 +294,7 @@ export const LiveTvWidget: React.FC<{
             style={{
               padding: '3px 8px',
               borderRadius: 3,
-              backgroundColor: '#089981',
+              backgroundColor: THEME_TOKENS.colors.bullish,
               color: '#ffffff',
               border: 'none',
               fontSize: 10,
@@ -343,10 +344,10 @@ export const LiveTvWidget: React.FC<{
               margin: 'auto',
               width: 120,
               height: 38,
-              border: '1px solid #2962ff',
+              border: `1px solid ${THEME_TOKENS.colors.accent}`,
               borderRadius: 4,
-              backgroundColor: '#1e222d',
-              color: '#ffffff',
+              backgroundColor: THEME_TOKENS.colors.bgSurfaceHover,
+              color: THEME_TOKENS.colors.textBright,
               cursor: 'pointer',
               fontWeight: 700
             }}

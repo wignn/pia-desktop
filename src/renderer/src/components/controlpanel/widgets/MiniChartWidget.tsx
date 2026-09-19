@@ -8,7 +8,7 @@ import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { CandleEngine, registerCandleEngine } from '../../../services/candle-engine'
 import { timeframeToPeriod } from '../../../utils/timeframe'
 import { resolveControlWidgetTimeframe } from '../../../utils/control-panel-helpers'
-import { getChartThemeStyles } from '../../../theme/tokens'
+import { getChartThemeStyles, THEME_TOKENS } from '../../../theme/tokens'
 
 const PREFERRED_SYMBOLS = ['XAUUSD', 'BTCUSDT', 'ETHUSDT', 'NVDA', 'SPY', 'DXY', 'AAPL', 'TSLA']
 
@@ -205,8 +205,8 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
-        color: '#d1d4dc',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
+        color: THEME_TOKENS.colors.textPrimary,
         overflow: 'hidden'
       }}
     >
@@ -216,8 +216,8 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
           alignItems: 'center',
           gap: 6,
           padding: '6px 10px',
-          backgroundColor: '#181d28',
-          borderBottom: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgApp,
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           flexWrap: 'wrap',
           flexShrink: 0
         }}
@@ -234,10 +234,10 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
                 fontSize: 10,
                 fontWeight: item.symbol === activeSymbol ? 700 : 500,
                 border:
-                  item.symbol === activeSymbol ? '1px solid #2962ff' : '1px solid transparent',
+                  item.symbol === activeSymbol ? `1px solid ${THEME_TOKENS.colors.accent}` : '1px solid transparent',
                 backgroundColor:
                   item.symbol === activeSymbol ? 'rgba(41, 98, 255, 0.2)' : 'transparent',
-                color: item.symbol === activeSymbol ? '#2962ff' : '#787b86',
+                color: item.symbol === activeSymbol ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textSecondary,
                 cursor: 'pointer'
               }}
             >
@@ -264,8 +264,8 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
                 borderRadius: 2,
                 fontSize: 9,
                 fontWeight: item === activeTimeframe ? 700 : 500,
-                backgroundColor: item === activeTimeframe ? '#2a2e39' : 'transparent',
-                color: item === activeTimeframe ? '#ffffff' : '#787b86',
+                backgroundColor: item === activeTimeframe ? THEME_TOKENS.colors.bgActive : 'transparent',
+                color: item === activeTimeframe ? THEME_TOKENS.colors.textBright : THEME_TOKENS.colors.textSecondary,
                 border: 'none',
                 cursor: 'pointer'
               }}
@@ -283,14 +283,14 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
           gap: 8,
           padding: '5px 10px',
           minHeight: 27,
-          borderBottom: '1px solid #1e222d',
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           fontSize: 10,
           flexWrap: 'wrap',
           flexShrink: 0
         }}
       >
-        <strong style={{ color: '#ffffff', fontSize: 13 }}>{formatPrice(close)}</strong>
-        <span style={{ color: change >= 0 ? '#089981' : '#f23645', fontWeight: 700 }}>
+        <strong style={{ color: THEME_TOKENS.colors.textBright, fontSize: 13 }}>{formatPrice(close)}</strong>
+        <span style={{ color: change >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontWeight: 700 }}>
           {change >= 0 ? '+' : ''}
           {changePercent.toFixed(2)}%
         </span>
@@ -318,9 +318,9 @@ export const MiniChartWidget: React.FC<MiniChartWidgetProps> = ({
               display: 'grid',
               placeItems: 'center',
               pointerEvents: 'none',
-              color: statusMessage ? '#f23645' : '#787b86',
+              color: statusMessage ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.textSecondary,
               fontSize: 11,
-              backgroundColor: statusMessage ? 'rgba(19, 23, 34, 0.78)' : 'transparent'
+              backgroundColor: statusMessage ? THEME_TOKENS.colors.modalBackdrop : 'transparent'
             }}
           >
             {symbols.length === 0

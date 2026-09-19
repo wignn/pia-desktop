@@ -11,6 +11,7 @@ import { OrderBookWidget } from './widgets/OrderBookWidget'
 import { CalendarWidget } from './widgets/CalendarWidget'
 import { EnergyWidget } from './widgets/EnergyWidget'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { THEME_TOKENS } from '../../theme/tokens'
 import {
   resolveControlWidgetSymbol,
   resolveControlWidgetTimeframe
@@ -291,8 +292,8 @@ export const ControlPanelView: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        backgroundColor: '#0d111a',
-        color: '#d1d4dc',
+        backgroundColor: THEME_TOKENS.colors.bgApp,
+        color: THEME_TOKENS.colors.textPrimary,
         overflow: 'hidden'
       }}
     >
@@ -303,8 +304,8 @@ export const ControlPanelView: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 16px',
-          backgroundColor: '#131722',
-          borderBottom: '1px solid #2a2e39',
+          backgroundColor: THEME_TOKENS.colors.bgSurface,
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           gap: 12,
           flexShrink: 0,
           zIndex: 20
@@ -317,12 +318,12 @@ export const ControlPanelView: React.FC = () => {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                backgroundColor: '#089981',
-                boxShadow: '0 0 8px #089981'
+                backgroundColor: THEME_TOKENS.colors.bullish,
+                boxShadow: `0 0 8px ${THEME_TOKENS.colors.bullish}`
               }}
             />
             <span
-              style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', letterSpacing: '0.02em' }}
+              style={{ fontSize: 13, fontWeight: 700, color: THEME_TOKENS.colors.textBright, letterSpacing: '0.02em' }}
             >
               CONTROL PANEL & WAR ROOM
             </span>
@@ -332,14 +333,14 @@ export const ControlPanelView: React.FC = () => {
               fontSize: 11,
               padding: '2px 8px',
               borderRadius: 3,
-              backgroundColor: '#1e222d',
-              color: '#787b86',
-              border: '1px solid #2a2e39'
+              backgroundColor: THEME_TOKENS.colors.bgActive,
+              color: THEME_TOKENS.colors.textSecondary,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
             }}
           >
             {widgets.length} Widgets Active
           </span>
-          <span style={{ fontSize: 10, color: '#787b86', display: 'none' }} className="sm-show">
+          <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, display: 'none' }} className="sm-show">
             Drag header to reorder • Use -/+ to resize width
           </span>
         </div>
@@ -354,7 +355,7 @@ export const ControlPanelView: React.FC = () => {
               gap: 6,
               padding: '5px 12px',
               borderRadius: 4,
-              backgroundColor: '#2962ff',
+              backgroundColor: THEME_TOKENS.colors.accent,
               color: '#ffffff',
               border: 'none',
               fontSize: 11,
@@ -377,9 +378,9 @@ export const ControlPanelView: React.FC = () => {
               gap: 4,
               padding: '5px 10px',
               borderRadius: 4,
-              backgroundColor: '#1e222d',
-              color: '#d1d4dc',
-              border: '1px solid #2a2e39',
+              backgroundColor: THEME_TOKENS.colors.bgActive,
+              color: THEME_TOKENS.colors.textPrimary,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
               fontSize: 11,
               cursor: 'pointer'
             }}
@@ -420,15 +421,17 @@ export const ControlPanelView: React.FC = () => {
               style={{
                 gridColumn: `span ${Math.min(w.colSpan, 12)}`,
                 minHeight: w.minHeightPx || 280,
-                backgroundColor: '#131722',
-                border: isDragOver ? '2px dashed #2962ff' : '1px solid #2a2e39',
+                backgroundColor: THEME_TOKENS.colors.bgSurface,
+                border: isDragOver
+                  ? `2px dashed ${THEME_TOKENS.colors.accent}`
+                  : `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                 borderRadius: 6,
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 opacity: isDragging ? 0.4 : 1,
                 transition: 'border-color 0.15s, opacity 0.15s',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.35)'
+                boxShadow: THEME_TOKENS.colors.modalShadow
               }}
             >
               {/* Card Header (Drag Handle + Controls) */}
@@ -438,15 +441,17 @@ export const ControlPanelView: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '6px 10px',
-                  backgroundColor: '#181d28',
-                  borderBottom: '1px solid #2a2e39',
+                  backgroundColor: THEME_TOKENS.colors.bgSurfaceHover,
+                  borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                   cursor: 'grab',
                   userSelect: 'none'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Move size={12} color="#787b86" />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>{w.title}</span>
+                  <Move size={12} color={THEME_TOKENS.colors.textSecondary} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
+                    {w.title}
+                  </span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -460,9 +465,9 @@ export const ControlPanelView: React.FC = () => {
                       width: 18,
                       height: 18,
                       borderRadius: 2,
-                      backgroundColor: '#1e222d',
-                      border: '1px solid #2a2e39',
-                      color: index === 0 ? '#444955' : '#089981',
+                      backgroundColor: THEME_TOKENS.colors.bgActive,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      color: index === 0 ? THEME_TOKENS.colors.textMuted : THEME_TOKENS.colors.bullish,
                       cursor: index === 0 ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -482,9 +487,9 @@ export const ControlPanelView: React.FC = () => {
                       width: 18,
                       height: 18,
                       borderRadius: 2,
-                      backgroundColor: '#1e222d',
-                      border: '1px solid #2a2e39',
-                      color: index === widgets.length - 1 ? '#444955' : '#089981',
+                      backgroundColor: THEME_TOKENS.colors.bgActive,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      color: index === widgets.length - 1 ? THEME_TOKENS.colors.textMuted : THEME_TOKENS.colors.bullish,
                       cursor: index === widgets.length - 1 ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -497,11 +502,11 @@ export const ControlPanelView: React.FC = () => {
                   </button>
 
                   <div
-                    style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }}
+                    style={{ width: 1, height: 12, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }}
                   />
 
                   {/* Width adjust buttons */}
-                  <span style={{ fontSize: 9, color: '#787b86', marginRight: 2 }}>
+                  <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textSecondary, marginRight: 2 }}>
                     {w.colSpan}/12 col
                   </span>
                   <button
@@ -512,9 +517,9 @@ export const ControlPanelView: React.FC = () => {
                       width: 18,
                       height: 18,
                       borderRadius: 2,
-                      backgroundColor: '#1e222d',
-                      border: '1px solid #2a2e39',
-                      color: '#d1d4dc',
+                      backgroundColor: THEME_TOKENS.colors.bgActive,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      color: THEME_TOKENS.colors.textPrimary,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -532,9 +537,9 @@ export const ControlPanelView: React.FC = () => {
                       width: 18,
                       height: 18,
                       borderRadius: 2,
-                      backgroundColor: '#1e222d',
-                      border: '1px solid #2a2e39',
-                      color: '#d1d4dc',
+                      backgroundColor: THEME_TOKENS.colors.bgActive,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      color: THEME_TOKENS.colors.textPrimary,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -546,7 +551,7 @@ export const ControlPanelView: React.FC = () => {
                   </button>
 
                   <div
-                    style={{ width: 1, height: 12, backgroundColor: '#2a2e39', margin: '0 2px' }}
+                    style={{ width: 1, height: 12, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }}
                   />
 
                   {/* Close Widget */}
@@ -560,15 +565,15 @@ export const ControlPanelView: React.FC = () => {
                       borderRadius: 2,
                       backgroundColor: 'transparent',
                       border: 'none',
-                      color: '#787b86',
+                      color: THEME_TOKENS.colors.textSecondary,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       padding: 0
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = '#f23645')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = '#787b86')}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = THEME_TOKENS.colors.bearish)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = THEME_TOKENS.colors.textSecondary)}
                   >
                     <X size={13} />
                   </button>
@@ -600,7 +605,7 @@ export const ControlPanelView: React.FC = () => {
             left: 0,
             width: '100vw',
             height: '100vh',
-            backgroundColor: 'rgba(0,0,0,0.7)',
+            backgroundColor: THEME_TOKENS.colors.modalBackdrop,
             backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
@@ -613,10 +618,10 @@ export const ControlPanelView: React.FC = () => {
             style={{
               width: 580,
               maxHeight: '80vh',
-              backgroundColor: '#1e222d',
-              border: '1px solid #2a2e39',
+              backgroundColor: THEME_TOKENS.colors.bgSurface,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
               borderRadius: 8,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+              boxShadow: THEME_TOKENS.colors.modalShadow,
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden'
@@ -629,16 +634,16 @@ export const ControlPanelView: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '12px 16px',
-                borderBottom: '1px solid #2a2e39'
+                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
                 Add Financial Widget
               </span>
               <button
                 type="button"
                 onClick={() => setIsCatalogOpen(false)}
-                style={{ background: 'none', border: 'none', color: '#787b86', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: THEME_TOKENS.colors.textSecondary, cursor: 'pointer' }}
               >
                 <X size={16} />
               </button>
@@ -663,28 +668,28 @@ export const ControlPanelView: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '10px 14px',
-                    backgroundColor: '#131722',
-                    border: '1px solid #2a2e39',
+                    backgroundColor: THEME_TOKENS.colors.bgApp,
+                    border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                     borderRadius: 6,
                     cursor: 'pointer',
                     transition: 'all 0.12s ease'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = 'rgba(41, 98, 255, 0.12)'
-                    e.currentTarget.style.borderColor = '#2962ff'
+                    e.currentTarget.style.borderColor = 'var(--accent)'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#131722'
-                    e.currentTarget.style.borderColor = '#2a2e39'
+                    e.currentTarget.style.backgroundColor = 'var(--bg-app)'
+                    e.currentTarget.style.borderColor = 'var(--border-subtle)'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontSize: 20 }}>{cat.icon}</span>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
                         {cat.title}
                       </div>
-                      <div style={{ fontSize: 11, color: '#787b86', marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, marginTop: 2 }}>
                         {cat.description}
                       </div>
                     </div>
@@ -694,7 +699,7 @@ export const ControlPanelView: React.FC = () => {
                     style={{
                       fontSize: 10,
                       fontWeight: 700,
-                      color: '#2962ff',
+                      color: THEME_TOKENS.colors.accent,
                       backgroundColor: 'rgba(41, 98, 255, 0.15)',
                       padding: '3px 8px',
                       borderRadius: 3

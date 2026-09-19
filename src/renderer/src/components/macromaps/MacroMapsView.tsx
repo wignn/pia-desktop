@@ -213,7 +213,7 @@ export const MacroMapsView: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        backgroundColor: '#0e1117',
+        backgroundColor: THEME_TOKENS.colors.bgApp,
         color: THEME_TOKENS.colors.textPrimary,
         overflow: 'hidden',
         userSelect: 'none'
@@ -304,7 +304,7 @@ export const MacroMapsView: React.FC = () => {
           style={{
             flex: 1,
             position: 'relative',
-            backgroundColor: '#0d111a',
+            backgroundColor: THEME_TOKENS.colors.bgApp,
             overflow: 'hidden'
           }}
         >

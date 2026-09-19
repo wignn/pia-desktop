@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { SocialPostItemData } from '@shared/types'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const SocialXWidget: React.FC = () => {
   const [posts, setPosts] = useState<SocialPostItemData[]>([])
@@ -33,12 +34,12 @@ export const SocialXWidget: React.FC = () => {
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
         overflowY: 'auto'
       }}
     >
       {isLoading && (
-        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+        <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, textAlign: 'center', padding: 20 }}>
           Streaming X sentiment...
         </div>
       )}
@@ -50,18 +51,18 @@ export const SocialXWidget: React.FC = () => {
             key={p.id}
             style={{
               padding: '8px 12px',
-              borderBottom: '1px solid #1e222d',
+              borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
               display: 'flex',
               flexDirection: 'column',
               gap: 4
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
                   @{p.handle || p.author}
                 </span>
-                <span style={{ fontSize: 9, color: '#787b86' }}>
+                <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textSecondary }}>
                   {new Date(p.timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit'
@@ -79,15 +80,15 @@ export const SocialXWidget: React.FC = () => {
                       ? 'rgba(8, 153, 129, 0.2)'
                       : isBear
                         ? 'rgba(242, 54, 69, 0.2)'
-                        : '#1e222d',
-                    color: isBull ? '#089981' : isBear ? '#f23645' : '#787b86'
+                        : THEME_TOKENS.colors.bgApp,
+                    color: isBull ? THEME_TOKENS.colors.bullish : isBear ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.textSecondary
                   }}
                 >
                   {p.sentiment.toUpperCase()}
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 11, color: '#d1d4dc', lineHeight: '15px' }}>{p.content}</div>
+            <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textPrimary, lineHeight: '15px' }}>{p.content}</div>
           </div>
         )
       })}

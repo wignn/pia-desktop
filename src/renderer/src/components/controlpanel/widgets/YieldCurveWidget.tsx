@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { YieldPoint } from '@shared/types'
+import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const YieldCurveWidget: React.FC = () => {
   const [points, setPoints] = useState<YieldPoint[]>([])
@@ -47,7 +48,7 @@ export const YieldCurveWidget: React.FC = () => {
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#131722',
+        backgroundColor: THEME_TOKENS.colors.bgSurface,
         padding: '10px 14px',
         overflowY: 'auto'
       }}
@@ -59,13 +60,13 @@ export const YieldCurveWidget: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           paddingBottom: 8,
-          borderBottom: '1px solid #2a2e39',
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           marginBottom: 10
         }}
       >
         <div>
           <div
-            style={{ fontSize: 10, color: '#787b86', textTransform: 'uppercase', fontWeight: 600 }}
+            style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}
           >
             2Y-10Y Benchmark Spread
           </div>
@@ -73,7 +74,7 @@ export const YieldCurveWidget: React.FC = () => {
             style={{
               fontSize: 18,
               fontWeight: 700,
-              color: spread2s10s !== null && spread2s10s >= 0 ? '#089981' : '#f23645'
+              color: spread2s10s !== null && spread2s10s >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
             }}
           >
             {spread2s10s !== null
@@ -90,7 +91,7 @@ export const YieldCurveWidget: React.FC = () => {
               spread2s10s !== null && spread2s10s < 0
                 ? 'rgba(242, 54, 69, 0.2)'
                 : 'rgba(8, 153, 129, 0.2)',
-            color: spread2s10s !== null && spread2s10s < 0 ? '#f23645' : '#089981',
+            color: spread2s10s !== null && spread2s10s < 0 ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bullish,
             fontWeight: 700
           }}
         >
@@ -99,7 +100,7 @@ export const YieldCurveWidget: React.FC = () => {
       </div>
 
       {isLoading && (
-        <div style={{ fontSize: 11, color: '#787b86', textAlign: 'center', padding: 20 }}>
+        <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, textAlign: 'center', padding: 20 }}>
           Loading treasury yields...
         </div>
       )}
@@ -119,8 +120,8 @@ export const YieldCurveWidget: React.FC = () => {
             <div
               key={pt.tenor}
               style={{
-                backgroundColor: '#1e222d',
-                border: '1px solid #2a2e39',
+                backgroundColor: THEME_TOKENS.colors.bgApp,
+                border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                 borderRadius: 4,
                 padding: '6px 8px',
                 display: 'flex',
@@ -128,11 +129,11 @@ export const YieldCurveWidget: React.FC = () => {
                 gap: 2
               }}
             >
-              <span style={{ fontSize: 10, color: '#787b86', fontWeight: 600 }}>{pt.tenor}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#ffffff' }}>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, fontWeight: 600 }}>{pt.tenor}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
                 {pt.yield.toFixed(2)}%
               </span>
-              <span style={{ fontSize: 9, color: isPos ? '#089981' : '#f23645' }}>
+              <span style={{ fontSize: 9, color: isPos ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
                 {isPos ? '+' : ''}
                 {chg.toFixed(1)} bp
               </span>
