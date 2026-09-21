@@ -6,12 +6,13 @@ import {
   type KLineData,
   type CandleType,
   type Point,
-  type Overlay
+  type Overlay,
+  type Period
 } from 'klinecharts'
-import { timeframeToPeriod } from '../../utils/timeframe'
+import { timeframeToPeriod, periodToTimeframe } from '../../utils/timeframe'
 import { candleEngine } from '../../services/candle-engine'
 import { useMarketStore } from '../../stores/useMarketStore'
-import { useChartStore } from '../../stores/useChartStore'
+import { useChartStore, isOverlayIndicator } from '../../stores/useChartStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS, getChartThemeStyles } from '../../theme/tokens'
 import { ChartLegend } from './ChartLegend'
@@ -66,7 +67,6 @@ export const ChartContainer: React.FC = () => {
     snapshotSignal,
     setActiveTool
   } = useChartStore()
-
 
   const renderedIndicatorsRef = useRef<Set<string>>(new Set())
   const lastHandledSnapshotSignalRef = useRef<number>(snapshotSignal)
@@ -235,7 +235,8 @@ export const ChartContainer: React.FC = () => {
           return
         }
 
-        const tf = useMarketStore.getState().timeframe
+        const period = (params as { period?: Period }).period
+        const tf = period ? periodToTimeframe(period) : useMarketStore.getState().timeframe
         const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
         setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
@@ -316,12 +317,21 @@ export const ChartContainer: React.FC = () => {
       volumePrecision
     })
 
-    // Create initial indicators
-    chart.createIndicator('EMA', true)
-    chart.createIndicator('VOL', false)
+    // Create initial indicators from saved preferences
+    const savedIndicators = useChartStore.getState().activeIndicators
     const renderedIndicators = renderedIndicatorsRef.current
-    renderedIndicators.add('EMA')
-    renderedIndicators.add('VOL')
+    renderedIndicators.clear()
+    for (const ind of savedIndicators) {
+      const isStack = isOverlayIndicator(ind.name)
+      chart.createIndicator(
+        {
+          name: ind.name,
+          paneId: ind.paneId
+        },
+        isStack
+      )
+      renderedIndicators.add(ind.name)
+    }
 
     // Resize observer for responsive canvas adjustments
     const resizeObserver = new ResizeObserver((): void => {
@@ -463,7 +473,7 @@ export const ChartContainer: React.FC = () => {
     // Add newly activated indicators
     for (const ind of activeIndicators) {
       if (!renderedIndicatorsRef.current.has(ind.name)) {
-        const isStack = !['VOL', 'MACD', 'RSI'].includes(ind.name)
+        const isStack = isOverlayIndicator(ind.name)
         chart.createIndicator(
           {
             name: ind.name,

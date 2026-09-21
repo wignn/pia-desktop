@@ -602,16 +602,35 @@ export class PiaProvider {
         throw new Error(`Unsupported candle timeframe: ${params.timeframe}`)
       }
 
-      // The runtime API accepts the canonical intervals; published SDK typings lag for 30m/1w.
-      const timeframe = params.timeframe as NonNullable<
-        Parameters<typeof this.client.market.getCandles>[1]
-      >['timeframe']
-      const res = await this.client.market.getCandles(params.symbol, {
-        timeframe,
-        limit: params.limit,
-        since: params.from,
-        until: params.to
-      })
+      let res: unknown
+      try {
+        // The runtime API accepts the canonical intervals; published SDK typings lag for 30m/1w.
+        const timeframe = params.timeframe as NonNullable<
+          Parameters<typeof this.client.market.getCandles>[1]
+        >['timeframe']
+        res = await this.client.market.getCandles(params.symbol, {
+          timeframe,
+          limit: params.limit,
+          since: params.from,
+          until: params.to
+        })
+      } catch (sdkErr) {
+        if (params.timeframe === '1w') {
+          const dailyBars = await this.getCandles({
+            symbol: params.symbol,
+            timeframe: '1d',
+            from: params.from,
+            to: params.to,
+            limit: Math.min((params.limit ?? 500) * 7, 2000)
+          })
+          const weeklyBars = this.aggregateWeeklyBars(dailyBars)
+          if (weeklyBars.length > 0) {
+            this.candleCache.set(cacheKey, { bars: weeklyBars, cachedAt: Date.now() })
+          }
+          return weeklyBars
+        }
+        throw sdkErr
+      }
 
       const payload = (res || {}) as unknown as Record<string, unknown>
       const rawRows = Array.isArray(payload.candles)
@@ -621,7 +640,23 @@ export class PiaProvider {
           : Array.isArray(payload.data)
             ? payload.data
             : []
-      if (rawRows.length === 0) return []
+      if (rawRows.length === 0) {
+        if (params.timeframe === '1w') {
+          const dailyBars = await this.getCandles({
+            symbol: params.symbol,
+            timeframe: '1d',
+            from: params.from,
+            to: params.to,
+            limit: Math.min((params.limit ?? 500) * 7, 2000)
+          })
+          const weeklyBars = this.aggregateWeeklyBars(dailyBars)
+          if (weeklyBars.length > 0) {
+            this.candleCache.set(cacheKey, { bars: weeklyBars, cachedAt: Date.now() })
+          }
+          return weeklyBars
+        }
+        return []
+      }
       const rows = rawRows as Candle[]
 
       // Strict normalization & sorting
@@ -660,6 +695,38 @@ export class PiaProvider {
       console.warn('getCandles unavailable:', this.formatProviderError(err))
       return []
     }
+  }
+
+  private aggregateWeeklyBars(dailyBars: CandleBar[]): CandleBar[] {
+    const sorted = [...dailyBars].sort((a, b) => a.timestamp - b.timestamp)
+    const weeklyMap = new Map<number, CandleBar>()
+    for (const b of sorted) {
+      const d = new Date(b.timestamp)
+      const day = d.getUTCDay()
+      const diff = (day + 6) % 7
+      d.setUTCDate(d.getUTCDate() - diff)
+      d.setUTCHours(0, 0, 0, 0)
+      const weekStart = d.getTime()
+      const existing = weeklyMap.get(weekStart)
+      if (!existing) {
+        weeklyMap.set(weekStart, {
+          timestamp: weekStart,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+          volume: b.volume
+        })
+      } else {
+        existing.high = Math.max(existing.high, b.high)
+        existing.low = Math.min(existing.low, b.low)
+        existing.close = b.close
+        if (b.volume !== undefined) {
+          existing.volume = (existing.volume ?? 0) + b.volume
+        }
+      }
+    }
+    return Array.from(weeklyMap.values()).sort((a, b) => a.timestamp - b.timestamp)
   }
 
   public async uploadSnapshot(params: {

@@ -170,7 +170,8 @@ export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles
     indicator: {
       tooltip: {
         showRule: 'always',
-        showType: 'standard'
+        showType: 'standard',
+        offsetTop: 30
       }
     },
     xAxis: {

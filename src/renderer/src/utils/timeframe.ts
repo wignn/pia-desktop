@@ -23,3 +23,17 @@ export function timeframeToPeriod(tf: Timeframe): Period {
       return { type: 'minute', span: 1 }
   }
 }
+
+export function periodToTimeframe(period?: Partial<Period> | null): Timeframe {
+  if (!period || !period.type) return '15m'
+  if (period.type === 'week') return '1w'
+  if (period.type === 'day') return '1d'
+  if (period.type === 'hour') return period.span === 4 ? '4h' : '1h'
+  if (period.type === 'minute') {
+    if (period.span === 30) return '30m'
+    if (period.span === 15) return '15m'
+    if (period.span === 5) return '5m'
+    return '1m'
+  }
+  return '1d'
+}

@@ -1,10 +1,12 @@
-import React, { Suspense, lazy, useState, useMemo, useEffect, useCallback } from 'react'
+import React, { Suspense, lazy, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { MACRO_METRICS } from './macroDataset'
 import { TradingViewMacroMap } from './TradingViewMacroMap'
+import { MacroCardsSection } from './MacroCardsSection'
 import { useTabStore } from '../../stores/useTabStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import type { MacroMetricType, CountryMacroData } from '@shared/types'
+import { ArrowDown } from 'lucide-react'
 
 const MacroMapLibre = lazy(() =>
   import('./MacroMapLibre').then((module) => ({ default: module.MacroMapLibre }))
@@ -42,6 +44,42 @@ export const MacroMapsView: React.FC = () => {
   const [isLiveData, setIsLiveData] = useState(false)
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null)
   const [mapEngine, setMapEngine] = useState<'canvas' | 'globe'>('canvas')
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const cardsSectionRef = useRef<HTMLDivElement>(null)
+
+  const handleScrollToCards = useCallback(() => {
+    if (cardsSectionRef.current) {
+      cardsSectionRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [])
+
+  const handleScrollToMap = useCallback(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [])
+
+  const handleSelectBenchmarkSymbol = useCallback(
+    (benchmarkSymbol: string) => {
+      useMarketStore.getState().setSymbol(benchmarkSymbol)
+      const now = Date.now()
+      openLayoutInNewTab({
+        id: `chart_${benchmarkSymbol}_${now}`,
+        name: `${benchmarkSymbol} Chart`,
+        symbol: benchmarkSymbol,
+        timeframe: '1d',
+        chartType: 'candle_solid',
+        indicators: [
+          { id: 'ema_20', name: 'EMA', paneId: 'candle_pane', calcParams: [20], visible: true }
+        ],
+        activePanel: 'chart',
+        createdAt: now,
+        updatedAt: now
+      })
+    },
+    [openLayoutInNewTab]
+  )
 
   // Historical animation playback loop
   useEffect(() => {
@@ -299,53 +337,122 @@ export const MacroMapsView: React.FC = () => {
 
       {/* 2. MAIN WORKSPACE (MAP + RANKING SIDEBAR) */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
-        {/* MAPLIBRE GL MAP CONTAINER */}
+        {/* LEFT COLUMN: SCROLLABLE HERO MAP + MODULAR MACRO CARDS */}
         <div
+          ref={scrollContainerRef}
           style={{
             flex: 1,
+            height: '100%',
+            overflowY: 'auto',
+            overflowX: 'hidden',
             position: 'relative',
             backgroundColor: THEME_TOKENS.colors.bgApp,
-            overflow: 'hidden'
+            scrollBehavior: 'smooth'
           }}
         >
-          {mapEngine === 'canvas' ? (
-            <TradingViewMacroMap
-              selectedMetric={selectedMetric}
-              selectedYear={selectedYear}
-              macroData={macroData}
-              selectedCountryId={selectedCountryId}
-              onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
-              onOpenChart={handleOpenChart}
-              onSwitchToGlobe={() => setMapEngine('globe')}
-            />
-          ) : (
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    display: 'grid',
-                    placeItems: 'center',
-                    width: '100%',
-                    height: '100%',
-                    color: THEME_TOKENS.colors.textSecondary
-                  }}
-                >
-                  Loading map…
-                </div>
-              }
-            >
-              <MacroMapLibre
+          {/* HERO MAP SECTION */}
+          <div
+            style={{
+              width: '100%',
+              height: 'calc(100vh - 150px)',
+              minHeight: 520,
+              position: 'relative',
+              backgroundColor: THEME_TOKENS.colors.bgApp,
+              overflow: 'hidden'
+            }}
+          >
+            {mapEngine === 'canvas' ? (
+              <TradingViewMacroMap
                 selectedMetric={selectedMetric}
                 selectedYear={selectedYear}
                 macroData={macroData}
                 selectedCountryId={selectedCountryId}
                 onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
-                onHoverCountry={() => {}}
                 onOpenChart={handleOpenChart}
-                onSwitchToCanvas={() => setMapEngine('canvas')}
+                onSwitchToGlobe={() => setMapEngine('globe')}
               />
-            </Suspense>
-          )}
+            ) : (
+              <Suspense
+                fallback={
+                  <div
+                    style={{
+                      display: 'grid',
+                      placeItems: 'center',
+                      width: '100%',
+                      height: '100%',
+                      color: THEME_TOKENS.colors.textSecondary
+                    }}
+                  >
+                    Loading map…
+                  </div>
+                }
+              >
+                <MacroMapLibre
+                  selectedMetric={selectedMetric}
+                  selectedYear={selectedYear}
+                  macroData={macroData}
+                  selectedCountryId={selectedCountryId}
+                  onSelectCountry={(countryId) => setSelectedCountryId(countryId)}
+                  onHoverCountry={() => {}}
+                  onOpenChart={handleOpenChart}
+                  onSwitchToCanvas={() => setMapEngine('canvas')}
+                />
+              </Suspense>
+            )}
+
+            {/* FLOATING 'MACRO PULSE & CARDS ↓' CTA BUTTON */}
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                pointerEvents: 'auto'
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleScrollToCards}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  backgroundColor: 'rgba(19, 23, 34, 0.85)',
+                  backdropFilter: 'blur(8px)',
+                  border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                  color: THEME_TOKENS.colors.textBright,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = THEME_TOKENS.colors.accent
+                  e.currentTarget.style.color = THEME_TOKENS.colors.accent
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = THEME_TOKENS.colors.borderSubtle
+                  e.currentTarget.style.color = THEME_TOKENS.colors.textBright
+                }}
+              >
+                <span>Macro Pulse & Market Cards</span>
+                <ArrowDown size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* MACRO CARDS SECTION (YOUTUBE, DXY, REAL YIELDS, CROSS-ASSETS, NEWS) */}
+          <div ref={cardsSectionRef}>
+            <MacroCardsSection
+              macroData={macroData}
+              onScrollToMap={handleScrollToMap}
+              onSelectSymbol={handleSelectBenchmarkSymbol}
+            />
+          </div>
         </div>
 
         {/* 3. RIGHT COUNTRY RANKING SIDEBAR */}

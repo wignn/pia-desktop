@@ -199,7 +199,8 @@ export const MacroMapLibre: React.FC<MacroMapLibreProps> = ({
       maxZoom: 9,
       attributionControl: false,
       fadeDuration: 0,
-      trackResize: true
+      trackResize: true,
+      cooperativeGestures: true
     })
 
     map.on('load', () => {

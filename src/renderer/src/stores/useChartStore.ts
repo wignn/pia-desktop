@@ -26,9 +26,20 @@ export interface ActiveIndicator {
   visible: boolean
 }
 
+export const OVERLAY_INDICATORS = new Set(['EMA', 'SMA', 'BOLL', 'SAR', 'BBI', 'MA'])
+export const isOverlayIndicator = (name: string): boolean => OVERLAY_INDICATORS.has(name.toUpperCase())
+
+export const sanitizeIndicators = (indicators: ActiveIndicator[]): ActiveIndicator[] => {
+  return indicators.map((ind) => {
+    const isOverlay = isOverlayIndicator(ind.name)
+    const expectedPane = isOverlay ? 'candle_pane' : `${ind.name.toLowerCase()}_pane`
+    return ind.paneId !== expectedPane ? { ...ind, paneId: expectedPane } : ind
+  })
+}
+
 const DEFAULT_INDICATORS: ActiveIndicator[] = [
   { name: 'EMA', shortName: 'EMA', paneId: 'candle_pane', visible: true },
-  { name: 'VOL', shortName: 'VOL', paneId: 'volume_pane', visible: true }
+  { name: 'VOL', shortName: 'VOL', paneId: 'vol_pane', visible: true }
 ]
 
 const loadSavedIndicators = (): ActiveIndicator[] => {
@@ -37,7 +48,7 @@ const loadSavedIndicators = (): ActiveIndicator[] => {
     const raw = localStorage.getItem('pia_active_indicators')
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) return sanitizeIndicators(parsed)
     }
   } catch {
     // fallback
@@ -121,8 +132,8 @@ export const useChartStore = create<ChartState>((set, get) => ({
     if (exists) {
       updated = list.filter((item) => item.name !== name)
     } else {
-      const isSubPane = ['VOL', 'MACD', 'RSI'].includes(name)
-      const paneId = isSubPane ? `${name.toLowerCase()}_pane` : defaultPane
+      const isOverlay = isOverlayIndicator(name)
+      const paneId = isOverlay ? defaultPane : `${name.toLowerCase()}_pane`
       updated = [...list, { name, shortName: name, paneId, visible: true }]
     }
 

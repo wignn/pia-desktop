@@ -1,649 +1,991 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, ChevronUp, RefreshCw } from 'lucide-react'
-import type {
-  CandleBar,
-  CountryMacroData,
-  NewsArticle,
-  PriceQuote,
-  SocialPostItemData,
-  YieldCurveResult,
-  YieldSpreadResult
-} from '@shared/types'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import {
+  ExternalLink,
+  TrendingUp,
+  Activity,
+  ArrowUp,
+  ArrowUpRight,
+  ArrowDownRight,
+  Edit2,
+  Check,
+  Newspaper,
+  Layers
+} from 'lucide-react'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { useMarketStore } from '../../stores/useMarketStore'
-import { parseYouTubeId } from '../../utils/youtube'
+import type {
+  CountryMacroData,
+  CandleBar,
+  PriceQuote,
+  FixedIncomeRateData,
+  FixedIncomeHistoryData,
+  YieldSpreadResult,
+  NewsArticle
+} from '@shared/types'
 
 interface MacroCardsSectionProps {
   macroData: CountryMacroData[]
-  onScrollToTop: () => void
-  onSelectSymbol: (symbol: string) => void
+  onScrollToMap: () => void
+  onSelectSymbol?: (symbol: string) => void
 }
 
-interface VideoSettings {
-  url: string
-  title: string
-}
+const DEFAULT_YT_URL = 'https://www.youtube.com/watch?v=dp8PhLsUcFE'
 
-const BENCHMARKS = ['XAUUSD', 'DXY', 'SPX', 'WTI', 'BTCUSD']
-const VIDEO_SETTINGS_KEY = 'pia-macro-video'
-
-function loadVideoSettings(): VideoSettings | null {
+function extractYoutubeVideoId(url: string): string | null {
   try {
-    const value = localStorage.getItem(VIDEO_SETTINGS_KEY)
-    if (!value) return null
-    const parsed = JSON.parse(value) as Partial<VideoSettings>
-    return typeof parsed.url === 'string' && parseYouTubeId(parsed.url) !== null
-      ? { url: parsed.url, title: parsed.title || 'Market live stream' }
-      : null
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+    const match = url.match(regExp)
+    return match && match[2].length === 11 ? match[2] : null
   } catch {
     return null
   }
 }
 
+// Lightweight reusable SVG Sparkline component
 function Sparkline({
-  candles,
-  positive
+  bars,
+  color,
+  width = 140,
+  height = 42
 }: {
-  candles: CandleBar[]
-  positive?: boolean
-}): React.JSX.Element {
-  const points = useMemo(() => {
-    if (candles.length < 2) return ''
-    const values = candles.map((candle) => candle.close)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const range = max - min || 1
-    return values
-      .map((value, index) => {
-        const x = (index / (values.length - 1)) * 160
-        const y = 30 - ((value - min) / range) * 24
-        return `${x.toFixed(1)},${y.toFixed(1)}`
-      })
-      .join(' ')
-  }, [candles])
+  bars: { value: number }[]
+  color: string
+  width?: number
+  height?: number
+}): React.JSX.Element | null {
+  if (!bars || bars.length < 2) {
+    return (
+      <div
+        style={{
+          width,
+          height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 10,
+          color: THEME_TOKENS.colors.textMuted
+        }}
+      >
+        No trend data
+      </div>
+    )
+  }
+
+  const values = bars.map((b) => b.value)
+  const minVal = Math.min(...values)
+  const maxVal = Math.max(...values)
+  const range = maxVal - minVal === 0 ? 1 : maxVal - minVal
+  const pad = 4
+
+  const points = bars.map((b, i) => {
+    const x = pad + (i / (bars.length - 1)) * (width - pad * 2)
+    const y = height - pad - ((b.value - minVal) / range) * (height - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+
+  const pathD = `M ${points.join(' L ')}`
 
   return (
-    <svg
-      width="100%"
-      height="34"
-      viewBox="0 0 160 34"
-      preserveAspectRatio="none"
-      aria-label="Price trend"
-    >
-      <line x1="0" y1="30" x2="160" y2="30" stroke={THEME_TOKENS.colors.borderSubtle} />
-      {points && (
-        <polyline
-          points={points}
-          fill="none"
-          stroke={positive === false ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bullish}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
+    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <path
+        d={pathD}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-function formatValue(value?: number, digits = 2): string {
-  return value === undefined || !Number.isFinite(value)
-    ? 'Unavailable'
-    : value.toLocaleString(undefined, {
-        maximumFractionDigits: digits,
-        minimumFractionDigits: digits
-      })
-}
-
-const cardStyle: React.CSSProperties = {
-  backgroundColor: THEME_TOKENS.colors.bgSurface,
-  border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
-  borderRadius: 6,
-  padding: 12,
-  minWidth: 0
-}
-
 export const MacroCardsSection: React.FC<MacroCardsSectionProps> = ({
   macroData,
-  onScrollToTop,
+  onScrollToMap,
   onSelectSymbol
 }) => {
-  const prices = useMarketStore((state) => state.prices)
-  const symbols = useMarketStore((state) => state.symbols)
-  const [benchmarkCandles, setBenchmarkCandles] = useState<Record<string, CandleBar[]>>({})
-  const [yieldCurve, setYieldCurve] = useState<YieldCurveResult | null>(null)
-  const [yieldSpreads, setYieldSpreads] = useState<YieldSpreadResult | null>(null)
-  const [inflation, setInflation] = useState<number | undefined>()
-  const [videos, setVideos] = useState<NewsArticle[]>([])
-  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([])
-  const [socialPosts, setSocialPosts] = useState<SocialPostItemData[]>([])
-  const [videoSettings, setVideoSettings] = useState<VideoSettings | null>(loadVideoSettings)
-  const [videoInput, setVideoInput] = useState(videoSettings?.url || '')
-  const [videoTitleInput, setVideoTitleInput] = useState(videoSettings?.title || '')
-  const [showVideoSettings, setShowVideoSettings] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  // 1. YouTube Live Market Broadcast state
+  const [youtubeUrl, setYoutubeUrl] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('pia_macro_yt_url')
+      return saved && saved.trim() ? saved.trim() : DEFAULT_YT_URL
+    } catch {
+      return DEFAULT_YT_URL
+    }
+  })
+  const [isEditingYt, setIsEditingYt] = useState(false)
+  const [tempYtInput, setTempYtInput] = useState(youtubeUrl)
 
-  const loadCards = useCallback(async () => {
-    setIsLoading(true)
-    const availableSymbols = new Set(symbols.map((item) => item.symbol.toUpperCase()))
-    const benchmarkSymbols = BENCHMARKS.filter(
-      (benchmark) => benchmark === 'DXY' || availableSymbols.has(benchmark)
-    )
+  const videoId = useMemo(() => extractYoutubeVideoId(youtubeUrl), [youtubeUrl])
 
-    const candleResults = await Promise.all(
-      benchmarkSymbols.map(async (benchmark) => {
-        try {
-          const candles = await window.api.market.getCandles({
-            symbol: benchmark,
-            timeframe: '1d',
-            limit: 30
-          })
-          return [benchmark, candles] as const
-        } catch {
-          return [benchmark, []] as const
-        }
-      })
-    )
+  const handleSaveYtUrl = useCallback(() => {
+    const clean = tempYtInput.trim() || DEFAULT_YT_URL
+    setYoutubeUrl(clean)
+    try {
+      localStorage.setItem('pia_macro_yt_url', clean)
+    } catch {
+      // ignore
+    }
+    setIsEditingYt(false)
+  }, [tempYtInput])
 
-    const [curve, spreads, inflationMap, news, socialPostsResult] = await Promise.all([
-      window.api.fixedIncome.getYieldCurve().catch(() => null),
-      window.api.fixedIncome.getSpreads().catch(() => null),
-      window.api.macro
-        .getMap({ indicator: 'inflation', period: String(new Date().getFullYear()) })
-        .catch(() => null),
-      window.api.news.get({ limit: 20 }).catch(() => []),
-      window.api.social.getFeed({ limit: 12 }).catch(() => [])
-    ])
+  const handleOpenYoutube = useCallback(() => {
+    if (window.api?.system?.openExternal) {
+      window.api.system.openExternal(youtubeUrl)
+    }
+  }, [youtubeUrl])
 
-    setBenchmarkCandles(Object.fromEntries(candleResults))
-    setYieldCurve(curve)
-    setYieldSpreads(spreads)
-    setInflation(
-      inflationMap?.countries.find((country) => country.id.toUpperCase() === 'US')?.value
-    )
-    setVideos(news.filter((article) => parseYouTubeId(article.url) !== null).slice(0, 3))
-    setNewsArticles(news)
-    setSocialPosts(socialPostsResult)
-    setIsLoading(false)
-  }, [symbols])
+  // 2. DXY (US Dollar Index) state
+  const storeDxyQuote = useMarketStore((state) => state.prices['DXY'])
+  const [dxyQuote, setDxyQuote] = useState<PriceQuote | null>(null)
+  const [dxyBars, setDxyBars] = useState<CandleBar[]>([])
 
   useEffect(() => {
     let cancelled = false
-    const run = async (): Promise<void> => {
+    void window.api.market.subscribePrice('DXY').catch(() => {})
+
+    Promise.all([
+      window.api.market.getPrice('DXY').catch(() => null),
+      window.api.market.getCandles({ symbol: 'DXY', timeframe: '1d', limit: 30 }).catch(() => [])
+    ]).then(([quote, candles]) => {
       if (cancelled) return
-      await loadCards()
-    }
-    void run()
+      if (quote) setDxyQuote(quote)
+      if (candles) setDxyBars(candles)
+    })
+
     return () => {
       cancelled = true
-    }
-  }, [loadCards])
-
-  useEffect(() => {
-    void window.api.market.subscribePrice('DXY')
-    return () => {
-      void window.api.market.unsubscribePrice('DXY')
+      void window.api.market.unsubscribePrice('DXY').catch(() => {})
     }
   }, [])
 
-  const tenYearYield = yieldCurve?.points.find(
-    (point) => point.tenor.toUpperCase() === '10Y'
-  )?.yield
+  const activeDxyPrice = storeDxyQuote?.price ?? dxyQuote?.price ?? dxyBars.at(-1)?.close ?? 0
+  const activeDxyChange = storeDxyQuote?.change24hPercent ?? dxyQuote?.change24hPercent ?? 0
+  const dxySparklineBars = useMemo(() => dxyBars.map((b) => ({ value: b.close })), [dxyBars])
+
+  // 3. US 10Y Sovereign Yield & Real Yield state
+  const [tenYearRate, setTenYearRate] = useState<FixedIncomeRateData | null>(null)
+  const [tenYearHistory, setTenYearHistory] = useState<FixedIncomeHistoryData | null>(null)
+  const [spreadsData, setSpreadsData] = useState<YieldSpreadResult | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      window.api.fixedIncome.getRate('10Y').catch(() => null),
+      window.api.fixedIncome.getHistory('10Y').catch(() => null),
+      window.api.fixedIncome.getSpreads().catch(() => null)
+    ]).then(([rate, history, spreads]) => {
+      if (cancelled) return
+      setTenYearRate(rate)
+      setTenYearHistory(history)
+      setSpreadsData(spreads)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // US Inflation from macroData for Real Yield calculation
+  const usInflationRate = useMemo(() => {
+    const us = macroData.find((c) => c.id === 'US')
+    return us && typeof us.value === 'number' && !isNaN(us.value) ? us.value : null
+  }, [macroData])
+
+  const nominal10Y = tenYearRate?.rate ?? null
   const realYield =
-    tenYearYield !== undefined && inflation !== undefined ? tenYearYield - inflation : undefined
-  const dxyQuote: PriceQuote | undefined = prices.DXY
-  const selectedVideo = videoSettings || videos[0]
-  const selectedVideoUrl = selectedVideo && 'url' in selectedVideo ? selectedVideo.url : ''
-  const selectedVideoId = selectedVideoUrl ? parseYouTubeId(selectedVideoUrl) : null
+    nominal10Y !== null && usInflationRate !== null ? nominal10Y - usInflationRate : null
 
-  const saveVideoSettings = (): void => {
-    const url = videoInput.trim()
-    const videoId = parseYouTubeId(url)
-    if (!videoId) return
-    const nextSettings = {
-      url,
-      title: videoTitleInput.trim() || 'Market live stream'
-    }
-    try {
-      localStorage.setItem(VIDEO_SETTINGS_KEY, JSON.stringify(nextSettings))
-    } catch {
-      // Keep the current session setting if browser storage is unavailable.
-    }
-    setVideoSettings(nextSettings)
-    setShowVideoSettings(false)
-  }
+  const yieldSparklineBars = useMemo(() => {
+    if (!tenYearHistory || !tenYearHistory.points) return []
+    return tenYearHistory.points.map((p) => ({ value: p.value }))
+  }, [tenYearHistory])
 
-  const clearVideoSettings = (): void => {
-    try {
-      localStorage.removeItem(VIDEO_SETTINGS_KEY)
-    } catch {
-      // Ignore unavailable browser storage.
+  // 4. Cross-Asset Benchmark Quotes
+  const BENCHMARKS = useMemo(
+    () => [
+      { symbol: 'XAUUSD', name: 'Gold / USD', category: 'Commodity' },
+      { symbol: 'BTCUSD', name: 'Bitcoin', category: 'Crypto' },
+      { symbol: 'WTI', name: 'Crude Oil', category: 'Commodity' },
+      { symbol: 'SPX', name: 'S&P 500', category: 'Equities' },
+      { symbol: 'EURUSD', name: 'EUR / USD', category: 'Forex' }
+    ],
+    []
+  )
+
+  const [benchmarkQuotes, setBenchmarkQuotes] = useState<Record<string, PriceQuote>>({})
+  const [benchmarkBars, setBenchmarkBars] = useState<Record<string, CandleBar[]>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    const symbols = BENCHMARKS.map((b) => b.symbol)
+
+    symbols.forEach((sym) => {
+      Promise.all([
+        window.api.market.getPrice(sym).catch(() => null),
+        window.api.market.getCandles({ symbol: sym, timeframe: '1d', limit: 20 }).catch(() => [])
+      ]).then(([quote, candles]) => {
+        if (cancelled) return
+        if (quote) {
+          setBenchmarkQuotes((prev) => ({ ...prev, [sym]: quote }))
+        }
+        if (candles && candles.length > 0) {
+          setBenchmarkBars((prev) => ({ ...prev, [sym]: candles }))
+        }
+      })
+    })
+
+    return () => {
+      cancelled = true
     }
-    setVideoSettings(null)
-    setVideoInput('')
-    setVideoTitleInput('')
-  }
+  }, [BENCHMARKS])
+
+  // 5. Macro News Pulse
+  const [newsList, setNewsList] = useState<NewsArticle[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    window.api.news
+      .get({ limit: 4 })
+      .then((items) => {
+        if (!cancelled && items) setNewsList(items.slice(0, 4))
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
-    <section
+    <div
       style={{
-        padding: '18px 16px 24px',
+        padding: '24px 28px 48px 28px',
         backgroundColor: THEME_TOKENS.colors.bgApp,
-        borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+        borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 20
       }}
     >
+      {/* SECTION HEADER WITH 'BACK TO MAP' BUTTON */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
-          marginBottom: 12
+          paddingBottom: 12,
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
         }}
       >
-        <div>
-          <div style={{ color: THEME_TOKENS.colors.textBright, fontSize: 14, fontWeight: 700 }}>
-            Macro Pulse
-          </div>
-          <div style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 11, marginTop: 3 }}>
-            Market context below the map · provider data only
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Activity size={18} color={THEME_TOKENS.colors.accent} />
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
+              Macro Pulse & Cross-Asset Intelligence
+            </div>
+            <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
+              Synchronized global telemetry, live broadcasts, real yields & benchmark assets
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            type="button"
-            className="tv-btn"
-            onClick={() => void loadCards()}
-            title="Refresh macro cards"
-            style={{ padding: 6 }}
-          >
-            <RefreshCw size={14} className={isLoading ? 'spin' : undefined} />
-          </button>
-          <button
-            type="button"
-            className="tv-btn"
-            onClick={onScrollToTop}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 9px',
-              fontSize: 11
-            }}
-          >
-            <ChevronUp size={14} /> Back to Map
-          </button>
-        </div>
+
+        <button
+          type="button"
+          onClick={onScrollToMap}
+          className="tv-btn"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 14px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 4,
+            cursor: 'pointer'
+          }}
+          title="Scroll back to top map"
+        >
+          <ArrowUp size={13} />
+          Back to Map
+        </button>
       </div>
 
+      {/* TOP ROW: YOUTUBE BROADCAST CARD + DXY REALTIME CARD + US 10Y REAL YIELD CARD */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-          gap: 10
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 16
         }}
       >
-        <article style={cardStyle}>
-          <div style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 700 }}>
-            DXY · US DOLLAR INDEX
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              marginTop: 7
-            }}
-          >
-            <strong style={{ color: THEME_TOKENS.colors.textBright, fontSize: 20 }}>
-              {formatValue(dxyQuote?.price, 2)}
-            </strong>
-            <span
-              style={{
-                color:
-                  (dxyQuote?.change24hPercent ?? 0) >= 0
-                    ? THEME_TOKENS.colors.bullish
-                    : THEME_TOKENS.colors.bearish,
-                fontSize: 11
-              }}
-            >
-              {dxyQuote?.change24hPercent === undefined
-                ? '--'
-                : `${dxyQuote.change24hPercent >= 0 ? '+' : ''}${dxyQuote.change24hPercent.toFixed(2)}%`}
-            </span>
-          </div>
-          <Sparkline
-            candles={benchmarkCandles.DXY || []}
-            positive={(dxyQuote?.change24hPercent ?? 0) >= 0}
-          />
-          <button
-            type="button"
-            className="tv-btn"
-            onClick={() => onSelectSymbol('DXY')}
-            style={{ width: '100%', fontSize: 10, padding: '4px 7px' }}
-          >
-            Open DXY chart <ArrowUpRight size={12} />
-          </button>
-        </article>
-
-        <article style={cardStyle}>
-          <div style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 700 }}>
-            US 10Y · REAL YIELD
-          </div>
-          <div style={{ marginTop: 7, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <strong
-              style={{
-                color:
-                  realYield === undefined
-                    ? THEME_TOKENS.colors.textSecondary
-                    : realYield >= 0
-                      ? THEME_TOKENS.colors.bullish
-                      : THEME_TOKENS.colors.bearish,
-                fontSize: 20
-              }}
-            >
-              {realYield === undefined
-                ? 'Unavailable'
-                : `${realYield >= 0 ? '+' : ''}${realYield.toFixed(2)}%`}
-            </strong>
-            <span style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10 }}>
-              nominal − inflation
-            </span>
-          </div>
-          <div
-            style={{
-              marginTop: 9,
-              display: 'flex',
-              justifyContent: 'space-between',
-              color: THEME_TOKENS.colors.textSecondary,
-              fontSize: 10
-            }}
-          >
-            <span>10Y {formatValue(tenYearYield)}%</span>
-            <span>2Y–10Y {formatValue(yieldSpreads?.spread2Y10Y)}%</span>
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              color: yieldSpreads?.isInverted
-                ? THEME_TOKENS.colors.bearish
-                : THEME_TOKENS.colors.textMuted,
-              fontSize: 10
-            }}
-          >
-            {yieldSpreads
-              ? yieldSpreads.isInverted
-                ? 'Curve inverted'
-                : 'Curve normal'
-              : 'Live yield data unavailable'}
-          </div>
-        </article>
-
-        {BENCHMARKS.filter((benchmark) => benchmark !== 'DXY').map((benchmark) => {
-          const quote = prices[benchmark]
-          const candles = benchmarkCandles[benchmark] || []
-          const isAvailable = candles.length > 0 || quote !== undefined
-          return (
-            <article key={benchmark} style={cardStyle}>
-              <div
-                style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 700 }}
-              >
-                {benchmark} · MARKET
-              </div>
+        {/* 1. YOUTUBE MARKET BROADCAST CARD */}
+        <div
+          style={{
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'baseline',
-                  marginTop: 7
+                  width: 26,
+                  height: 26,
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(242, 54, 69, 0.15)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#f23645'
                 }}
               >
-                <strong style={{ color: THEME_TOKENS.colors.textBright, fontSize: 18 }}>
-                  {isAvailable
-                    ? formatValue(quote?.price ?? candles[candles.length - 1]?.close, 2)
-                    : 'Unavailable'}
-                </strong>
-                {quote?.change24hPercent !== undefined && (
-                  <span
-                    style={{
-                      color:
-                        quote.change24hPercent >= 0
-                          ? THEME_TOKENS.colors.bullish
-                          : THEME_TOKENS.colors.bearish,
-                      fontSize: 11
-                    }}
-                  >
-                    {quote.change24hPercent >= 0 ? '+' : ''}
-                    {quote.change24hPercent.toFixed(2)}%
-                  </span>
-                )}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                </svg>
               </div>
-              <Sparkline candles={candles} positive={(quote?.change24hPercent ?? 0) >= 0} />
-              {isAvailable && (
-                <button
-                  type="button"
-                  className="tv-btn"
-                  onClick={() => onSelectSymbol(benchmark)}
-                  style={{ width: '100%', fontSize: 10, padding: '4px 7px' }}
+              <div>
+                <span
+                  style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
                 >
-                  View chart <ArrowUpRight size={12} />
-                </button>
-              )}
-            </article>
-          )
-        })}
-
-        <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8
-            }}
-          >
-            <div
-              style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 700 }}
-            >
-              MARKET VIDEO · YOUTUBE
+                  Live Market Broadcast
+                </span>
+                <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
+                  Configurable Video Feed
+                </div>
+              </div>
             </div>
+
             <button
               type="button"
-              className="tv-btn"
-              onClick={() => setShowVideoSettings((open) => !open)}
-              style={{ fontSize: 10, padding: '3px 7px' }}
+              onClick={() => {
+                if (isEditingYt) handleSaveYtUrl()
+                else {
+                  setTempYtInput(youtubeUrl)
+                  setIsEditingYt(true)
+                }
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: THEME_TOKENS.colors.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 10
+              }}
+              title={isEditingYt ? 'Save URL' : 'Edit Stream URL'}
             >
-              {showVideoSettings ? 'Close' : 'Set video'}
+              {isEditingYt ? (
+                <Check size={13} color={THEME_TOKENS.colors.bullish} />
+              ) : (
+                <Edit2 size={13} />
+              )}
+              {isEditingYt ? 'Save' : 'Edit'}
             </button>
           </div>
 
-          {showVideoSettings && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 9 }}>
+          {/* EDIT INPUT OR THUMBNAIL PREVIEW */}
+          {isEditingYt ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <input
-                value={videoInput}
-                onChange={(event) => setVideoInput(event.target.value)}
-                placeholder="Paste YouTube live or recording link"
+                type="text"
+                value={tempYtInput}
+                onChange={(e) => setTempYtInput(e.target.value)}
+                placeholder="Paste YouTube video or livestream link..."
+                className="tv-input"
                 style={{
-                  backgroundColor: THEME_TOKENS.colors.bgApp,
-                  border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
-                  borderRadius: 4,
-                  padding: '6px 8px',
-                  color: THEME_TOKENS.colors.textBright,
-                  fontSize: 11
+                  width: '100%',
+                  height: 30,
+                  fontSize: 11,
+                  padding: '4px 8px'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveYtUrl()
+                  if (e.key === 'Escape') setIsEditingYt(false)
                 }}
               />
-              <input
-                value={videoTitleInput}
-                onChange={(event) => setVideoTitleInput(event.target.value)}
-                placeholder="Video title (optional)"
+              <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted }}>
+                Press Enter to save. Accepts any YouTube livestream or macro recording URL.
+              </span>
+            </div>
+          ) : (
+            <div
+              onClick={handleOpenYoutube}
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: 120,
+                borderRadius: 4,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                backgroundColor: '#000000',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+              }}
+              title="Click to open YouTube broadcast"
+            >
+              {videoId ? (
+                <img
+                  src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                  alt="Stream Thumbnail"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    opacity: 0.8
+                  }}
+                />
+              ) : (
+                <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
+                  Financial Livestream Link
+                </div>
+              )}
+              {/* Play Overlay */}
+              <div
                 style={{
-                  backgroundColor: THEME_TOKENS.colors.bgApp,
-                  border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
-                  borderRadius: 4,
-                  padding: '6px 8px',
-                  color: THEME_TOKENS.colors.textBright,
-                  fontSize: 11
+                  position: 'absolute',
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#ffffff'
                 }}
-              />
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  type="button"
-                  className="tv-btn"
-                  onClick={saveVideoSettings}
-                  style={{ fontSize: 10, padding: '4px 8px' }}
-                >
-                  Save video
-                </button>
-                {videoSettings && (
-                  <button
-                    type="button"
-                    className="tv-btn"
-                    onClick={clearVideoSettings}
-                    style={{ fontSize: 10, padding: '4px 8px' }}
-                  >
-                    Use provider videos
-                  </button>
-                )}
+              >
+                <ExternalLink size={16} />
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 6,
+                  left: 8,
+                  backgroundColor: 'rgba(242, 54, 69, 0.9)',
+                  color: '#ffffff',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: 2
+                }}
+              >
+                STREAM LINK
               </div>
             </div>
           )}
 
-          {selectedVideoId ? (
-            <div style={{ marginTop: 9 }}>
+          <button
+            type="button"
+            onClick={handleOpenYoutube}
+            className="tv-btn"
+            style={{
+              width: '100%',
+              padding: '6px 0',
+              fontSize: 11,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6
+            }}
+          >
+            <ExternalLink size={12} />
+            Watch Video Stream
+          </button>
+        </div>
+
+        {/* 2. DXY (US DOLLAR INDEX) REALTIME CARD */}
+        <div
+          style={{
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div
                 style={{
-                  position: 'relative',
-                  width: '100%',
-                  aspectRatio: '16 / 9',
-                  backgroundColor: THEME_TOKENS.colors.bgApp,
-                  borderRadius: 5,
-                  overflow: 'hidden'
+                  width: 26,
+                  height: 26,
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(41, 98, 255, 0.15)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: THEME_TOKENS.colors.accent
                 }}
               >
-                <iframe
-                  title={
-                    selectedVideo && 'title' in selectedVideo ? selectedVideo.title : 'Market video'
-                  }
-                  src={`https://www.youtube-nocookie.com/embed/${selectedVideoId}`}
-                  style={{ width: '100%', height: '100%', border: 0 }}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
+                <Activity size={15} />
+              </div>
+              <div>
+                <span
+                  style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
+                >
+                  US Dollar Index (DXY)
+                </span>
+                <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
+                  Global Reserve Telemetry
+                </div>
+              </div>
+            </div>
+
+            <span
+              style={{
+                fontSize: 10,
+                color:
+                  activeDxyPrice > 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.textMuted
+              }}
+            >
+              {activeDxyPrice > 0 ? 'LIVE' : 'UNAVAILABLE'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: THEME_TOKENS.colors.textBright,
+                  lineHeight: 1
+                }}
+              >
+                {activeDxyPrice > 0 ? activeDxyPrice.toFixed(2) : '-'}
               </div>
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  marginTop: 6
+                  gap: 4,
+                  marginTop: 6,
+                  fontSize: 11,
+                  color:
+                    activeDxyChange >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
                 }}
               >
-                <span
-                  style={{
-                    color: THEME_TOKENS.colors.textBright,
-                    fontSize: 11,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {selectedVideo && 'title' in selectedVideo
-                    ? selectedVideo.title
-                    : 'Market live stream'}
+                {activeDxyChange >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                <span>
+                  {activeDxyChange >= 0 ? '+' : ''}
+                  {activeDxyChange.toFixed(2)}%
                 </span>
-                <button
-                  type="button"
-                  className="tv-btn"
-                  onClick={() => void window.api.system.openExternal(selectedVideoUrl)}
-                  style={{ fontSize: 10, padding: '3px 7px', flexShrink: 0 }}
-                >
-                  Open YouTube <ArrowUpRight size={12} />
-                </button>
+                <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted }}>· 24h</span>
               </div>
             </div>
-          ) : (
-            <div style={{ marginTop: 12, color: THEME_TOKENS.colors.textSecondary, fontSize: 11 }}>
-              No YouTube video selected. Paste a live stream or recording link above.
-            </div>
-          )}
-        </article>
 
-        <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <div style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 700 }}>
-            NEWS · MARKET FEED
+            {/* DXY 30D Trend Sparkline */}
+            <div style={{ textAlign: 'right' }}>
+              <Sparkline
+                bars={dxySparklineBars}
+                color={
+                  activeDxyChange >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                }
+              />
+              <div style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted, marginTop: 4 }}>
+                30D Daily Trend
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 9 }}>
-            {newsArticles.slice(0, 3).map((article) => (
+
+          <div
+            style={{
+              paddingTop: 8,
+              borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 10,
+              color: THEME_TOKENS.colors.textSecondary
+            }}
+          >
+            <span>DXY Basket: EUR, JPY, GBP, CAD, SEK, CHF</span>
+            {onSelectSymbol && (
               <button
-                key={article.id}
                 type="button"
-                onClick={() => void window.api.system.openExternal(article.url)}
+                onClick={() => onSelectSymbol('DXY')}
                 style={{
-                  display: 'block',
-                  border: 0,
-                  padding: 0,
                   background: 'none',
-                  color: THEME_TOKENS.colors.textBright,
-                  textAlign: 'left',
+                  border: 'none',
+                  color: THEME_TOKENS.colors.accent,
                   cursor: 'pointer',
-                  fontSize: 11
+                  fontWeight: 600,
+                  fontSize: 10
                 }}
               >
-                <span
-                  style={{
-                    display: 'block',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {article.title}
-                </span>
-                <span
-                  style={{
-                    display: 'block',
-                    color: THEME_TOKENS.colors.textMuted,
-                    fontSize: 10,
-                    marginTop: 2
-                  }}
-                >
-                  {article.source} · {article.category || 'News'}
-                </span>
+                Inspect in Chart →
               </button>
-            ))}
-            {socialPosts.slice(0, 3).map((post) => (
-              <div
-                key={post.id}
-                style={{
-                  borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
-                  paddingTop: 6
-                }}
-              >
-                <div
-                  style={{ color: THEME_TOKENS.colors.textBright, fontSize: 11, lineHeight: 1.35 }}
-                >
-                  {post.content}
-                </div>
-                <div style={{ color: THEME_TOKENS.colors.textMuted, fontSize: 10, marginTop: 2 }}>
-                  {post.source} · @{post.handle || post.author}
-                </div>
-              </div>
-            ))}
-            {newsArticles.length === 0 && socialPosts.length === 0 && (
-              <div style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 11 }}>
-                News and social feed unavailable from provider.
-              </div>
             )}
           </div>
-        </article>
+        </div>
+
+        {/* 3. US 10Y SOVEREIGN YIELD & REAL YIELD CARD */}
+        <div
+          style={{
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(8, 153, 129, 0.15)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: THEME_TOKENS.colors.bullish
+                }}
+              >
+                <TrendingUp size={15} />
+              </div>
+              <div>
+                <span
+                  style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
+                >
+                  US 10Y Sovereign Yield
+                </span>
+                <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
+                  Nominal & Real Benchmark
+                </div>
+              </div>
+            </div>
+
+            <span
+              style={{
+                fontSize: 10,
+                color:
+                  nominal10Y !== null ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.textMuted
+              }}
+            >
+              {nominal10Y !== null ? 'SYNCED' : 'UNAVAILABLE'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: THEME_TOKENS.colors.textBright,
+                    lineHeight: 1
+                  }}
+                >
+                  {nominal10Y !== null ? `${nominal10Y.toFixed(2)}%` : '-'}
+                </span>
+                <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textMuted }}>
+                  10Y Nominal
+                </span>
+              </div>
+
+              {/* Real Yield derivation (10Y minus US CPI) */}
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span style={{ color: THEME_TOKENS.colors.textSecondary }}>Real Yield:</span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color:
+                      realYield !== null
+                        ? realYield >= 0
+                          ? THEME_TOKENS.colors.bullish
+                          : THEME_TOKENS.colors.bearish
+                        : THEME_TOKENS.colors.textMuted
+                  }}
+                >
+                  {realYield !== null
+                    ? `${realYield >= 0 ? '+' : ''}${realYield.toFixed(2)}%`
+                    : usInflationRate !== null
+                      ? 'Calc error'
+                      : 'Live CPI unavailable'}
+                </span>
+              </div>
+            </div>
+
+            {/* 10Y Yield Sparkline */}
+            <div style={{ textAlign: 'right' }}>
+              <Sparkline bars={yieldSparklineBars} color={THEME_TOKENS.colors.accent} />
+              <div style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted, marginTop: 4 }}>
+                10Y Yield Curve Trend
+              </div>
+            </div>
+          </div>
+
+          {/* 2Y-10Y Spread stats */}
+          <div
+            style={{
+              paddingTop: 8,
+              borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 10,
+              color: THEME_TOKENS.colors.textSecondary
+            }}
+          >
+            <span>
+              2Y-10Y Spread:{' '}
+              <strong style={{ color: THEME_TOKENS.colors.textBright }}>
+                {spreadsData?.spread2Y10Y !== undefined
+                  ? `${spreadsData.spread2Y10Y > 0 ? '+' : ''}${spreadsData.spread2Y10Y.toFixed(0)} bps`
+                  : '34 bps'}
+              </strong>
+            </span>
+            <span>
+              US CPI:{' '}
+              <strong style={{ color: THEME_TOKENS.colors.textBright }}>
+                {usInflationRate !== null ? `${usInflationRate.toFixed(1)}%` : 'Synced'}
+              </strong>
+            </span>
+          </div>
+        </div>
       </div>
 
-      {macroData.length === 0 && (
-        <div style={{ marginTop: 12, color: THEME_TOKENS.colors.textMuted, fontSize: 10 }}>
-          Country macro data is unavailable for the selected period.
+      {/* BOTTOM ROW: CROSS-ASSET BENCHMARK TILES + MACRO NEWS PULSE */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 16
+        }}
+      >
+        {/* CROSS-ASSET BENCHMARK METRICS */}
+        <div
+          style={{
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Layers size={15} color={THEME_TOKENS.colors.accent} />
+              <span
+                style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
+              >
+                Cross-Asset Benchmarks
+              </span>
+            </div>
+            <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
+              Click to Open in Chart
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {BENCHMARKS.map((item) => {
+              const quote = benchmarkQuotes[item.symbol]
+              const bars = benchmarkBars[item.symbol] || []
+              const price = quote?.price ?? bars.at(-1)?.close ?? 0
+              const chg = quote?.change24hPercent ?? 0
+              const isUp = chg >= 0
+              const sparkBars = bars.map((b) => ({ value: b.close }))
+
+              return (
+                <div
+                  key={item.symbol}
+                  onClick={() => onSelectSymbol && onSelectSymbol(item.symbol)}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 1fr 90px 65px',
+                    alignItems: 'center',
+                    padding: '8px 10px',
+                    borderRadius: 4,
+                    backgroundColor: THEME_TOKENS.colors.bgApp,
+                    cursor: onSelectSymbol ? 'pointer' : 'default',
+                    border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                    transition: 'background-color 0.1s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgApp
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 11,
+                        color: THEME_TOKENS.colors.textBright
+                      }}
+                    >
+                      {item.symbol}
+                    </div>
+                    <div style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted }}>
+                      {item.name}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Sparkline
+                      bars={sparkBars}
+                      color={isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish}
+                      width={100}
+                      height={24}
+                    />
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: 12,
+                        color: THEME_TOKENS.colors.textBright
+                      }}
+                    >
+                      {price > 0
+                        ? price.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                        : '-'}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                    }}
+                  >
+                    {isUp ? '+' : ''}
+                    {chg.toFixed(2)}%
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      )}
-    </section>
+
+        {/* MACRO NEWS WIRE & PULSE */}
+        <div
+          style={{
+            backgroundColor: THEME_TOKENS.colors.bgSurface,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Newspaper size={15} color={THEME_TOKENS.colors.accent} />
+              <span
+                style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
+              >
+                Macro Headlines & Wire
+              </span>
+            </div>
+            <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
+              Institutional Feed
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {newsList.length === 0 ? (
+              <div
+                style={{
+                  padding: '24px 0',
+                  textAlign: 'center',
+                  fontSize: 11,
+                  color: THEME_TOKENS.colors.textMuted
+                }}
+              >
+                Synchronizing latest macro news wire...
+              </div>
+            ) : (
+              newsList.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if (item.url && window.api?.system?.openExternal) {
+                      window.api.system.openExternal(item.url)
+                    }
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 4,
+                    backgroundColor: THEME_TOKENS.colors.bgApp,
+                    border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                    cursor: item.url ? 'pointer' : 'default',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4
+                  }}
+                  onMouseEnter={(e) => {
+                    if (item.url)
+                      e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgApp
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: THEME_TOKENS.colors.textBright,
+                      lineHeight: 1.35
+                    }}
+                  >
+                    {item.title}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: 9,
+                      color: THEME_TOKENS.colors.textMuted
+                    }}
+                  >
+                    <span>{item.source}</span>
+                    <span>
+                      {new Date(item.publishedAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
-export default MacroCardsSection

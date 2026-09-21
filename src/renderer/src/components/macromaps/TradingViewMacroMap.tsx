@@ -471,6 +471,11 @@ export const TradingViewMacroMap: React.FC<TradingViewMacroMapProps> = ({
     if (!canvas) return
 
     const onWheel = (e: WheelEvent) => {
+      // Cooperative gestures: regular wheel scrolls the page/cards.
+      // Ctrl/Cmd + wheel zooms the map canvas.
+      if (!e.ctrlKey && !e.metaKey) {
+        return
+      }
       e.preventDefault()
       const rect = canvas.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
