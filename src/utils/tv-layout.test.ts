@@ -245,6 +245,34 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(useChartStore.getState().replayCurrentIndex).toBe(0)
     })
 
+    it('correctly toggles and opens right sidebar when clicking rail items', () => {
+      const { useWorkspaceStore } = require('../stores/useWorkspaceStore')
+      
+      // Start open on watchlist
+      useWorkspaceStore.setState({ activeTab: 'watchlist', isRightPanelOpen: true })
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+
+      // Clicking active tab closes it
+      useWorkspaceStore.getState().setActiveTab('watchlist')
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(false)
+
+      // Clicking active tab again reopens it
+      useWorkspaceStore.getState().setActiveTab('watchlist')
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+
+      // Clicking different tab switches tab and stays open
+      useWorkspaceStore.getState().setActiveTab('alerts')
+      expect(useWorkspaceStore.getState().activeTab).toBe('alerts')
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+
+      // Closing and clicking different tab opens the new tab
+      useWorkspaceStore.getState().setActiveTab('alerts') // closes
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(false)
+      useWorkspaceStore.getState().setActiveTab('news')
+      expect(useWorkspaceStore.getState().activeTab).toBe('news')
+      expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+    })
+
     it('renders null when isReplaying is false and floating bar when true', () => {
       const inactiveHtml = renderToStaticMarkup(
         React.createElement(ReplayControlBar, { isReplaying: false })

@@ -26,15 +26,19 @@ export type AppTheme = 'dark' | 'light'
 
 const getInitialTheme = (): AppTheme => {
   try {
-    const saved = localStorage.getItem('pia-theme')
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('pia-theme') : null
     if (saved === 'light' || saved === 'dark') {
-      document.documentElement.setAttribute('data-theme', saved)
+      if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.setAttribute('data-theme', saved)
+      }
       return saved
     }
   } catch {
     // fallback
   }
-  document.documentElement.setAttribute('data-theme', 'dark')
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.setAttribute('data-theme', 'dark')
+  }
   return 'dark'
 }
 
@@ -78,7 +82,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     } catch {
       // ignore
     }
-    document.documentElement.setAttribute('data-theme', theme)
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-theme', theme)
+    }
     set({ theme })
   },
 
@@ -90,7 +96,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       } catch {
         // ignore
       }
-      document.documentElement.setAttribute('data-theme', nextTheme)
+      if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.setAttribute('data-theme', nextTheme)
+      }
       return { theme: nextTheme }
     }),
 

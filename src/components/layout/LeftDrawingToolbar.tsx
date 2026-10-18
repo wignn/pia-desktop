@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useChartStore, type DrawingToolType } from '../../stores/useChartStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
@@ -41,6 +41,19 @@ export const LeftDrawingToolbar: React.FC = () => {
     text_group: 'simpleAnnotation',
     prediction_group: 'measure'
   })
+
+  // Close flyout on click outside
+  useEffect(() => {
+    if (!activeFlyout) return
+    const handleClickOutside = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('.tv-drawing-group')) {
+        setActiveFlyout(null)
+      }
+    }
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [activeFlyout])
 
   // Primary TradingView Tool Groups
   const TOOL_GROUPS: ToolGroup[] = [
@@ -177,7 +190,7 @@ export const LeftDrawingToolbar: React.FC = () => {
         const isGroupActive = activeTool === currentToolId
 
         return (
-          <div key={group.id} style={{ position: 'relative' }}>
+          <div key={group.id} className="tv-drawing-group" style={{ position: 'relative' }}>
             <div
               style={{
                 display: 'flex',
@@ -189,6 +202,12 @@ export const LeftDrawingToolbar: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleToolSelect(group.id, currentToolId)}
+                onContextMenu={(e) => {
+                  if (group.subtools && group.subtools.length > 1) {
+                    e.preventDefault()
+                    setActiveFlyout(activeFlyout === group.id ? null : group.id)
+                  }
+                }}
                 className={`tv-btn ${isGroupActive ? 'active' : ''}`}
                 title={group.title}
                 style={{
@@ -212,17 +231,28 @@ export const LeftDrawingToolbar: React.FC = () => {
                     }}
                     style={{
                       position: 'absolute',
-                      bottom: 2,
-                      right: 2,
-                      width: 0,
-                      height: 0,
-                      borderStyle: 'solid',
-                      borderWidth: '0 0 4px 4px',
-                      borderColor: `transparent transparent ${isGroupActive ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textMuted} transparent`,
+                      bottom: 0,
+                      right: 0,
+                      width: 14,
+                      height: 14,
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      justifyContent: 'flex-end',
+                      padding: '0 2px 2px 0',
                       cursor: 'pointer'
                     }}
-                    title="More tools in group"
-                  />
+                    title="More tools in group (or right-click)"
+                  >
+                    <span
+                      style={{
+                        width: 0,
+                        height: 0,
+                        borderStyle: 'solid',
+                        borderWidth: '0 0 5px 5px',
+                        borderColor: `transparent transparent ${isGroupActive ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textMuted} transparent`
+                      }}
+                    />
+                  </span>
                 )}
               </button>
             </div>

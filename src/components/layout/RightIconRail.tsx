@@ -182,14 +182,7 @@ export const RightIconRail: React.FC = () => {
   const { activeTab, isRightPanelOpen, setActiveTab, setSettingsModalOpen } = useWorkspaceStore()
 
   const handleTabClick = (tabId: RightPanelTab): void => {
-    if (activeTab === tabId && isRightPanelOpen) {
-      useWorkspaceStore.getState().toggleRightPanel()
-    } else {
-      setActiveTab(tabId)
-      if (!isRightPanelOpen) {
-        useWorkspaceStore.getState().toggleRightPanel()
-      }
-    }
+    setActiveTab(tabId)
   }
 
   return (
