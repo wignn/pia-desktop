@@ -18,6 +18,7 @@ import { NewsPanel } from '../components/panels/NewsPanel'
 import { useNewsStore } from '../stores/useNewsStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { resolveNewsImage } from '../shared/market-utils'
+import { SymbolLogo, getSymbolLogoCandidates } from '../components/common/SymbolLogo'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -403,6 +404,85 @@ describe('TradingView Layout & Chart helpers', () => {
 
       setReplaying(false)
       expect(setReplaying).toHaveBeenCalledWith(false)
+    })
+  })
+
+  describe('SymbolLogo & candidate resolution', () => {
+    it('correctly derives logo candidate URLs for crypto tickers', () => {
+      const btcCandidates = getSymbolLogoCandidates('BTCUSDT')
+      expect(btcCandidates).toHaveLength(3)
+      expect(btcCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg')
+      expect(btcCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/BTC.png')
+      expect(btcCandidates[2]).toBe('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/BTC.png')
+
+      const ethCandidates = getSymbolLogoCandidates('ETH/USD')
+      expect(ethCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/eth.svg')
+      expect(ethCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/ETH.png')
+
+      const solCandidates = getSymbolLogoCandidates('SOLBUSD')
+      expect(solCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/sol.svg')
+
+      const perpCandidates = getSymbolLogoCandidates('BTCPERP')
+      expect(perpCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg')
+    })
+
+    it('correctly derives logo candidate URLs for stock tickers', () => {
+      const aaplCandidates = getSymbolLogoCandidates('AAPL')
+      expect(aaplCandidates).toHaveLength(3)
+      expect(aaplCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/aapl.svg')
+      expect(aaplCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/AAPL.png')
+      expect(aaplCandidates[2]).toBe('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/AAPL.png')
+    })
+
+    it('returns empty array for empty or invalid symbol', () => {
+      expect(getSymbolLogoCandidates('')).toEqual([])
+      expect(getSymbolLogoCandidates('   ')).toEqual([])
+    })
+
+    it('renders single ticker image using first candidate by default', () => {
+      const html = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'BTCUSDT' }))
+      expect(html).toContain('src="https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg"')
+      expect(html).toContain('width:20px')
+      expect(html).toContain('height:20px')
+    })
+
+    it('renders overlapping dual flags or currency badges for Forex pairs', () => {
+      const htmlEurUsd = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'EURUSD' }))
+      expect(htmlEurUsd).toContain('data-testid="symbol-logo-dual"')
+      expect(htmlEurUsd).toContain('flags/4x3/eu.svg')
+      expect(htmlEurUsd).toContain('flags/4x3/us.svg')
+
+      const htmlUsdJpy = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'USD/JPY' }))
+      expect(htmlUsdJpy).toContain('data-testid="symbol-logo-dual"')
+      expect(htmlUsdJpy).toContain('flags/4x3/us.svg')
+      expect(htmlUsdJpy).toContain('flags/4x3/jp.svg')
+    })
+
+    it('renders graceful initial letters fallback pill with deterministic category color', () => {
+      const htmlFallback = renderToStaticMarkup(
+        React.createElement(SymbolLogo, { symbol: 'NVDA', forceFallback: true })
+      )
+      expect(htmlFallback).toContain('data-testid="symbol-logo-fallback"')
+      expect(htmlFallback).toContain('NV')
+      expect(htmlFallback).toContain('width:20px')
+
+      const htmlCryptoFallback = renderToStaticMarkup(
+        React.createElement(SymbolLogo, { symbol: 'DOGEUSDT', forceFallback: true })
+      )
+      expect(htmlCryptoFallback).toContain('DO')
+      // Deterministic crypto color: #f7931a
+      expect(htmlCryptoFallback).toContain('#f7931a')
+    })
+
+    it('supports custom size and gracefully handles empty symbol', () => {
+      const htmlSized = renderToStaticMarkup(
+        React.createElement(SymbolLogo, { symbol: 'BTCUSDT', size: 32 })
+      )
+      expect(htmlSized).toContain('width:32px')
+      expect(htmlSized).toContain('height:32px')
+
+      const htmlEmpty = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: '' }))
+      expect(htmlEmpty).toContain('data-testid="symbol-logo-empty"')
     })
   })
 })
