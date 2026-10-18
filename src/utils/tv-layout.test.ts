@@ -435,8 +435,7 @@ describe('TradingView Layout & Chart helpers', () => {
     it('correctly derives logo candidate URLs for stock tickers', () => {
       const aaplCandidates = getSymbolLogoCandidates('AAPL')
       expect(aaplCandidates.length).toBeGreaterThanOrEqual(3)
-      expect(aaplCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/aapl.svg')
-      expect(aaplCandidates).toContain('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/AAPL.png')
+      expect(aaplCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/AAPL.png')
       expect(aaplCandidates).toContain('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/AAPL.png')
     })
 

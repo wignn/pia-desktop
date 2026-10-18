@@ -123,6 +123,30 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
   }
 }
 
+const R2_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_R2_CDN_URL) || ''
+
+export const LOGO_SUCCESS_CACHE = new Map<string, string>()
+export const LOGO_FAILED_SET = new Set<string>()
+
+function isLikelyCryptoSymbol(raw: string, clean: string): boolean {
+  const r = raw.toUpperCase()
+  const c = clean.toUpperCase()
+  if (
+    r.endsWith('USDT') ||
+    r.endsWith('USDC') ||
+    r.endsWith('BUSD') ||
+    r.endsWith('PERP') ||
+    r.includes('/USD') ||
+    r.includes('-USD')
+  ) {
+    return true
+  }
+  return [
+    'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'BNB', 'AVAX', 'DOT',
+    'LINK', 'NEAR', 'SUI', 'APT', 'MATIC', 'SHIB', 'TRX', 'UNI', 'LTC'
+  ].includes(c)
+}
+
 const SYMBOL_ALIASES: Record<string, string[]> = {
   XAU: ['GOLD', 'XAUT'],
   GOLD: ['XAU', 'XAUT'],
@@ -136,34 +160,58 @@ const SYMBOL_ALIASES: Record<string, string[]> = {
   DJI: ['DIA']
 }
 
-// ponytail: multi-tier CDN candidates use static jsdelivr URLs for spothq, nvstly, and ahmeterenodaci; add local asset cache or backend proxy if offline resilience or strict CORS is required.
+// ponytail: multi-tier CDN candidates support optional Cloudflare R2 URL via VITE_R2_CDN_URL; falls back to category-optimized jsdelivr CDN with zero waterfall delay.
 export function getSymbolLogoCandidates(symbol: string): string[] {
   if (!symbol || typeof symbol !== 'string') return []
   const { coin, cleanSym } = resolveSymbolTokens(symbol)
   if (!coin || !cleanSym) return []
 
-  const syms = [cleanSym, ...(SYMBOL_ALIASES[cleanSym] || [])]
   const urls: string[] = []
 
-  for (const s of syms) {
-    const c = s.toLowerCase()
+  // 1. Cloudflare R2 / Custom CDN prefix if configured
+  if (R2_BASE) {
+    const cleanBase = R2_BASE.replace(/\/$/, '')
+    urls.push(`${cleanBase}/${cleanSym}.png`, `${cleanBase}/${coin}.svg`)
+  }
+
+  // 2. Metals & Commodities (XAU, XAG, GOLD, SILVER) -> forex_icons first
+  if (cleanSym === 'XAU' || cleanSym.startsWith('XAU')) {
     urls.push(
-      `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${c}.svg`,
-      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/${s}.png`,
-      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${s}.png`,
-      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${s}.png`,
-      `https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/${s}.png`
+      'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAU.png',
+      'https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/GOLD.png',
+      'https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/gold.svg'
+    )
+  } else if (cleanSym === 'XAG' || cleanSym.startsWith('XAG')) {
+    urls.push(
+      'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAG.png',
+      'https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/SILVER.png',
+      'https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/slv.svg'
+    )
+  } else if (isLikelyCryptoSymbol(symbol, cleanSym)) {
+    // 3. Crypto -> spothq SVG first, then nvstly crypto_icons, then ticker_icons
+    urls.push(
+      `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${coin}.svg`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${cleanSym}.png`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${cleanSym}.png`,
+      `https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/${cleanSym}.png`
+    )
+  } else {
+    // 4. Stocks / Indices / Equities -> nvstly ticker_icons & Nasdaq stock logos first!
+    urls.push(
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${cleanSym}.png`,
+      `https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/${cleanSym}.png`,
+      `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${coin}.svg`
     )
   }
 
-  // Prioritize exact known top hits for commodity and precious metal pairs like XAU/XAG
-  if (cleanSym === 'XAU' || cleanSym.startsWith('XAU')) {
-    const xauForex = 'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAU.png'
-    return [xauForex, ...urls.filter((u) => u !== xauForex)]
-  }
-  if (cleanSym === 'XAG' || cleanSym.startsWith('XAG')) {
-    const xagForex = 'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAG.png'
-    return [xagForex, ...urls.filter((u) => u !== xagForex)]
+  // Aliases (e.g. WTI -> OIL, SPX -> SPY)
+  const aliases = SYMBOL_ALIASES[cleanSym] || []
+  for (const a of aliases) {
+    urls.push(
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${a}.png`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/${a}.png`,
+      `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${a.toLowerCase()}.svg`
+    )
   }
 
   return Array.from(new Set(urls))
@@ -218,16 +266,19 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
   className,
   forceFallback = false
 }) => {
+  const normSym = (symbol || '').trim().toUpperCase()
+  const cachedUrl = LOGO_SUCCESS_CACHE.get(normSym)
+
   const [prevSymbol, setPrevSymbol] = useState(symbol)
   const [candidateIndex, setCandidateIndex] = useState(0)
-  const [isExhausted, setIsExhausted] = useState(false)
+  const [isExhausted, setIsExhausted] = useState(() => !forceFallback && LOGO_FAILED_SET.has(normSym))
   const [baseFlagError, setBaseFlagError] = useState(false)
   const [quoteFlagError, setQuoteFlagError] = useState(false)
 
   if (prevSymbol !== symbol) {
     setPrevSymbol(symbol)
     setCandidateIndex(0)
-    setIsExhausted(false)
+    setIsExhausted(LOGO_FAILED_SET.has(normSym))
     setBaseFlagError(false)
     setQuoteFlagError(false)
   }
@@ -382,17 +433,28 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
     )
   }
 
-  const currentCandidateUrl = candidates[candidateIndex]
+  const currentCandidateUrl = cachedUrl || candidates[candidateIndex]
 
   return (
     <img
       src={currentCandidateUrl}
       alt={symbol}
+      loading="lazy"
+      decoding="async"
+      onLoad={() => {
+        if (normSym && currentCandidateUrl) {
+          LOGO_SUCCESS_CACHE.set(normSym, currentCandidateUrl)
+        }
+      }}
       onError={() => {
+        if (cachedUrl) {
+          LOGO_SUCCESS_CACHE.delete(normSym)
+        }
         if (candidateIndex < candidates.length - 1) {
           setCandidateIndex((i) => i + 1)
         } else {
           setIsExhausted(true)
+          if (normSym) LOGO_FAILED_SET.add(normSym)
         }
       }}
       style={{
