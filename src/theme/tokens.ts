@@ -171,14 +171,18 @@ export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles
         }
       },
       tooltip: {
-        showRule: 'none'
+        showRule: 'none',
+        showType: 'standard',
+        offsetTop: 34,
+        offsetLeft: 10
       }
     },
     indicator: {
       tooltip: {
         showRule: 'always',
         showType: 'standard',
-        offsetTop: 28
+        offsetTop: 34,
+        offsetLeft: 10
       }
     },
     xAxis: {

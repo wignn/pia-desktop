@@ -1,6 +1,5 @@
 import React from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
-import { useChartStore } from '../../stores/useChartStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
@@ -16,8 +15,6 @@ export const ChartLegend: React.FC = () => {
   const symInfo = useMarketStore((state) =>
     state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
   )
-  const activeIndicators = useChartStore((state) => state.activeIndicators)
-  const toggleIndicator = useChartStore((state) => state.toggleIndicator)
 
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, livePrice)
 
@@ -66,7 +63,16 @@ export const ChartLegend: React.FC = () => {
       }}
     >
       {/* 1. Main Symbol Info & OHLC Status Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'nowrap',
+          gap: 6,
+          lineHeight: '18px',
+          whiteSpace: 'nowrap'
+        }}
+      >
         {/* Symbol & Timeframe & Exchange badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <SymbolLogo symbol={symbol} size={16} />
@@ -147,83 +153,6 @@ export const ChartLegend: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* 2. Canonical TradingView Active Indicators List */}
-      {activeIndicators.map((ind) => (
-        <div
-          key={ind.name}
-          className="legend-indicator-row"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 11,
-            color: THEME_TOKENS.colors.textSecondary,
-            padding: '1px 4px',
-            borderRadius: 3,
-            backgroundColor: 'rgba(30, 34, 45, 0.4)',
-            maxWidth: 'fit-content'
-          }}
-        >
-          {/* Indicator Dot & Name */}
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: ind.name.includes('EMA') ? '#2962ff' : ind.name.includes('VOL') ? '#ff9800' : '#e91e63'
-            }}
-          />
-          <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright }}>
-            {ind.shortName || ind.name}
-          </span>
-          <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>
-            ({ind.name === 'EMA' ? '9, close' : ind.name === 'VOL' ? '20' : '14'})
-          </span>
-
-          {/* Quick Indicator Action Buttons (Eye, Cross) */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 2 }}>
-            <button
-              type="button"
-              onClick={() => toggleIndicator(ind.name)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: ind.visible ? THEME_TOKENS.colors.textSecondary : THEME_TOKENS.colors.textMuted,
-                cursor: 'pointer',
-                padding: '0 2px',
-                fontSize: 10,
-                display: 'inline-flex',
-                alignItems: 'center'
-              }}
-              title={ind.visible ? 'Hide Indicator' : 'Show Indicator'}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-                {!ind.visible && <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" strokeWidth="2" />}
-              </svg>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => toggleIndicator(ind.name)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: THEME_TOKENS.colors.textSecondary,
-                cursor: 'pointer',
-                padding: '0 2px',
-                fontSize: 11,
-                lineHeight: 1
-              }}
-              title="Remove Indicator"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }

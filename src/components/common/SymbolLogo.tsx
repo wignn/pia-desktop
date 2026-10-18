@@ -93,8 +93,18 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
     }
   }
 
-  // Quote currencies stripping: USDT, USDC, BUSD, PERP, USD, EUR
-  const quoteSuffixes = ['USDT', 'USDC', 'BUSD', 'PERP', 'USD', 'EUR']
+  // 3. Known commodity & metal prefixes (e.g. XAUUSD, XAU, XAUU, XAGUSD, XPT, XPD)
+  // Maps directly to base metal asset icon (e.g. nvstly forex_icons/XAU.png)
+  if (s.startsWith('XAU')) return { coin: 'xau', cleanSym: 'XAU' }
+  if (s.startsWith('XAG')) return { coin: 'xag', cleanSym: 'XAG' }
+  if (s.startsWith('XPT')) return { coin: 'xpt', cleanSym: 'XPT' }
+  if (s.startsWith('XPD')) return { coin: 'xpd', cleanSym: 'XPD' }
+
+  // 4. Quote currencies stripping: USDT, USDC, BUSD, PERP, USD, EUR, etc.
+  const quoteSuffixes = [
+    'USDT', 'USDC', 'BUSD', 'PERP', 'USD', 'EUR',
+    'JPY', 'GBP', 'AUD', 'CAD', 'CHF', 'CNY', 'HKD', 'SGD', 'TRY'
+  ]
   for (const suffix of quoteSuffixes) {
     if (s.length > suffix.length && s.endsWith(suffix)) {
       const candidateBase = s.slice(0, -suffix.length)
@@ -113,17 +123,50 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
   }
 }
 
+const SYMBOL_ALIASES: Record<string, string[]> = {
+  XAU: ['GOLD', 'XAUT'],
+  GOLD: ['XAU', 'XAUT'],
+  XAG: ['SILVER', 'SLV'],
+  SILVER: ['XAG', 'SLV'],
+  WTI: ['OIL', 'USO'],
+  BRENT: ['OIL', 'BNO'],
+  OIL: ['WTI', 'USO'],
+  SPX: ['SPY'],
+  NDX: ['QQQ'],
+  DJI: ['DIA']
+}
+
 // ponytail: multi-tier CDN candidates use static jsdelivr URLs for spothq, nvstly, and ahmeterenodaci; add local asset cache or backend proxy if offline resilience or strict CORS is required.
 export function getSymbolLogoCandidates(symbol: string): string[] {
   if (!symbol || typeof symbol !== 'string') return []
   const { coin, cleanSym } = resolveSymbolTokens(symbol)
   if (!coin || !cleanSym) return []
 
-  return [
-    `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${coin}.svg`,
-    `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${cleanSym}.png`,
-    `https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/${cleanSym}.png`
-  ]
+  const syms = [cleanSym, ...(SYMBOL_ALIASES[cleanSym] || [])]
+  const urls: string[] = []
+
+  for (const s of syms) {
+    const c = s.toLowerCase()
+    urls.push(
+      `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${c}.svg`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/${s}.png`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/crypto_icons/${s}.png`,
+      `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${s}.png`,
+      `https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/${s}.png`
+    )
+  }
+
+  // Prioritize exact known top hits for commodity and precious metal pairs like XAU/XAG
+  if (cleanSym === 'XAU' || cleanSym.startsWith('XAU')) {
+    const xauForex = 'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAU.png'
+    return [xauForex, ...urls.filter((u) => u !== xauForex)]
+  }
+  if (cleanSym === 'XAG' || cleanSym.startsWith('XAG')) {
+    const xagForex = 'https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAG.png'
+    return [xagForex, ...urls.filter((u) => u !== xagForex)]
+  }
+
+  return Array.from(new Set(urls))
 }
 
 function getDeterministicCategoryColor(symbol: string): { bg: string; text: string } {

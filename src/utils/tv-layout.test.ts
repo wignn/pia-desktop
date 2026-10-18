@@ -416,14 +416,14 @@ describe('TradingView Layout & Chart helpers', () => {
   describe('SymbolLogo & candidate resolution', () => {
     it('correctly derives logo candidate URLs for crypto tickers', () => {
       const btcCandidates = getSymbolLogoCandidates('BTCUSDT')
-      expect(btcCandidates).toHaveLength(3)
+      expect(btcCandidates.length).toBeGreaterThanOrEqual(3)
       expect(btcCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg')
-      expect(btcCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/BTC.png')
-      expect(btcCandidates[2]).toBe('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/BTC.png')
+      expect(btcCandidates).toContain('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/BTC.png')
+      expect(btcCandidates).toContain('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/BTC.png')
 
       const ethCandidates = getSymbolLogoCandidates('ETH/USD')
       expect(ethCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/eth.svg')
-      expect(ethCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/ETH.png')
+      expect(ethCandidates).toContain('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/ETH.png')
 
       const solCandidates = getSymbolLogoCandidates('SOLBUSD')
       expect(solCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/sol.svg')
@@ -434,10 +434,21 @@ describe('TradingView Layout & Chart helpers', () => {
 
     it('correctly derives logo candidate URLs for stock tickers', () => {
       const aaplCandidates = getSymbolLogoCandidates('AAPL')
-      expect(aaplCandidates).toHaveLength(3)
+      expect(aaplCandidates.length).toBeGreaterThanOrEqual(3)
       expect(aaplCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/aapl.svg')
-      expect(aaplCandidates[1]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/AAPL.png')
-      expect(aaplCandidates[2]).toBe('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/AAPL.png')
+      expect(aaplCandidates).toContain('https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/AAPL.png')
+      expect(aaplCandidates).toContain('https://cdn.jsdelivr.net/gh/ahmeterenodaci/Nasdaq-Stock-Exchange-including-Symbols-and-Logos@main/logos/AAPL.png')
+    })
+
+    it('correctly resolves commodity base prefixes like XAU/XAUUSD to gold icons', () => {
+      const xauCandidates = getSymbolLogoCandidates('XAUUSD')
+      expect(xauCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAU.png')
+
+      const xauTypo = getSymbolLogoCandidates('XAUU')
+      expect(xauTypo[0]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAU.png')
+
+      const xagCandidates = getSymbolLogoCandidates('XAGUSD')
+      expect(xagCandidates[0]).toBe('https://cdn.jsdelivr.net/gh/nvstly/icons@main/forex_icons/XAG.png')
     })
 
     it('returns empty array for empty or invalid symbol', () => {
