@@ -14,6 +14,9 @@ import {
   REPLAY_SPEED_OPTIONS,
   formatReplayProgress
 } from '../components/chart/ReplayControlBar'
+import { NewsPanel } from '../components/panels/NewsPanel'
+import { useNewsStore } from '../stores/useNewsStore'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -271,6 +274,40 @@ describe('TradingView Layout & Chart helpers', () => {
       useWorkspaceStore.getState().setActiveTab('news')
       expect(useWorkspaceStore.getState().activeTab).toBe('news')
       expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+    })
+
+    it('correctly maps news article imageUrl and formats news layout', () => {
+      const sampleArticles = [
+        {
+          id: 'n-1',
+          title: 'Breaking Tech News',
+          summary: 'Big earnings beat expectations.',
+          url: 'https://example.com/1',
+          source: 'Reuters',
+          publishedAt: Date.now() - 60000,
+          category: 'Stocks',
+          imageUrl: 'https://images.unsplash.com/photo-test-1'
+        },
+        {
+          id: 'n-2',
+          title: 'Crypto Market Rally',
+          summary: 'Bitcoin reaches key resistance level.',
+          url: 'https://example.com/2',
+          source: 'CoinDesk',
+          publishedAt: Date.now() - 120000,
+          category: 'Crypto',
+          imageUrl: 'https://images.unsplash.com/photo-test-2'
+        }
+      ]
+
+      const html = renderToStaticMarkup(
+        React.createElement(NewsPanel, { customArticles: sampleArticles })
+      )
+      expect(html).toContain('Financial News')
+      expect(html).toContain('Breaking Tech News')
+      expect(html).toContain('Crypto Market Rally')
+      expect(html).toContain('https://images.unsplash.com/photo-test-1')
+      expect(html).toContain('https://images.unsplash.com/photo-test-2')
     })
 
     it('renders null when isReplaying is false and floating bar when true', () => {

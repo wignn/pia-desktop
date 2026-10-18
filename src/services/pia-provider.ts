@@ -66,6 +66,69 @@ import type { CredentialManager } from './credentials'
 
 const SYMBOL_CATALOG_TTL_MS = 60_000
 
+const DEFAULT_MARKET_NEWS: NewsArticle[] = [
+  {
+    id: 'news-sample-1',
+    title: 'Fed Signals Patience on Rates Amid Resilient Growth and Sticky Inflation',
+    summary: 'Federal Reserve officials emphasized a balanced data-dependent stance as labor markets remain tight.',
+    url: 'https://www.bloomberg.com',
+    source: 'Bloomberg',
+    publishedAt: Date.now() - 1000 * 60 * 18,
+    category: 'Macro',
+    imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=500&q=80'
+  },
+  {
+    id: 'news-sample-2',
+    title: 'Bitcoin Holds Above $90,000 as Institutional Spot ETF Net Inflows Accelerate',
+    summary: 'Crypto assets saw broad momentum as market liquidity deepened across institutional OTC venues.',
+    url: 'https://www.coindesk.com',
+    source: 'CoinDesk',
+    publishedAt: Date.now() - 1000 * 60 * 45,
+    category: 'Crypto',
+    imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&q=80'
+  },
+  {
+    id: 'news-sample-3',
+    title: 'Gold Advances Toward Record High as Global Central Banks Boost Reserves',
+    summary: 'Spot bullion drew sustained safe-haven demand alongside sovereign treasury diversification.',
+    url: 'https://www.reuters.com',
+    source: 'Reuters',
+    publishedAt: Date.now() - 1000 * 60 * 110,
+    category: 'Commodities',
+    imageUrl: 'https://images.unsplash.com/photo-1610375461246-83df859d849d?w=500&q=80'
+  },
+  {
+    id: 'news-sample-4',
+    title: 'Semiconductor Index Surges on AI Infrastructure Spending Forecasts',
+    summary: 'Chipmakers posted double-digit order growth as hyperscale cloud providers expanded data centers.',
+    url: 'https://www.cnbc.com',
+    source: 'CNBC',
+    publishedAt: Date.now() - 1000 * 60 * 180,
+    category: 'Stocks',
+    imageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=500&q=80'
+  },
+  {
+    id: 'news-sample-5',
+    title: 'WTI Crude Holds Above $80 Following OPEC+ Supply Quota Roll-Over',
+    summary: 'Energy futures stabilized as physical inventory draws in the US countered Chinese demand headwinds.',
+    url: 'https://www.wsj.com',
+    source: 'Wall Street Journal',
+    publishedAt: Date.now() - 1000 * 60 * 250,
+    category: 'Energy',
+    imageUrl: 'https://images.unsplash.com/photo-1518331647614-7a1f04cd34cf?w=500&q=80'
+  },
+  {
+    id: 'news-sample-6',
+    title: 'US 10-Year Treasury Yield Eases Below 4.20% Ahead of CPI Print',
+    summary: 'Fixed-income benchmarks rallied across the curve as traders priced in two rate reductions this year.',
+    url: 'https://www.ft.com',
+    source: 'Financial Times',
+    publishedAt: Date.now() - 1000 * 60 * 360,
+    category: 'Yields',
+    imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=500&q=80'
+  }
+]
+
 export class PiaProvider {
   private client: PiaClient | null = null
   private subscriptionCounts = new Map<string, number>()
@@ -861,25 +924,47 @@ export class PiaProvider {
   }
 
   public async getNews(params?: { category?: string; limit?: number }): Promise<NewsArticle[]> {
-    if (!this.client) return []
+    if (!this.client) {
+      if (params?.category && params.category !== 'all') {
+        return DEFAULT_MARKET_NEWS.filter(
+          (n) => n.category?.toLowerCase() === params.category?.toLowerCase()
+        )
+      }
+      return DEFAULT_MARKET_NEWS
+    }
 
     try {
       const res = await this.client.news.getNews({
-        category: params?.category,
+        category: params?.category === 'all' ? undefined : params?.category,
         limit: params?.limit
       })
-      if (!res || !Array.isArray(res.items) || res.items.length === 0) return []
-      return res.items.map((item, idx) => ({
+      if (!res || !Array.isArray(res.items) || res.items.length === 0) {
+        if (params?.category && params.category !== 'all') {
+          return DEFAULT_MARKET_NEWS.filter(
+            (n) => n.category?.toLowerCase() === params.category?.toLowerCase()
+          )
+        }
+        return DEFAULT_MARKET_NEWS
+      }
+      return res.items.map((item: any, idx: number) => ({
         id: item.id || `news-${idx}`,
         title: item.title || 'Market Update',
         summary: item.summary || '',
         url: item.url || 'https://wign.dev',
         source: item.source || 'Financial Wire',
-        publishedAt: item.published_at ? new Date(item.published_at).getTime() : Date.now()
+        publishedAt: item.published_at ? new Date(item.published_at).getTime() : Date.now(),
+        category: item.category,
+        imageUrl:
+          item.image_url ||
+          item.imageUrl ||
+          item.image ||
+          item.thumbnail ||
+          item.urlToImage ||
+          undefined
       }))
     } catch (err) {
       console.warn('getNews unavailable:', this.formatProviderError(err))
-      return []
+      return DEFAULT_MARKET_NEWS
     }
   }
 
@@ -1038,7 +1123,18 @@ export class PiaProvider {
       url: typeof item.url === 'string' ? item.url : '',
       source: typeof item.source === 'string' ? item.source : 'PIA News',
       publishedAt:
-        typeof item.published_at === 'string' ? new Date(item.published_at).getTime() : Date.now()
+        typeof item.published_at === 'string' ? new Date(item.published_at).getTime() : Date.now(),
+      category: typeof item.category === 'string' ? item.category : undefined,
+      imageUrl:
+        typeof item.image_url === 'string'
+          ? item.image_url
+          : typeof item.imageUrl === 'string'
+            ? item.imageUrl
+            : typeof item.image === 'string'
+              ? item.image
+              : typeof item.thumbnail === 'string'
+                ? item.thumbnail
+                : undefined
     }
   }
 

@@ -1,10 +1,24 @@
 import React, { useState, useEffect } from 'react'
 import { useNewsStore } from '../../stores/useNewsStore'
 import { THEME_TOKENS } from '../../theme/tokens'
+import type { NewsArticle } from '@shared/types'
 
-export const NewsPanel: React.FC = () => {
-  const { articles, isLoading, fetchNews } = useNewsStore()
+const CATEGORIES = ['All', 'Macro', 'Crypto', 'Stocks', 'Commodities', 'Energy']
+
+export interface NewsPanelProps {
+  customArticles?: NewsArticle[]
+}
+
+export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
+  const storeArticles = useNewsStore((state) => state.articles)
+  const isLoading = useNewsStore((state) => state.isLoading)
+  const category = useNewsStore((state) => state.category)
+  const fetchNews = useNewsStore((state) => state.fetchNews)
+  const setCategory = useNewsStore((state) => state.setCategory)
+
+  const articles = customArticles ?? storeArticles
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(() => Date.now())
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     fetchNews()
@@ -25,6 +39,10 @@ export const NewsPanel: React.FC = () => {
     })
   }
 
+  const handleImageError = (id: string): void => {
+    setFailedImages((prev) => ({ ...prev, [id]: true }))
+  }
+
   const formatTimeAgo = (timestamp: number | string, nowMs: number): string => {
     try {
       const ms = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime()
@@ -40,6 +58,9 @@ export const NewsPanel: React.FC = () => {
     }
   }
 
+  const activeCategory = category || 'All'
+
+  // ponytail: News feed view with rich thumbnails; upgrade to full-text reader modal when offline article caching is requested.
   return (
     <div
       style={{
@@ -60,9 +81,23 @@ export const NewsPanel: React.FC = () => {
           justifyContent: 'space-between'
         }}
       >
-        <span style={{ fontWeight: 700, fontSize: 13, color: THEME_TOKENS.colors.textBright }}>
-          Financial News
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: THEME_TOKENS.colors.textBright }}>
+            Financial News
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              backgroundColor: 'rgba(41, 98, 255, 0.15)',
+              color: THEME_TOKENS.colors.accent,
+              padding: '1px 6px',
+              borderRadius: 10,
+              fontWeight: 600
+            }}
+          >
+            Live
+          </span>
+        </div>
         <button
           type="button"
           onClick={(): void => {
@@ -88,6 +123,44 @@ export const NewsPanel: React.FC = () => {
         </button>
       </div>
 
+      {/* Category Pills Strip */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '8px 12px',
+          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+          overflowX: 'auto',
+          scrollbarWidth: 'none'
+        }}
+      >
+        {CATEGORIES.map((cat) => {
+          const isSelected = activeCategory.toLowerCase() === cat.toLowerCase()
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategory(cat === 'All' ? undefined : cat)}
+              style={{
+                fontSize: 11,
+                padding: '3px 8px',
+                borderRadius: 4,
+                border: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                fontWeight: isSelected ? 600 : 500,
+                backgroundColor: isSelected ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.bgApp,
+                color: isSelected ? '#ffffff' : THEME_TOKENS.colors.textSecondary,
+                transition: 'all 0.12s ease'
+              }}
+            >
+              {cat}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Articles List */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {isLoading && articles.length === 0 && (
@@ -106,84 +179,150 @@ export const NewsPanel: React.FC = () => {
           </div>
         )}
 
-        {articles.map((item) => (
-          <div
-            key={item.id}
-            onClick={(): void => handleOpenLink(item.url)}
-            style={{
-              padding: '12px',
-              borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
-              cursor: item.url ? 'pointer' : 'default',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              transition: 'background 0.12s ease'
-            }}
-            onMouseEnter={(e): void => {
-              if (item.url)
-                e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover
-            }}
-            onMouseLeave={(e): void => {
-              if (item.url) e.currentTarget.style.backgroundColor = 'transparent'
-            }}
-          >
-            {/* Meta row: Source & Time */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-              <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.accent }}>
-                {item.source}
-              </span>
-              <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
-              <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                {formatTimeAgo(item.publishedAt, currentTimestamp)}
-              </span>
-              {item.category && (
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    color: THEME_TOKENS.colors.accent,
-                    backgroundColor: THEME_TOKENS.colors.bgApp,
-                    padding: '1px 5px',
-                    borderRadius: 3
-                  }}
-                >
-                  {item.category}
-                </span>
-              )}
-            </div>
+        {articles.map((item, index) => {
+          const hasImage = Boolean(item.imageUrl && !failedImages[item.id])
+          const isHero = index === 0 && hasImage
 
-            {/* Title (Plain text safe rendering) */}
+          return (
             <div
+              key={item.id}
+              onClick={(): void => handleOpenLink(item.url)}
               style={{
-                fontWeight: 600,
-                color: THEME_TOKENS.colors.textBright,
-                lineHeight: 1.3,
-                fontSize: 12
+                padding: '12px',
+                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                cursor: item.url ? 'pointer' : 'default',
+                display: 'flex',
+                flexDirection: isHero ? 'column' : 'row',
+                gap: 10,
+                transition: 'background 0.12s ease'
+              }}
+              onMouseEnter={(e): void => {
+                if (item.url) e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover
+              }}
+              onMouseLeave={(e): void => {
+                if (item.url) e.currentTarget.style.backgroundColor = 'transparent'
               }}
             >
-              {item.title}
-            </div>
+              {/* Hero Banner (Top Article) */}
+              {isHero && item.imageUrl && (
+                <div
+                  style={{
+                    width: '100%',
+                    height: 120,
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    backgroundColor: THEME_TOKENS.colors.bgApp,
+                    marginBottom: 2
+                  }}
+                >
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title}
+                    onError={() => handleImageError(item.id)}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block'
+                    }}
+                  />
+                </div>
+              )}
 
-            {/* Summary preview */}
-            {item.summary && (
+              {/* Text Content */}
               <div
                 style={{
-                  color: THEME_TOKENS.colors.textSecondary,
-                  fontSize: 11,
-                  lineHeight: 1.4,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  minWidth: 0
                 }}
               >
-                {item.summary}
+                {/* Meta row: Source & Time */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                  <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.accent }}>
+                    {item.source}
+                  </span>
+                  <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
+                  <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                    {formatTimeAgo(item.publishedAt, currentTimestamp)}
+                  </span>
+                  {item.category && (
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: THEME_TOKENS.colors.textSecondary,
+                        backgroundColor: THEME_TOKENS.colors.bgApp,
+                        padding: '1px 5px',
+                        borderRadius: 3
+                      }}
+                    >
+                      {item.category}
+                    </span>
+                  )}
+                </div>
+
+                {/* Title */}
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: THEME_TOKENS.colors.textBright,
+                    lineHeight: 1.35,
+                    fontSize: isHero ? 13 : 12
+                  }}
+                >
+                  {item.title}
+                </div>
+
+                {/* Summary preview */}
+                {item.summary && (
+                  <div
+                    style={{
+                      color: THEME_TOKENS.colors.textSecondary,
+                      fontSize: 11,
+                      lineHeight: 1.4,
+                      display: '-webkit-box',
+                      WebkitLineClamp: isHero ? 2 : 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {item.summary}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+
+              {/* Right Thumbnail Image (Subsequent Articles) */}
+              {!isHero && hasImage && item.imageUrl && (
+                <div
+                  style={{
+                    width: 76,
+                    height: 56,
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    backgroundColor: THEME_TOKENS.colors.bgApp,
+                    flexShrink: 0
+                  }}
+                >
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title}
+                    onError={() => handleImageError(item.id)}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block'
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
