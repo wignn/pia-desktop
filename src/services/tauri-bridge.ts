@@ -1,0 +1,219 @@
+/**
+ * PIA Terminal - Tauri Bridge
+ * Connects the webview frontend to PiaProvider, DatabaseService (SQLite via sql.js + Tauri FS persistence),
+ * and native Tauri plugins, implementing the full TerminalAPI contract.
+ */
+
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { CredentialManager } from './credentials'
+import { DatabaseService } from './database'
+import { PiaProvider } from './pia-provider'
+import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type {
+  TerminalAPI,
+  GetCandlesInput,
+  GetPricesInput,
+  SaveApiKeyInput,
+  UploadSnapshotInput,
+  IntelligenceAnalyzeInput,
+  MacroMapInput,
+  SecFilingsInput,
+  SocialPostsInput,
+  GetCalendarInput,
+  GetNewsInput
+} from '@shared/contracts'
+import type {
+  PriceQuote,
+  ConnectionState,
+  DrawingItem,
+  IndicatorConfig,
+  WatchlistGroup,
+  PriceAlert,
+  PaperAccount,
+  ChartLayoutData,
+  UpdaterStatus
+} from '@shared/types'
+
+export async function createTauriApi(): Promise<TerminalAPI> {
+  const credManager = new CredentialManager()
+  await credManager.initialize()
+
+  const dbService = new DatabaseService()
+  await dbService.initialize()
+
+  const piaProvider = new PiaProvider(credManager)
+
+  const api: TerminalAPI = {
+    market: {
+      getSymbols: () => piaProvider.getSymbols(),
+      getCandles: (params: GetCandlesInput) => piaProvider.getCandles(params),
+      getPrices: (params?: GetPricesInput) => piaProvider.getPrices(params?.symbols),
+      getPrice: (symbol: string) => piaProvider.getPrice(symbol),
+      getSession: (symbol: string) => piaProvider.getSession(symbol),
+      getDataQuality: () => piaProvider.getDataQuality(),
+      getSpikes: () => piaProvider.getSpikes(),
+      getAlerts: () => piaProvider.getAlerts(),
+      getSmartAlerts: () => piaProvider.getSmartAlerts(),
+      subscribePrice: (symbol: string) => Promise.resolve(piaProvider.subscribePrice(symbol)),
+      unsubscribePrice: (symbol: string) =>
+        Promise.resolve(piaProvider.unsubscribePrice(symbol)),
+      onPriceUpdate: (callback: (quote: PriceQuote) => void) =>
+        piaProvider.on(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, callback),
+      onConnectionState: (callback: (state: ConnectionState) => void) =>
+        piaProvider.on(IPC_CHANNELS.MARKET_ON_CONNECTION_STATE, callback),
+      getTradingHalts: () => piaProvider.getTradingHalts(),
+      getCorporateActions: () => piaProvider.getCorporateActions(),
+      getRealizedVolatility: (symbol?: string) => piaProvider.getRealizedVolatility(symbol),
+      getImpliedVolatility: (symbol?: string) => piaProvider.getImpliedVolatility(symbol),
+      uploadSnapshot: (params: UploadSnapshotInput) => piaProvider.uploadSnapshot(params)
+    },
+
+    orderbook: {
+      get: (symbol: string) => piaProvider.getOrderBook(symbol)
+    },
+
+    intelligence: {
+      analyze: (params: IntelligenceAnalyzeInput) =>
+        piaProvider.analyzeIntelligence(params.symbol, params.query),
+      getInsights: (symbol: string) => piaProvider.getMarketInsights(symbol)
+    },
+
+    options: {
+      getChain: (symbol: string) => piaProvider.getOptionsChain(symbol),
+      getGex: (symbol: string) => piaProvider.getOptionsGex(symbol),
+      getSummary: () => piaProvider.getOptionsSummary()
+    },
+
+    macro: {
+      getFearGreed: () => piaProvider.getFearGreed(),
+      getFearGreedHistory: () => piaProvider.getFearGreedHistory(),
+      getCot: (symbol: string) => piaProvider.getCot(symbol),
+      getCentralBanks: (bank?: string) => piaProvider.getCentralBanks(bank),
+      getMap: (params?: MacroMapInput) => piaProvider.getMacroMap(params)
+    },
+
+    fixedIncome: {
+      getYieldCurve: () => piaProvider.getYieldCurve(),
+      getSpreads: () => piaProvider.getYieldSpreads(),
+      getRate: (tenor: string) => piaProvider.getFixedIncomeRate(tenor),
+      getHistory: (tenor: string) => piaProvider.getFixedIncomeHistory(tenor)
+    },
+
+    geosignals: {
+      getEvents: () => piaProvider.getGeoEvents(),
+      getMap: () => piaProvider.getGeoMap(),
+      getAssetImpacts: () => piaProvider.getGeoAssetImpacts()
+    },
+
+    energy: {
+      getDashboard: () => piaProvider.getEnergyDashboard(),
+      getSeries: (seriesId: string) => piaProvider.getEnergySeries(seriesId)
+    },
+
+    sec: {
+      getFilings: (params?: SecFilingsInput) => piaProvider.getSecFilings(params),
+      getCompany: (symbol: string) => piaProvider.getSecCompany(symbol)
+    },
+
+    social: {
+      getPosts: (params?: SocialPostsInput) => piaProvider.getSocialPosts(params),
+      getFeed: (params?: SocialPostsInput) => piaProvider.getSocialFeed(params)
+    },
+
+    drawings: {
+      get: (params: { symbol: string; timeframe?: string }) =>
+        Promise.resolve(dbService.getDrawings(params.symbol, params.timeframe)),
+      save: (drawing: DrawingItem) => Promise.resolve(dbService.saveDrawing(drawing)),
+      delete: (id: string) => Promise.resolve(dbService.deleteDrawing(id)),
+      clear: (params?: { symbol?: string }) =>
+        Promise.resolve(dbService.clearDrawings(params?.symbol))
+    },
+
+    layouts: {
+      getAll: () => Promise.resolve(dbService.getLayouts()),
+      get: (id: string) => Promise.resolve(dbService.getLayout(id)),
+      save: (layout: ChartLayoutData) => Promise.resolve(dbService.saveLayout(layout)),
+      delete: (id: string) => Promise.resolve(dbService.deleteLayout(id))
+    },
+
+    indicators: {
+      get: (symbol: string) => Promise.resolve(dbService.getIndicators(symbol)),
+      save: (symbol: string, indicators: IndicatorConfig[]) =>
+        Promise.resolve(dbService.saveIndicators(symbol, indicators))
+    },
+
+    watchlist: {
+      getAll: () => Promise.resolve(dbService.getWatchlists()),
+      save: (watchlist: WatchlistGroup) => Promise.resolve(dbService.saveWatchlist(watchlist)),
+      delete: (id: string) => Promise.resolve(dbService.deleteWatchlist(id))
+    },
+
+    calendar: {
+      get: (params?: GetCalendarInput) => piaProvider.getCalendar(params)
+    },
+
+    news: {
+      get: (params?: GetNewsInput) => piaProvider.getNews(params),
+      getLatest: () => piaProvider.getLatestNews(),
+      getById: (id: string) => piaProvider.getNewsById(id)
+    },
+
+    economic: {
+      getIndicators: () => piaProvider.getEconomicMetadata('indicators'),
+      getCategories: () => piaProvider.getEconomicMetadata('categories'),
+      getCountries: () => piaProvider.getEconomicMetadata('countries')
+    },
+
+    alerts: {
+      getAll: () => Promise.resolve(dbService.getAlerts()),
+      save: (alert: PriceAlert) => Promise.resolve(dbService.saveAlert(alert)),
+      delete: (id: string) => Promise.resolve(dbService.deleteAlert(id))
+    },
+
+    paper: {
+      getAccount: () => Promise.resolve(dbService.getPaperAccount()),
+      saveAccount: (account: PaperAccount) => Promise.resolve(dbService.savePaperAccount(account))
+    },
+
+    settings: {
+      getCredentials: () => Promise.resolve(credManager.getStatus()),
+      saveApiKey: async (input: SaveApiKeyInput) => {
+        const ok = await credManager.saveCredentials(input.apiKey, input.baseUrl, input.wsUrl)
+        piaProvider.initializeClient()
+        return ok
+      },
+      clearApiKey: async () => {
+        const ok = await credManager.clearCredentials()
+        piaProvider.initializeClient()
+        return ok
+      }
+    },
+
+    system: {
+      openExternal: async (url: string) => {
+        try {
+          await openUrl(url)
+          return true
+        } catch {
+          window.open(url, '_blank')
+          return true
+        }
+      },
+      getRateLimit: () => Promise.resolve(piaProvider.getRateLimitInfo())
+    },
+
+    ws: {
+      createTicket: () => piaProvider.createWsTicket()
+    },
+
+    updater: {
+      check: () => Promise.resolve({ state: 'idle', currentVersion: '1.0.0' } as UpdaterStatus),
+      getStatus: () =>
+        Promise.resolve({ state: 'idle', currentVersion: '1.0.0' } as UpdaterStatus),
+      install: () => Promise.resolve(false),
+      onStatus: () => () => {}
+    }
+  }
+
+  return api
+}

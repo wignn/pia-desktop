@@ -1,0 +1,217 @@
+/**
+ * PIA Terminal - Chart Store (Zustand)
+ * Manages chart view styles, active overlays/drawing tools, active indicators,
+ * and bar-by-bar replay mode state.
+ */
+
+import { create } from 'zustand'
+import { candleEngine } from '../services/candle-engine'
+
+export type ChartType = 'candle_solid' | 'candle_stroke' | 'line' | 'area'
+
+export type DrawingToolType =
+  | 'cursor'
+  | 'segment'
+  | 'rayLine'
+  | 'straightLine'
+  | 'horizontalStraightLine'
+  | 'horizontalRayLine'
+  | 'horizontalSegment'
+  | 'verticalStraightLine'
+  | 'verticalRayLine'
+  | 'verticalSegment'
+  | 'priceLine'
+  | 'priceChannelLine'
+  | 'parallelStraightLine'
+  | 'fibonacciLine'
+  | 'brush'
+  | 'rect'
+  | 'circle'
+  | 'simpleAnnotation'
+  | 'simpleTag'
+  | 'measure'
+
+export interface ActiveIndicator {
+  name: string
+  shortName: string
+  paneId: string
+  visible: boolean
+}
+
+export const OVERLAY_INDICATORS = new Set(['EMA', 'SMA', 'BOLL', 'SAR', 'BBI', 'MA'])
+export const isOverlayIndicator = (name: string): boolean => OVERLAY_INDICATORS.has(name.toUpperCase())
+
+export const sanitizeIndicators = (indicators: ActiveIndicator[]): ActiveIndicator[] => {
+  return indicators.map((ind) => {
+    const isOverlay = isOverlayIndicator(ind.name)
+    const expectedPane = isOverlay ? 'candle_pane' : `${ind.name.toLowerCase()}_pane`
+    return ind.paneId !== expectedPane ? { ...ind, paneId: expectedPane } : ind
+  })
+}
+
+const DEFAULT_INDICATORS: ActiveIndicator[] = [
+  { name: 'EMA', shortName: 'EMA', paneId: 'candle_pane', visible: true },
+  { name: 'VOL', shortName: 'VOL', paneId: 'vol_pane', visible: true }
+]
+
+const loadSavedIndicators = (): ActiveIndicator[] => {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_INDICATORS
+    const raw = localStorage.getItem('pia_active_indicators')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return sanitizeIndicators(parsed)
+    }
+  } catch {
+    // fallback
+  }
+  return DEFAULT_INDICATORS
+}
+
+const loadSavedChartType = (): ChartType => {
+  try {
+    if (typeof localStorage === 'undefined') return 'candle_solid'
+    const raw = localStorage.getItem('pia_chart_type') as ChartType
+    if (raw && ['candle_solid', 'candle_stroke', 'line', 'area'].includes(raw)) return raw
+  } catch {
+    // fallback
+  }
+  return 'candle_solid'
+}
+
+interface ChartState {
+  chartType: ChartType
+  activeTool: DrawingToolType
+  magnetMode: boolean
+  stayInDrawingMode: boolean
+  isDrawingsLocked: boolean
+  isDrawingsHidden: boolean
+  activeIndicators: ActiveIndicator[]
+  drawingsClearSignal: number
+  snapshotSignal: number
+  snapshotToast: string | null
+
+  // Replay mode state
+  isReplaying: boolean
+  isReplayPlaying: boolean
+  replaySpeedMs: number
+  replayCurrentIndex: number
+  replayTotalBars: number
+
+  // Actions
+  setChartType: (type: ChartType) => void
+  setActiveTool: (tool: DrawingToolType) => void
+  toggleMagnetMode: () => void
+  toggleStayInDrawingMode: () => void
+  toggleLockDrawings: () => void
+  toggleHideDrawings: () => void
+  toggleIndicator: (name: string, defaultPane?: string) => void
+  clearAllDrawings: () => void
+  triggerSnapshot: () => void
+  setSnapshotToast: (msg: string | null) => void
+  setReplaying: (active: boolean) => void
+  toggleReplayPlay: () => void
+  setReplaySpeed: (speedMs: number) => void
+  stepReplayForward: () => void
+  jumpReplayTo: (index: number) => void
+}
+
+export const useChartStore = create<ChartState>((set, get) => ({
+  chartType: loadSavedChartType(),
+  activeTool: 'cursor',
+  magnetMode: false,
+  stayInDrawingMode: false,
+  isDrawingsLocked: false,
+  isDrawingsHidden: false,
+  activeIndicators: loadSavedIndicators(),
+  drawingsClearSignal: 0,
+  snapshotSignal: 0,
+  snapshotToast: null,
+
+  isReplaying: false,
+  isReplayPlaying: false,
+  replaySpeedMs: 1000,
+  replayCurrentIndex: 0,
+  replayTotalBars: 0,
+
+  setChartType: (type: ChartType) => {
+    set({ chartType: type })
+    try {
+      localStorage.setItem('pia_chart_type', type)
+    } catch {
+      // ignore
+    }
+  },
+  setActiveTool: (tool: DrawingToolType) => set({ activeTool: tool }),
+  toggleMagnetMode: () => set((state) => ({ magnetMode: !state.magnetMode })),
+  toggleStayInDrawingMode: () => set((state) => ({ stayInDrawingMode: !state.stayInDrawingMode })),
+  toggleLockDrawings: () => set((state) => ({ isDrawingsLocked: !state.isDrawingsLocked })),
+  toggleHideDrawings: () => set((state) => ({ isDrawingsHidden: !state.isDrawingsHidden })),
+
+  toggleIndicator: (name: string, defaultPane = 'candle_pane') => {
+    const list = get().activeIndicators
+    const exists = list.find((item) => item.name === name)
+
+    let updated: ActiveIndicator[]
+    if (exists) {
+      updated = list.filter((item) => item.name !== name)
+    } else {
+      const isOverlay = isOverlayIndicator(name)
+      const paneId = isOverlay ? defaultPane : `${name.toLowerCase()}_pane`
+      updated = [...list, { name, shortName: name, paneId, visible: true }]
+    }
+
+    set({ activeIndicators: updated })
+    try {
+      localStorage.setItem('pia_active_indicators', JSON.stringify(updated))
+    } catch {
+      // ignore
+    }
+  },
+
+  clearAllDrawings: () => set((state) => ({ drawingsClearSignal: state.drawingsClearSignal + 1 })),
+  triggerSnapshot: () => set((state) => ({ snapshotSignal: state.snapshotSignal + 1 })),
+  setSnapshotToast: (msg: string | null) => set({ snapshotToast: msg }),
+
+  setReplaying: (active: boolean) => {
+    if (active) {
+      const { currentIndex, totalBars } = candleEngine.startReplay()
+      set({
+        isReplaying: true,
+        isReplayPlaying: false,
+        replayCurrentIndex: currentIndex,
+        replayTotalBars: totalBars
+      })
+    } else {
+      candleEngine.stopReplay()
+      set({
+        isReplaying: false,
+        isReplayPlaying: false,
+        replayCurrentIndex: 0,
+        replayTotalBars: 0
+      })
+    }
+  },
+
+  toggleReplayPlay: () => {
+    set((state) => ({ isReplayPlaying: !state.isReplayPlaying }))
+  },
+
+  setReplaySpeed: (speedMs: number) => {
+    set({ replaySpeedMs: speedMs })
+  },
+
+  stepReplayForward: () => {
+    const res = candleEngine.stepReplayForward()
+    if (res.bar) {
+      set({ replayCurrentIndex: res.currentIndex })
+    } else {
+      set({ isReplayPlaying: false })
+    }
+  },
+
+  jumpReplayTo: (index: number) => {
+    const res = candleEngine.jumpReplayTo(index)
+    set({ replayCurrentIndex: res.currentIndex })
+  }
+}))

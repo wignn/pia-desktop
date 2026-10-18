@@ -1,0 +1,192 @@
+:root {
+  --bg-app: #131722;
+  --bg-surface: #1e222d;
+  --bg-surface-hover: #2a2e39;
+  --bg-active: #2a2e39;
+  --border-subtle: #2a2e39;
+  --border-medium: #363a45;
+  --border-focus: #2962ff;
+
+  --text-primary: #d1d4dc;
+  --text-secondary: #787b86;
+  --text-muted: #50535e;
+  --text-bright: #f0f3fa;
+
+  --bullish: #089981;
+  --bullish-bg: rgba(8, 153, 129, 0.12);
+  --bearish: #f23645;
+  --bearish-bg: rgba(242, 54, 69, 0.12);
+
+  --accent: #2962ff;
+  --accent-hover: #1e53e5;
+
+  --modal-backdrop: rgba(0, 0, 0, 0.7);
+  --modal-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
+
+  --font-mono: 'Trebuchet MS', Roboto, 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+}
+
+[data-theme='light'] {
+  --bg-app: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f0f3fa;
+  --bg-active: #e0e3eb;
+  --border-subtle: #e0e3eb;
+  --border-medium: #d1d4dc;
+  --border-focus: #2962ff;
+
+  --text-primary: #131722;
+  --text-secondary: #787b86;
+  --text-muted: #9598a1;
+  --text-bright: #131722;
+
+  --bullish: #089981;
+  --bullish-bg: rgba(8, 153, 129, 0.1);
+  --bearish: #f23645;
+  --bearish-bg: rgba(242, 54, 69, 0.1);
+
+  --accent: #2962ff;
+  --accent-hover: #1e53e5;
+
+  --modal-backdrop: rgba(0, 0, 0, 0.35);
+  --modal-shadow: 0 16px 36px rgba(19, 23, 34, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  font-feature-settings: 'tnum' 1;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+input,
+button,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input:focus,
+button:focus {
+  outline: none;
+}
+
+/* Custom compact TradingView scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2e39;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #363a45;
+}
+
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #d1d4dc;
+}
+
+[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: #b2b5be;
+}
+
+/* TradingView Button Base (Exact 26-28px height, 4px radius) */
+.tv-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 0 6px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+
+.tv-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-bright);
+}
+
+.tv-btn.active {
+  background: rgba(41, 98, 255, 0.15);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tv-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Badges */
+.tv-badge {
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.tv-badge.bullish {
+  background: var(--bullish-bg);
+  color: var(--bullish);
+}
+
+.tv-badge.bearish {
+  background: var(--bearish-bg);
+  color: var(--bearish);
+}
+
+/* Tooltip container */
+.tooltip-trigger {
+  position: relative;
+}
+
+/* MapLibre Native Popup Dark Theme Overrides */
+.maplibregl-popup.macro-map-native-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.maplibregl-popup.macro-map-native-popup .maplibregl-popup-tip {
+  display: none !important;
+}

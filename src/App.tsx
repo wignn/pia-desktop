@@ -1,0 +1,409 @@
+import React, { Suspense, lazy, useEffect, useState, useRef } from 'react'
+import { TabBar } from './components/layout/TabBar'
+import { TopToolbar } from './components/layout/TopToolbar'
+import { LeftDrawingToolbar } from './components/layout/LeftDrawingToolbar'
+import { RightIconRail } from './components/layout/RightIconRail'
+import { BottomStatusBar } from './components/layout/BottomStatusBar'
+import { BottomDockPanel } from './components/layout/BottomDockPanel'
+import { ChartContainer } from './components/chart/ChartContainer'
+import { ChartRangeBar } from './components/chart/ChartRangeBar'
+import { WatchlistPanel } from './components/panels/WatchlistPanel'
+import { CalendarPanel } from './components/panels/CalendarPanel'
+import { NewsPanel } from './components/panels/NewsPanel'
+import { AlertsPanel } from './components/panels/AlertsPanel'
+import { PaperTradingPanel } from './components/panels/PaperTradingPanel'
+import { OrderBookPanel } from './components/panels/OrderBookPanel'
+import { IntelligencePanel } from './components/panels/IntelligencePanel'
+import { OptionsPanel } from './components/panels/OptionsPanel'
+import { MacroPanel } from './components/panels/MacroPanel'
+import { YieldsPanel } from './components/panels/YieldsPanel'
+import { GeoSignalsPanel } from './components/panels/GeoSignalsPanel'
+import { EnergyPanel } from './components/panels/EnergyPanel'
+import { SecFilingsPanel } from './components/panels/SecFilingsPanel'
+import { SocialPanel } from './components/panels/SocialPanel'
+import { LiveStreamPanel } from './components/panels/LiveStreamPanel'
+import { ReplayToolbar } from './components/panels/ReplayToolbar'
+import { SymbolSearchModal } from './components/modals/SymbolSearchModal'
+import { IndicatorModal } from './components/modals/IndicatorModal'
+import { SettingsModal } from './components/modals/SettingsModal'
+import { SnapshotModal } from './components/modals/SnapshotModal'
+
+import { useMarketStore } from './stores/useMarketStore'
+import { useWorkspaceStore } from './stores/useWorkspaceStore'
+import { useChartStore } from './stores/useChartStore'
+import { useSettingsStore } from './stores/useSettingsStore'
+import { useAlertsStore } from './stores/useAlertsStore'
+import { useTabStore } from './stores/useTabStore'
+import { useUpdaterStore } from './stores/useUpdaterStore'
+import { THEME_TOKENS } from './theme/tokens'
+
+const SuperchartsHub = lazy(() =>
+  import('./components/hub/SuperchartsHub').then((module) => ({ default: module.SuperchartsHub }))
+)
+const MacroMapsView = lazy(() =>
+  import('./components/macromaps/MacroMapsView').then((module) => ({
+    default: module.MacroMapsView
+  }))
+)
+const ControlPanelView = lazy(() =>
+  import('./components/controlpanel/ControlPanelView').then((module) => ({
+    default: module.ControlPanelView
+  }))
+)
+
+const featureFallback = (
+  <div
+    style={{
+      display: 'grid',
+      placeItems: 'center',
+      flex: 1,
+      color: THEME_TOKENS.colors.textSecondary
+    }}
+  >
+    Loading workspace…
+  </div>
+)
+
+export function App(): React.JSX.Element {
+  const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
+  const subscribeToMarketEvents = useMarketStore((state) => state.subscribeToMarketEvents)
+  const tabs = useTabStore((state) => state.tabs)
+  const activeTabId = useTabStore((state) => state.activeTabId)
+  const activeTabItem = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
+  const isHubActive = activeTabItem?.type === 'hub'
+  const isMacroMapsActive = activeTabItem?.type === 'macromaps'
+  const isControlPanelActive = activeTabItem?.type === 'controlpanel'
+  const activeTab = useWorkspaceStore((state) => state.activeTab)
+  const isRightPanelOpen = useWorkspaceStore((state) => state.isRightPanelOpen)
+  const setSymbolSearchOpen = useWorkspaceStore((state) => state.setSymbolSearchOpen)
+  const setIndicatorModalOpen = useWorkspaceStore((state) => state.setIndicatorModalOpen)
+  const setSettingsModalOpen = useWorkspaceStore((state) => state.setSettingsModalOpen)
+  const isSnapshotModalOpen = useWorkspaceStore((state) => state.isSnapshotModalOpen)
+  const closeSnapshotModal = useWorkspaceStore((state) => state.closeSnapshotModal)
+  const snapshotDataUrl = useWorkspaceStore((state) => state.snapshotDataUrl)
+  const setActiveTool = useChartStore((state) => state.setActiveTool)
+  const loadCredentials = useSettingsStore((state) => state.loadCredentials)
+  const lastTriggeredAlert = useAlertsStore((state) => state.lastTriggeredAlert)
+  const dismissBanner = useAlertsStore((state) => state.dismissBanner)
+
+  const [dockWidth, setDockWidth] = useState(320)
+  const isDraggingDockRef = useRef(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(0)
+
+  const handleDockResizeStart = (e: React.MouseEvent): void => {
+    isDraggingDockRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = dockWidth
+
+    const onMouseMove = (moveEvent: MouseEvent): void => {
+      if (!isDraggingDockRef.current) return
+      const delta = startXRef.current - moveEvent.clientX
+      const nextW = Math.min(600, Math.max(240, startWidthRef.current + delta))
+      setDockWidth(nextW)
+    }
+
+    const onMouseUp = (): void => {
+      isDraggingDockRef.current = false
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+  const initUpdaterListener = useUpdaterStore((state) => state.initUpdaterListener)
+
+  // Initialize background update listener
+  useEffect(() => {
+    const unsub = initUpdaterListener()
+    return unsub
+  }, [initUpdaterListener])
+
+  // Auto-dismiss triggered alert notification banner after 6 seconds
+  useEffect(() => {
+    if (lastTriggeredAlert) {
+      const timer = setTimeout(() => {
+        dismissBanner()
+      }, 6000)
+      return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [lastTriggeredAlert, dismissBanner])
+
+  // Initialize market data subscriptions & credentials
+  useEffect(() => {
+    fetchSymbols()
+    loadCredentials()
+    const unsubscribe = subscribeToMarketEvents()
+    return () => {
+      unsubscribe()
+    }
+  }, [fetchSymbols, loadCredentials, subscribeToMarketEvents])
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      // Escape: reset drawing tool to cursor and close any open modals
+      if (e.key === 'Escape') {
+        setActiveTool('cursor')
+        setSymbolSearchOpen(false)
+        setIndicatorModalOpen(false)
+        setSettingsModalOpen(false)
+      }
+
+      // Ctrl+K: Open Symbol Search
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSymbolSearchOpen(true)
+      }
+
+      // Alt+I: Open Indicator Modal
+      if (e.altKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault()
+        setIndicatorModalOpen(true)
+      }
+
+      // Alt+S: Open Settings Modal
+      if (e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        setSettingsModalOpen(true)
+      }
+
+      // Quick Symbol Search on direct typing (TradingView behavior)
+      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+      if (
+        targetTag !== 'input' &&
+        targetTag !== 'textarea' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        e.key.length === 1 &&
+        /[a-zA-Z0-9]/.test(e.key)
+      ) {
+        setSymbolSearchOpen(true)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [setActiveTool, setSymbolSearchOpen, setIndicatorModalOpen, setSettingsModalOpen])
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        backgroundColor: THEME_TOKENS.colors.bgApp
+      }}
+    >
+      {/* TradingView Desktop Tab Strip */}
+      <TabBar />
+
+      {isHubActive ? (
+        <Suspense fallback={featureFallback}>
+          <SuperchartsHub />
+        </Suspense>
+      ) : isMacroMapsActive ? (
+        <Suspense fallback={featureFallback}>
+          <MacroMapsView />
+        </Suspense>
+      ) : isControlPanelActive ? (
+        <Suspense fallback={featureFallback}>
+          <ControlPanelView />
+        </Suspense>
+      ) : (
+        <>
+          {/* Top TradingView Toolbar */}
+          <TopToolbar />
+
+          {/* Main Workspace (Left Rail + Canvas + Right Dock + Far Right Rail) */}
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              minHeight: 0,
+              position: 'relative'
+            }}
+          >
+            {/* Left Drawing Tools Toolbar */}
+            <LeftDrawingToolbar />
+
+            {/* Central Chart Workspace */}
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minWidth: 0,
+                overflow: 'hidden'
+              }}
+            >
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                <ChartContainer />
+                <ReplayToolbar />
+              </div>
+              <ChartRangeBar />
+              <BottomDockPanel />
+            </div>
+
+            {/* Collapsible Right Dock Panel (Resizable) */}
+            {isRightPanelOpen && (
+              <div
+                style={{
+                  width: dockWidth,
+                  height: '100%',
+                  borderLeft: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                  backgroundColor: THEME_TOKENS.colors.bgSurface,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  zIndex: 10,
+                  position: 'relative'
+                }}
+              >
+                {/* Left Edge Resizer Handle */}
+                <div
+                  onMouseDown={handleDockResizeStart}
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 5,
+                    cursor: 'col-resize',
+                    zIndex: 30
+                  }}
+                  title="Drag to resize dock width"
+                />
+
+                {activeTab === 'watchlist' && <WatchlistPanel />}
+                {activeTab === 'orderbook' && <OrderBookPanel />}
+                {activeTab === 'intelligence' && <IntelligencePanel />}
+                {activeTab === 'options' && <OptionsPanel />}
+                {activeTab === 'macro' && <MacroPanel />}
+                {activeTab === 'yields' && <YieldsPanel />}
+                {activeTab === 'geosignals' && <GeoSignalsPanel />}
+                {activeTab === 'energy' && <EnergyPanel />}
+                {activeTab === 'sec' && <SecFilingsPanel />}
+                {activeTab === 'social' && <SocialPanel />}
+                {activeTab === 'calendar' && <CalendarPanel />}
+                {activeTab === 'news' && <NewsPanel />}
+                {activeTab === 'alerts' && <AlertsPanel />}
+                {activeTab === 'paper' && <PaperTradingPanel />}
+                {activeTab === 'live' && <LiveStreamPanel />}
+              </div>
+            )}
+
+            {/* Far-Right Rail Icons */}
+            <RightIconRail />
+
+            {/* Floating Triggered Alert Toast Banner */}
+            {lastTriggeredAlert && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 14,
+                  right: isRightPanelOpen ? 370 : 50,
+                  backgroundColor: THEME_TOKENS.colors.bgSurface,
+                  border: `1px solid ${THEME_TOKENS.colors.accent}`,
+                  borderRadius: 6,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+                  padding: '10px 14px',
+                  zIndex: 100,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  minWidth: 260,
+                  animation: 'fadeIn 0.2s ease-out'
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(41, 98, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: THEME_TOKENS.colors.accent
+                  }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{ fontSize: 12, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}
+                  >
+                    Price Alert Triggered!
+                  </div>
+                  <div
+                    style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, marginTop: 1 }}
+                  >
+                    <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright }}>
+                      {lastTriggeredAlert.symbol}
+                    </span>{' '}
+                    crossed target ${lastTriggeredAlert.targetPrice.toLocaleString()}
+                  </div>
+                  {lastTriggeredAlert.note && (
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: THEME_TOKENS.colors.textSecondary,
+                        fontStyle: 'italic'
+                      }}
+                    >
+                      &quot;{lastTriggeredAlert.note}&quot;
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissBanner}
+                  className="tv-btn"
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: 13,
+                    color: THEME_TOKENS.colors.textSecondary
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Bottom Status & Health Bar */}
+      <BottomStatusBar />
+
+      {/* Modal Dialogues */}
+      <SymbolSearchModal />
+      <IndicatorModal />
+      <SettingsModal />
+      <SnapshotModal
+        isOpen={isSnapshotModalOpen}
+        onClose={closeSnapshotModal}
+        dataUrl={snapshotDataUrl}
+      />
+    </div>
+  )
+}
+
+export default App
