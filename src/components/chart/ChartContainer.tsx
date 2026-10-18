@@ -16,6 +16,7 @@ import { useChartStore, isOverlayIndicator } from '../../stores/useChartStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS, getChartThemeStyles } from '../../theme/tokens'
 import { ChartLegend } from './ChartLegend'
+import { DrawingPropertyBar } from './DrawingPropertyBar'
 import { registerCustomOverlays } from './register-overlays'
 import { getSymbolPrecision } from '@shared/market-utils'
 import type { DomainPoint, DrawingItem } from '@shared/types'
@@ -52,6 +53,7 @@ export const ChartContainer: React.FC = () => {
 
   const isClearingForSymbolSwitchRef = useRef(false)
   const selectedOverlayIdRef = useRef<string | null>(null)
+  const [selectedOverlayId, setSelectedOverlayId] = React.useState<string | null>(null)
 
   const theme = useWorkspaceStore((state) => state.theme)
   const symbol = useMarketStore((state) => state.symbol)
@@ -152,10 +154,12 @@ export const ChartContainer: React.FC = () => {
             },
             onSelected: (event): void => {
               selectedOverlayIdRef.current = event.overlay.id
+              setSelectedOverlayId(event.overlay.id)
             },
             onDeselected: (event): void => {
               if (selectedOverlayIdRef.current === event.overlay.id) {
                 selectedOverlayIdRef.current = null
+                setSelectedOverlayId(null)
               }
             }
           })
@@ -179,6 +183,7 @@ export const ChartContainer: React.FC = () => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedOverlayIdRef.current) {
         const overlayId = selectedOverlayIdRef.current
         selectedOverlayIdRef.current = null
+        setSelectedOverlayId(null)
         if (chartRef.current) {
           chartRef.current.removeOverlay({ id: overlayId })
         }
@@ -434,10 +439,12 @@ export const ChartContainer: React.FC = () => {
       },
       onSelected: (event): void => {
         selectedOverlayIdRef.current = event.overlay.id
+        setSelectedOverlayId(event.overlay.id)
       },
       onDeselected: (event): void => {
         if (selectedOverlayIdRef.current === event.overlay.id) {
           selectedOverlayIdRef.current = null
+          setSelectedOverlayId(null)
         }
       }
     })
@@ -468,6 +475,8 @@ export const ChartContainer: React.FC = () => {
   // Handle clearing all drawings signal
   useEffect(() => {
     if (drawingsClearSignal > 0 && chartRef.current) {
+      selectedOverlayIdRef.current = null
+      setSelectedOverlayId(null)
       const currentSymbol = useMarketStore.getState().symbol
       isClearingForSymbolSwitchRef.current = true
       try {
@@ -531,6 +540,41 @@ export const ChartContainer: React.FC = () => {
     }
   }, [snapshotSignal, theme])
 
+  const handleUpdateOverlayStyle = useCallback(
+    (styles: { color?: string; borderSize?: number; borderStyle?: 'solid' | 'dashed' }): void => {
+      chartRef.current?.overrideOverlay({
+        id: selectedOverlayId ?? undefined,
+        styles: {
+          ...styles,
+          line: {
+            color: styles.color,
+            size: styles.borderSize,
+            style: styles.borderStyle
+          },
+          polygon: {
+            borderColor: styles.color,
+            borderSize: styles.borderSize,
+            borderStyle: styles.borderStyle
+          },
+          circle: {
+            borderColor: styles.color,
+            borderSize: styles.borderSize,
+            borderStyle: styles.borderStyle
+          }
+        }
+      })
+    },
+    [selectedOverlayId]
+  )
+
+  const handleDeleteSelectedOverlay = useCallback((): void => {
+    if (selectedOverlayId) {
+      chartRef.current?.removeOverlay({ id: selectedOverlayId })
+      selectedOverlayIdRef.current = null
+      setSelectedOverlayId(null)
+    }
+  }, [selectedOverlayId])
+
   return (
     <div
       style={{
@@ -543,6 +587,11 @@ export const ChartContainer: React.FC = () => {
       }}
     >
       <ChartLegend />
+      <DrawingPropertyBar
+        selectedId={selectedOverlayId}
+        onUpdateStyle={handleUpdateOverlayStyle}
+        onDelete={handleDeleteSelectedOverlay}
+      />
       {!hasHistoricalBars && !useMarketStore.getState().isLoadingCandles && (
         <div
           style={{
