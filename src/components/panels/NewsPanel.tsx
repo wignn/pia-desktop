@@ -181,7 +181,7 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
 
         {articles.map((item, index) => {
           const hasImage = Boolean(item.imageUrl && !failedImages[item.id])
-          const isHero = index === 0 && hasImage
+          const isHero = index === 0
 
           return (
             <div
@@ -204,7 +204,7 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
               }}
             >
               {/* Hero Banner (Top Article) */}
-              {isHero && item.imageUrl && (
+              {isHero && (
                 <div
                   style={{
                     width: '100%',
@@ -215,17 +215,53 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
                     marginBottom: 2
                   }}
                 >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    onError={() => handleImageError(item.id)}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      display: 'block'
-                    }}
-                  />
+                  {hasImage ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      onError={() => handleImageError(item.id)}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background:
+                          'linear-gradient(135deg, rgba(41, 98, 255, 0.2) 0%, rgba(19, 23, 34, 0.95) 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8
+                      }}
+                    >
+                      <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={THEME_TOKENS.colors.accent}
+                        strokeWidth="2"
+                      >
+                        <path d="M23 6l-9.5 9.5-5-5L1 18" />
+                        <path d="M17 6h6v6" />
+                      </svg>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: THEME_TOKENS.colors.textBright
+                        }}
+                      >
+                        {item.source || 'FINANCIAL WIRE'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -296,7 +332,7 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
               </div>
 
               {/* Right Thumbnail Image (Subsequent Articles) */}
-              {!isHero && hasImage && item.imageUrl && (
+              {!isHero && (
                 <div
                   style={{
                     width: 76,
@@ -307,17 +343,54 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
                     flexShrink: 0
                   }}
                 >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    onError={() => handleImageError(item.id)}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      display: 'block'
-                    }}
-                  />
+                  {hasImage ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      onError={() => handleImageError(item.id)}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background:
+                          'linear-gradient(135deg, rgba(41, 98, 255, 0.18) 0%, rgba(19, 23, 34, 0.95) 100%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 2
+                      }}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={THEME_TOKENS.colors.accent}
+                        strokeWidth="2"
+                      >
+                        <path d="M23 6l-9.5 9.5-5-5L1 18" />
+                        <path d="M17 6h6v6" />
+                      </svg>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: THEME_TOKENS.colors.textSecondary
+                        }}
+                      >
+                        {(item.source || 'WIRE').slice(0, 4).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

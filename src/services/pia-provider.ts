@@ -59,7 +59,8 @@ import {
   mapPiaAssetTypeToCategory,
   getSymbolPrecision,
   capabilitiesForSymbol,
-  resolveOptionsUnderlying
+  resolveOptionsUnderlying,
+  resolveNewsImage
 } from '@shared/market-utils'
 import { parseCalendarTimestamp } from '@shared/calendar-helpers'
 import type { CredentialManager } from './credentials'
@@ -960,7 +961,7 @@ export class PiaProvider {
           item.image ||
           item.thumbnail ||
           item.urlToImage ||
-          undefined
+          resolveNewsImage(item.title, item.summary, item.category, idx)
       }))
     } catch (err) {
       console.warn('getNews unavailable:', this.formatProviderError(err))
@@ -1134,7 +1135,11 @@ export class PiaProvider {
               ? item.image
               : typeof item.thumbnail === 'string'
                 ? item.thumbnail
-                : undefined
+                : resolveNewsImage(
+                    typeof item.title === 'string' ? item.title : '',
+                    typeof item.summary === 'string' ? item.summary : '',
+                    typeof item.category === 'string' ? item.category : ''
+                  )
     }
   }
 

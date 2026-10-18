@@ -17,6 +17,7 @@ import {
 import { NewsPanel } from '../components/panels/NewsPanel'
 import { useNewsStore } from '../stores/useNewsStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { resolveNewsImage } from '../shared/market-utils'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -308,6 +309,37 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(html).toContain('Crypto Market Rally')
       expect(html).toContain('https://images.unsplash.com/photo-test-1')
       expect(html).toContain('https://images.unsplash.com/photo-test-2')
+
+      // Fallback styling when article has no imageUrl
+      const fallbackArticles = [
+        {
+          id: 'n-no-img',
+          title: 'Macro Economy Update',
+          summary: 'Rates steady.',
+          url: 'https://example.com/3',
+          source: 'Bloomberg',
+          publishedAt: Date.now()
+        }
+      ]
+      const fallbackHtml = renderToStaticMarkup(
+        React.createElement(NewsPanel, { customArticles: fallbackArticles })
+      )
+      expect(fallbackHtml).toContain('Bloomberg')
+      expect(fallbackHtml).toContain('Macro Economy Update')
+    })
+
+    it('resolves topic-based financial imagery accurately', () => {
+      const cryptoImg = resolveNewsImage('Bitcoin breaks 95k', '', 'Crypto', 0)
+      expect(cryptoImg).toContain('images.unsplash.com')
+
+      const goldImg = resolveNewsImage('Gold price surges on haven demand', '', 'Metals', 1)
+      expect(goldImg).toContain('images.unsplash.com')
+
+      const oilImg = resolveNewsImage('Crude oil rises after OPEC quota', '', 'Energy', 2)
+      expect(oilImg).toContain('images.unsplash.com')
+
+      const fedImg = resolveNewsImage('Fed keeps interest rate unchanged', 'Inflation cool', 'Macro', 3)
+      expect(fedImg).toContain('images.unsplash.com')
     })
 
     it('renders null when isReplaying is false and floating bar when true', () => {

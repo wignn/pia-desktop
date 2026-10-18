@@ -141,3 +141,75 @@ export function getSymbolPrecision(
   if (cat === 'indices') return { pricePrecision: 2, volumePrecision: 0, minMove: 0.1 }
   return { pricePrecision: 2, volumePrecision: 2, minMove: 0.01 }
 }
+
+export function resolveNewsImage(
+  title: string = '',
+  summary: string = '',
+  category: string = '',
+  index: number = 0
+): string {
+  const text = `${title} ${summary} ${category}`.toLowerCase()
+
+  if (
+    text.includes('bitcoin') ||
+    text.includes('crypto') ||
+    text.includes('btc') ||
+    text.includes('eth') ||
+    text.includes('solana') ||
+    text.includes('blockchain') ||
+    text.includes('token')
+  ) {
+    return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=80'
+  }
+  if (
+    text.includes('gold') ||
+    text.includes('bullion') ||
+    text.includes('silver') ||
+    text.includes('metal') ||
+    text.includes('xau')
+  ) {
+    return 'https://images.unsplash.com/photo-1610375461246-83df859d849d?w=500&auto=format&fit=crop&q=80'
+  }
+  if (
+    text.includes('oil') ||
+    text.includes('crude') ||
+    text.includes('energy') ||
+    text.includes('opec') ||
+    text.includes('gas') ||
+    text.includes('brent') ||
+    text.includes('wti')
+  ) {
+    return 'https://images.unsplash.com/photo-1518331647614-7a1f04cd34cf?w=500&auto=format&fit=crop&q=80'
+  }
+  if (
+    text.includes('fed') ||
+    text.includes('inflation') ||
+    text.includes('cpi') ||
+    text.includes('rate') ||
+    text.includes('powell') ||
+    text.includes('treasury') ||
+    text.includes('yield') ||
+    text.includes('macro') ||
+    text.includes('central bank')
+  ) {
+    return 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=500&auto=format&fit=crop&q=80'
+  }
+  if (
+    text.includes('dollar') ||
+    text.includes('forex') ||
+    text.includes('currency') ||
+    text.includes('euro') ||
+    text.includes('yen') ||
+    text.includes('fx')
+  ) {
+    return 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=500&auto=format&fit=crop&q=80'
+  }
+
+  const editorialList = [
+    'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=500&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=500&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=500&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1565372195458-9de0b320ef04?w=500&auto=format&fit=crop&q=80'
+  ]
+  return editorialList[Math.abs(index) % editorialList.length]
+}
