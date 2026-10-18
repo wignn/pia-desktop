@@ -3,6 +3,7 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { useChartStore } from '../../stores/useChartStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
+import { SymbolLogo } from '../common/SymbolLogo'
 
 export const ChartLegend: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -68,6 +69,7 @@ export const ChartLegend: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
         {/* Symbol & Timeframe & Exchange badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <SymbolLogo symbol={symbol} size={16} />
           <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, fontSize: 13 }}>
             {symbol}
           </span>

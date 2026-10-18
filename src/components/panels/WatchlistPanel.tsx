@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import type { AssetCategory, SymbolInfo } from '@shared/types'
 import { getSymbolPrecision } from '@shared/market-utils'
+import { SymbolLogo } from '../common/SymbolLogo'
 
 export const WatchlistPanel: React.FC = () => {
   const {
@@ -351,12 +352,14 @@ export const WatchlistPanel: React.FC = () => {
             >
               {/* Symbol Ticker & Category Dot */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <SymbolLogo symbol={item.symbol} size={18} />
                 <span
                   style={{
                     width: 5,
                     height: 5,
                     borderRadius: '50%',
-                    backgroundColor: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                    backgroundColor: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+                    flexShrink: 0
                   }}
                 />
                 <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

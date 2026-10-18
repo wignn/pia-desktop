@@ -3,6 +3,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import type { AssetCategory } from '@shared/types'
+import { SymbolLogo } from '../common/SymbolLogo'
 
 const CATEGORIES = ['all', 'stocks', 'indices', 'forex', 'commodities', 'metals', 'crypto'] as const
 
@@ -229,6 +230,7 @@ const SymbolSearchDialog: React.FC = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  gap: 12,
                   padding: '9px 16px',
                   borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                   cursor: 'pointer',
@@ -238,6 +240,7 @@ const SymbolSearchDialog: React.FC = () => {
                   containIntrinsicSize: '40px'
                 }}
               >
+                <SymbolLogo symbol={item.symbol} size={20} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span

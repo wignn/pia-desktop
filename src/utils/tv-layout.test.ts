@@ -1,6 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { sanitizeIndicators, OVERLAY_INDICATORS } from '../stores/useChartStore'
 import {
   DrawingPropertyBar,
@@ -19,6 +19,12 @@ import { useNewsStore } from '../stores/useNewsStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { resolveNewsImage } from '../shared/market-utils'
 import { SymbolLogo, getSymbolLogoCandidates } from '../components/common/SymbolLogo'
+import { TopToolbar } from '../components/layout/TopToolbar'
+import { WatchlistPanel } from '../components/panels/WatchlistPanel'
+import { SymbolSearchModal } from '../components/modals/SymbolSearchModal'
+import { ChartLegend } from '../components/chart/ChartLegend'
+import { useMarketStore } from '../stores/useMarketStore'
+import { useWatchlistStore } from '../stores/useWatchlistStore'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -483,6 +489,79 @@ describe('TradingView Layout & Chart helpers', () => {
 
       const htmlEmpty = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: '' }))
       expect(htmlEmpty).toContain('data-testid="symbol-logo-empty"')
+    })
+  })
+
+  describe('SymbolLogo integration across TopToolbar, WatchlistPanel, SymbolSearchModal, ChartLegend', () => {
+    let originalSyncStore: typeof React.useSyncExternalStore
+
+    beforeAll(() => {
+      originalSyncStore = React.useSyncExternalStore
+      React.useSyncExternalStore = (subscribe, getSnapshot) =>
+        originalSyncStore(subscribe, getSnapshot, getSnapshot)
+    })
+
+    afterAll(() => {
+      React.useSyncExternalStore = originalSyncStore
+    })
+
+    it('renders SymbolLogo inside TopToolbar next to active symbol', () => {
+      useMarketStore.setState({ symbol: 'BTCUSDT' })
+      const html = renderToStaticMarkup(React.createElement(TopToolbar))
+      expect(html).toContain('BTCUSDT')
+      expect(html).toContain('alt="BTCUSDT"')
+      expect(html).toContain('width:18px')
+      expect(html).toContain('height:18px')
+    })
+
+    it('renders SymbolLogo inside WatchlistPanel for each watchlist item', () => {
+      useWatchlistStore.setState({
+        watchlists: [
+          {
+            id: 'test-wl-1',
+            name: 'Favorites',
+            symbols: ['BTCUSDT', 'EURUSD'],
+            isDefault: true,
+            createdAt: Date.now()
+          }
+        ],
+        activeListId: 'test-wl-1'
+      })
+      useMarketStore.setState({
+        symbols: [
+          { symbol: 'BTCUSDT', name: 'Bitcoin', category: 'crypto', pricePrecision: 2 },
+          { symbol: 'EURUSD', name: 'Euro / US Dollar', category: 'forex', pricePrecision: 5 }
+        ]
+      })
+
+      const html = renderToStaticMarkup(React.createElement(WatchlistPanel))
+      expect(html).toContain('alt="BTCUSDT"')
+      expect(html).toContain('data-testid="symbol-logo-dual"')
+      expect(html).toContain('width:18px')
+    })
+
+    it('renders SymbolLogo inside SymbolSearchModal in search results', () => {
+      useWorkspaceStore.setState({ isSymbolSearchOpen: true })
+      useMarketStore.setState({
+        symbols: [
+          { symbol: 'AAPL', name: 'Apple Inc.', category: 'stocks', pricePrecision: 2 }
+        ]
+      })
+
+      const html = renderToStaticMarkup(React.createElement(SymbolSearchModal))
+      expect(html).toContain('AAPL')
+      expect(html).toContain('alt="AAPL"')
+      expect(html).toContain('width:20px')
+      expect(html).toContain('height:20px')
+    })
+
+    it('renders SymbolLogo inside ChartLegend before the symbol ticker', () => {
+      useMarketStore.setState({ symbol: 'EURUSD', timeframe: '1h' })
+      const html = renderToStaticMarkup(React.createElement(ChartLegend))
+      expect(html).toContain('EURUSD')
+      expect(html).toContain('data-testid="symbol-logo-dual"')
+      expect(html).toContain('width:16px')
+      expect(html).toContain('height:16px')
     })
   })
 })

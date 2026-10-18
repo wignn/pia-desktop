@@ -6,6 +6,7 @@ import { useLayoutStore } from '../../stores/useLayoutStore'
 import { useTabStore } from '../../stores/useTabStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { TIMEFRAMES, type Timeframe } from '@shared/types'
+import { SymbolLogo } from '../common/SymbolLogo'
 
 export const TopToolbar: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -216,6 +217,7 @@ export const TopToolbar: React.FC = () => {
         }}
         title="Search Symbol (Ctrl+K)"
       >
+        <SymbolLogo symbol={symbol} size={18} />
         <span style={{ letterSpacing: '0.2px' }}>{symbol || 'Select'}</span>
         {symInfo?.category && (
           <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}>

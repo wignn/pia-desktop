@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 
 export interface SymbolLogoProps {
-  symbol: string
+  symbol?: string | null
   size?: number
   style?: React.CSSProperties
   className?: string
