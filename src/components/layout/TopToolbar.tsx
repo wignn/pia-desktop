@@ -470,7 +470,17 @@ export const TopToolbar: React.FC = () => {
         type="button"
         onClick={() => setReplaying(!isReplaying)}
         className={`tv-btn ${isReplaying ? 'active' : ''}`}
-        style={{ height: 28, fontSize: 12, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5 }}
+        style={{
+          height: 28,
+          fontSize: 12,
+          padding: '0 6px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          color: isReplaying ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary,
+          backgroundColor: isReplaying ? 'rgba(41, 98, 255, 0.15)' : 'transparent',
+          fontWeight: isReplaying ? 600 : 500
+        }}
         title="Bar Replay Simulation"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

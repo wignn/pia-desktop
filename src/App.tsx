@@ -22,7 +22,6 @@ import { EnergyPanel } from './components/panels/EnergyPanel'
 import { SecFilingsPanel } from './components/panels/SecFilingsPanel'
 import { SocialPanel } from './components/panels/SocialPanel'
 import { LiveStreamPanel } from './components/panels/LiveStreamPanel'
-import { ReplayToolbar } from './components/panels/ReplayToolbar'
 import { SymbolSearchModal } from './components/modals/SymbolSearchModal'
 import { IndicatorModal } from './components/modals/IndicatorModal'
 import { SettingsModal } from './components/modals/SettingsModal'
@@ -245,7 +244,6 @@ export function App(): React.JSX.Element {
             >
               <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
                 <ChartContainer />
-                <ReplayToolbar />
               </div>
               <ChartRangeBar />
               <BottomDockPanel />

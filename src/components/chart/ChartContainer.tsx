@@ -17,6 +17,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS, getChartThemeStyles } from '../../theme/tokens'
 import { ChartLegend } from './ChartLegend'
 import { DrawingPropertyBar } from './DrawingPropertyBar'
+import { ReplayControlBar } from './ReplayControlBar'
 import { registerCustomOverlays } from './register-overlays'
 import { getSymbolPrecision } from '@shared/market-utils'
 import type { DomainPoint, DrawingItem } from '@shared/types'
@@ -70,6 +71,7 @@ export const ChartContainer: React.FC = () => {
     activeIndicators,
     drawingsClearSignal,
     snapshotSignal,
+    isReplaying,
     setActiveTool
   } = useChartStore()
 
@@ -592,6 +594,7 @@ export const ChartContainer: React.FC = () => {
         onUpdateStyle={handleUpdateOverlayStyle}
         onDelete={handleDeleteSelectedOverlay}
       />
+      {isReplaying && <ReplayControlBar />}
       {!hasHistoricalBars && !useMarketStore.getState().isLoadingCandles && (
         <div
           style={{

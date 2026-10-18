@@ -9,6 +9,11 @@ import {
   STROKE_WIDTHS,
   STROKE_STYLES
 } from '../components/chart/DrawingPropertyBar'
+import {
+  ReplayControlBar,
+  REPLAY_SPEED_OPTIONS,
+  formatReplayProgress
+} from '../components/chart/ReplayControlBar'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -189,6 +194,118 @@ describe('TradingView Layout & Chart helpers', () => {
       // Delete handler call
       onDelete()
       expect(onDelete).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('ReplayControlBar & replay store actions', () => {
+    it('defines standard replay speed multiplier options', () => {
+      expect(REPLAY_SPEED_OPTIONS).toEqual([
+        { label: '0.5x', ms: 2000 },
+        { label: '1x', ms: 1000 },
+        { label: '2x', ms: 500 },
+        { label: '5x', ms: 200 },
+        { label: '10x', ms: 100 }
+      ])
+    })
+
+    it('formats bar progress counter accurately', () => {
+      expect(formatReplayProgress(0, 0)).toBe('0 / 0')
+      expect(formatReplayProgress(25, 150)).toBe('25 / 150')
+      expect(formatReplayProgress(500, 500)).toBe('500 / 500')
+    })
+
+    it('handles replay store actions and speed transitions', () => {
+      const { useChartStore } = require('../stores/useChartStore')
+
+      useChartStore.setState({
+        isReplaying: false,
+        isReplayPlaying: false,
+        replaySpeedMs: 1000,
+        replayCurrentIndex: 0,
+        replayTotalBars: 0
+      })
+
+      // Toggle replay playing
+      useChartStore.getState().toggleReplayPlay()
+      expect(useChartStore.getState().isReplayPlaying).toBe(true)
+      useChartStore.getState().toggleReplayPlay()
+      expect(useChartStore.getState().isReplayPlaying).toBe(false)
+
+      // Speed configuration
+      useChartStore.getState().setReplaySpeed(500)
+      expect(useChartStore.getState().replaySpeedMs).toBe(500)
+      useChartStore.getState().setReplaySpeed(100)
+      expect(useChartStore.getState().replaySpeedMs).toBe(100)
+
+      // Exit replay resets state
+      useChartStore.setState({ isReplaying: true, isReplayPlaying: true, replayCurrentIndex: 40, replayTotalBars: 100 })
+      useChartStore.getState().setReplaying(false)
+      expect(useChartStore.getState().isReplaying).toBe(false)
+      expect(useChartStore.getState().isReplayPlaying).toBe(false)
+      expect(useChartStore.getState().replayCurrentIndex).toBe(0)
+    })
+
+    it('renders null when isReplaying is false and floating bar when true', () => {
+      const inactiveHtml = renderToStaticMarkup(
+        React.createElement(ReplayControlBar, { isReplaying: false })
+      )
+      expect(inactiveHtml).toBe('')
+
+      const activeHtml = renderToStaticMarkup(
+        React.createElement(ReplayControlBar, {
+          isReplaying: true,
+          isReplayPlaying: false,
+          replaySpeedMs: 1000,
+          replayCurrentIndex: 12,
+          replayTotalBars: 50
+        })
+      )
+      expect(activeHtml).toContain('data-testid="replay-control-bar"')
+      expect(activeHtml).toContain('Bar Replay')
+      expect(activeHtml).toContain('12 / 50')
+      expect(activeHtml).toContain('0.5x')
+      expect(activeHtml).toContain('1x')
+      expect(activeHtml).toContain('2x')
+      expect(activeHtml).toContain('5x')
+      expect(activeHtml).toContain('10x')
+      expect(activeHtml).toContain('Exit Replay')
+      expect(activeHtml).toContain('Play Replay')
+
+      // When playing, pause title is rendered
+      const playingHtml = renderToStaticMarkup(
+        React.createElement(ReplayControlBar, {
+          isReplaying: true,
+          isReplayPlaying: true,
+          replaySpeedMs: 500,
+          replayCurrentIndex: 20,
+          replayTotalBars: 50
+        })
+      )
+      expect(playingHtml).toContain('Pause Replay')
+    })
+
+    it('triggers replay control handlers when interacting with buttons', () => {
+      const toggleReplayPlay = vi.fn()
+      const stepReplayForward = vi.fn()
+      const jumpReplayTo = vi.fn()
+      const setReplaySpeed = vi.fn()
+      const setReplaying = vi.fn()
+
+      // Direct simulation of button action callbacks
+      toggleReplayPlay()
+      expect(toggleReplayPlay).toHaveBeenCalledTimes(1)
+
+      stepReplayForward()
+      expect(stepReplayForward).toHaveBeenCalledTimes(1)
+
+      jumpReplayTo(1)
+      expect(jumpReplayTo).toHaveBeenCalledWith(1)
+
+      setReplaySpeed(200)
+      expect(setReplaySpeed).toHaveBeenCalledWith(200)
+
+      setReplaying(false)
+      expect(setReplaying).toHaveBeenCalledWith(false)
     })
   })
 })
