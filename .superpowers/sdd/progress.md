@@ -4,3 +4,4 @@ Tasks:
 - Task 1: Drawing Property Bar Component & Overlay Style Mutation
 Task 1: complete (commits 64a7218..287a031, review clean)
 - Task 2: Floating Replay Controller Component & Interval Loop
+Task 2: complete (commits 287a031..2a9f153, review clean)
