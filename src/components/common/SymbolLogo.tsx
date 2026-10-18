@@ -124,9 +124,44 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
 }
 
 const R2_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_R2_CDN_URL) || ''
+const CACHE_STORAGE_KEY = 'pia_symbol_logos_cache'
 
-export const LOGO_SUCCESS_CACHE = new Map<string, string>()
+function loadPersistedLogoCache(): Map<string, string> {
+  const cache = new Map<string, string>()
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(CACHE_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object') {
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === 'string') cache.set(k, v)
+          }
+        }
+      }
+    }
+  } catch {
+    // fallback clean
+  }
+  return cache
+}
+
+export const LOGO_SUCCESS_CACHE = loadPersistedLogoCache()
 export const LOGO_FAILED_SET = new Set<string>()
+
+function persistLogoCache(): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const obj: Record<string, string> = {}
+      for (const [k, v] of LOGO_SUCCESS_CACHE.entries()) {
+        obj[k] = v
+      }
+      localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(obj))
+    }
+  } catch {
+    // quota safe
+  }
+}
 
 function isLikelyCryptoSymbol(raw: string, clean: string): boolean {
   const r = raw.toUpperCase()
@@ -444,11 +479,13 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
       onLoad={() => {
         if (normSym && currentCandidateUrl) {
           LOGO_SUCCESS_CACHE.set(normSym, currentCandidateUrl)
+          persistLogoCache()
         }
       }}
       onError={() => {
         if (cachedUrl) {
           LOGO_SUCCESS_CACHE.delete(normSym)
+          persistLogoCache()
         }
         if (candidateIndex < candidates.length - 1) {
           setCandidateIndex((i) => i + 1)
