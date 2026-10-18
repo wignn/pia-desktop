@@ -214,9 +214,9 @@ export const GeoSignalsPanel: React.FC = () => {
         )}
         {activeTab === 'events' && events.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {events.map((ev) => (
+            {events.map((ev, evIdx) => (
               <div
-                key={ev.id}
+                key={`${ev.id || 'event'}-${evIdx}`}
                 style={{
                   backgroundColor: THEME_TOKENS.colors.bgApp,
                   padding: 10,
@@ -297,9 +297,9 @@ export const GeoSignalsPanel: React.FC = () => {
                     <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
                       Impact:
                     </span>
-                    {ev.affectedAssets.map((ast) => (
+                    {ev.affectedAssets.map((ast, astIdx) => (
                       <button
-                        key={ast}
+                        key={`${ast}-${astIdx}`}
                         type="button"
                         onClick={() => setSymbol(ast)}
                         style={{
@@ -332,9 +332,9 @@ export const GeoSignalsPanel: React.FC = () => {
         )}
         {activeTab === 'map' && regions.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {regions.map((reg) => (
+            {regions.map((reg, idx) => (
               <div
-                key={reg.region}
+                key={`${reg.region}-${idx}`}
                 style={{
                   backgroundColor: THEME_TOKENS.colors.bgApp,
                   padding: 10,
@@ -443,9 +443,9 @@ export const GeoSignalsPanel: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {impacts.map((imp) => (
+              {impacts.map((imp, idx) => (
                 <div
-                  key={imp.symbol}
+                  key={`${imp.symbol}-${idx}`}
                   onClick={() => setSymbol(imp.symbol)}
                   style={{
                     display: 'grid',

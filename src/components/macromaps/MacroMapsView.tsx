@@ -564,13 +564,13 @@ export const MacroMapsView: React.FC = () => {
                 Live macro data unavailable for this metric and period.
               </div>
             )}
-            {filteredList.map((country) => {
+            {filteredList.map((country, idx) => {
               const isSelected = selectedCountryId === country.id
               const isPositiveChange = country.change !== undefined && country.change >= 0
 
               return (
                 <div
-                  key={country.id}
+                  key={`${country.id}-${idx}`}
                   onClick={() => setSelectedCountryId(country.id)}
                   style={{
                     display: 'grid',
