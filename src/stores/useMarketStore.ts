@@ -29,6 +29,7 @@ interface MarketState {
   setLatestBar: (bar: KLineData | null) => void
   setIsLoadingCandles: (isLoading: boolean) => void
   fetchSymbols: () => Promise<void>
+  refreshActivePrice: () => Promise<void>
   subscribeToMarketEvents: () => () => void
 }
 
@@ -186,6 +187,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     }
   },
 
+  refreshActivePrice: async () => {
+    const symbol = get().symbol
+    if (!symbol) return
+    try {
+      const quote = await window.api.market.getPrice(symbol)
+      if (quote) {
+        set((state) => ({ prices: { ...state.prices, [quote.symbol]: quote } }))
+      }
+    } catch (err) {
+      console.warn(`[MarketStore] Failed to refresh ${symbol}:`, err)
+    }
+  },
+
   subscribeToMarketEvents: () => {
     const cleanupConn = window.api.market.onConnectionState((state: ConnectionState) => {
       set({ connectionState: state })
@@ -229,6 +243,30 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       usePaperTradingStore.getState().checkPositionsSLTP(quote)
     })
 
+    let fallbackInFlight = false
+    const fallbackTimer = setInterval(async () => {
+      const { symbol, connectionState, prices } = get()
+      if (!symbol || document.hidden || fallbackInFlight) return
+      const quote = prices[symbol]
+      const staleAfterMs = 20_000
+      const receivedAt = quote?.receivedAt ?? quote?.timestamp ?? 0
+      const isStale = !receivedAt || Date.now() - receivedAt > staleAfterMs
+
+      if (connectionState.status !== 'connected' || isStale) {
+        fallbackInFlight = true
+        try {
+          const refreshed = await window.api.market.getPrice(symbol)
+          if (refreshed) {
+            set((state) => ({ prices: { ...state.prices, [refreshed.symbol]: refreshed } }))
+          }
+        } catch (err) {
+          console.warn(`[MarketStore] Fallback price refresh failed for ${symbol}:`, err)
+        } finally {
+          fallbackInFlight = false
+        }
+      }
+    }, 15_000)
+
     const handleVisibilityChange = (): void => {
       if (!document.hidden) {
         schedulePriceFlush()
@@ -256,6 +294,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     return () => {
       cleanupPrices()
       cleanupConn()
+      clearInterval(fallbackTimer)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('online', handleOnline)
       if (frameId !== null) cancelAnimationFrame(frameId)

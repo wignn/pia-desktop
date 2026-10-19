@@ -512,6 +512,7 @@ export class PiaProvider {
     const quote: PriceQuote = {
       symbol: cleanSymbol,
       price,
+      receivedAt: Date.now(),
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
       timestamp: ts,
@@ -610,7 +611,9 @@ export class PiaProvider {
     if (!this.client) return null
     try {
       const raw = await this.client.market.getPrice(symbol)
-      return this.normalizeMarketPrice(raw)
+      const quote = this.normalizeMarketPrice(raw)
+      if (quote) this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
+      return quote
     } catch (err) {
       console.warn('[PiaProvider] market.getPrice failed:', this.formatProviderError(err))
       return null

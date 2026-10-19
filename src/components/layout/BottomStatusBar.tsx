@@ -7,10 +7,12 @@ import { getMarketSessionStatus } from '../../utils/market-session'
 export const BottomStatusBar: React.FC = () => {
   const connectionState = useMarketStore((state) => state.connectionState)
   const symbol = useMarketStore((state) => state.symbol)
+  const activeQuote = useMarketStore((state) => (state.symbol ? state.prices[state.symbol] : undefined))
   const symbols = useMarketStore((state) => state.symbols)
   const updaterStatus = useUpdaterStore((state) => state.status)
   const installUpdate = useUpdaterStore((state) => state.installUpdate)
   const [utcTime, setUtcTime] = useState('')
+  const [quoteAgeSeconds, setQuoteAgeSeconds] = useState<number | null>(null)
 
   useEffect(() => {
     const updateTime = (): void => {
@@ -25,12 +27,23 @@ export const BottomStatusBar: React.FC = () => {
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    const updateQuoteAge = (): void => {
+      const receivedAt = activeQuote?.receivedAt ?? activeQuote?.timestamp
+      setQuoteAgeSeconds(receivedAt ? Math.max(0, Math.floor((Date.now() - receivedAt) / 1000)) : null)
+    }
+    updateQuoteAge()
+    const timer = setInterval(updateQuoteAge, 1000)
+    return () => clearInterval(timer)
+  }, [activeQuote?.receivedAt, activeQuote?.timestamp])
+
   const isConnected = connectionState.status === 'connected'
   const isReconnecting = connectionState.status === 'reconnecting'
   const isFailed = connectionState.status === 'disconnected' || connectionState.status === 'error'
 
   const activeSymbolInfo = symbols.find((s) => s.symbol === symbol)
   const sessionStatus = getMarketSessionStatus(activeSymbolInfo?.category, symbol || undefined)
+  const isQuoteStale = quoteAgeSeconds !== null && quoteAgeSeconds >= 30
 
   const handleReconnectClick = (): void => {
     if (window.api?.market?.reconnect) {
@@ -111,6 +124,17 @@ export const BottomStatusBar: React.FC = () => {
         </span>
         <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
         <span style={{ color: THEME_TOKENS.colors.textSecondary }}>{symbol}</span>
+        {isConnected && quoteAgeSeconds !== null && (
+          <span
+            title="Age since the latest quote was received; closed markets may naturally have no new ticks."
+            style={{
+              color: isQuoteStale ? THEME_TOKENS.colors.impactMedium : THEME_TOKENS.colors.textMuted,
+              marginLeft: 4
+            }}
+          >
+            {isQuoteStale ? `Price check · ${quoteAgeSeconds}s ago` : `Live · ${quoteAgeSeconds}s`}
+          </span>
+        )}
       </div>
 
       <div style={{ flex: 1 }} />

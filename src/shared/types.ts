@@ -51,6 +51,8 @@ export interface CandleBar {
 export interface PriceQuote {
   symbol: string
   price: number
+  /** Local receipt time; distinguishes stale provider timestamps from a fresh delivery. */
+  receivedAt?: number
   bid?: number
   ask?: number
   timestamp: number
