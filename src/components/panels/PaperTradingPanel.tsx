@@ -1,25 +1,73 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { getSymbolPrecision } from '@shared/market-utils'
 import { THEME_TOKENS } from '../../theme/tokens'
 
-export const PaperTradingPanel: React.FC = () => {
-  const {
-    account,
-    loadAccount,
-    openPosition,
-    closePosition,
-    resetAccount,
-    lastExecutedAction,
-    clearActionNotification
-  } = usePaperTradingStore()
-  const symbol = useMarketStore((state) => state.symbol)
-  const prices = useMarketStore((state) => state.prices)
+export interface PaperTradingPanelProps {
+  initialExecutionMode?: 'market' | 'custom'
+  initialLotSize?: string
+  initialCustomPrice?: string
+  initialSide?: 'buy' | 'sell'
+  initialStopLoss?: string
+  initialTakeProfit?: string
+  onOpenPosition?: (params: {
+    symbol: string
+    side: 'buy' | 'sell'
+    size: number
+    price: number
+    stopLoss?: number
+    takeProfit?: number
+    ticket?: string
+    comment?: string
+    accountType?: 'standard' | 'cent'
+    source?: 'manual' | 'import'
+  }) => Promise<{ success: boolean; error?: string }>
+  onClosePosition?: (id: string, price: number) => Promise<boolean>
+  onImportClick?: () => void
+}
 
-  const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [size, setSize] = useState('1')
-  const [stopLoss, setStopLoss] = useState('')
-  const [takeProfit, setTakeProfit] = useState('')
+const LOT_PRESETS = ['0.01', '0.05', '0.10', '0.25', '0.50', '1.00', '2.00', '5.00']
+
+export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
+  initialExecutionMode = 'market',
+  initialLotSize = '0.10',
+  initialCustomPrice = '',
+  initialSide = 'buy',
+  initialStopLoss = '',
+  initialTakeProfit = '',
+  onOpenPosition,
+  onClosePosition,
+  onImportClick
+}) => {
+  const hookAccount = usePaperTradingStore((state) => state.account)
+  const account = usePaperTradingStore.getState().account || hookAccount
+  const hookAccountType = usePaperTradingStore((state) => state.accountType)
+  const accountType = usePaperTradingStore.getState().accountType || hookAccountType
+  const setAccountType = usePaperTradingStore((state) => state.setAccountType)
+  const storeOpenPosition = usePaperTradingStore((state) => state.openPosition)
+  const openPosition = onOpenPosition || storeOpenPosition
+  const storeClosePosition = usePaperTradingStore((state) => state.closePosition)
+  const closePosition = onClosePosition || storeClosePosition
+  const resetAccount = usePaperTradingStore((state) => state.resetAccount)
+  const lastExecutedAction = usePaperTradingStore((state) => state.lastExecutedAction)
+  const clearActionNotification = usePaperTradingStore((state) => state.clearActionNotification)
+  const loadAccount = usePaperTradingStore((state) => state.loadAccount)
+
+  const setImportPositionsModalOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
+
+  const hookSymbol = useMarketStore((state) => state.symbol)
+  const symbol = useMarketStore.getState().symbol || hookSymbol
+  const hookPrices = useMarketStore((state) => state.prices)
+  const prices = useMarketStore.getState().prices || hookPrices
+
+  const [executionMode, setExecutionMode] = useState<'market' | 'custom'>(initialExecutionMode)
+  const [side, setSide] = useState<'buy' | 'sell'>(initialSide)
+  const [size, setSize] = useState(initialLotSize)
+  const [customPrice, setCustomPrice] = useState(initialCustomPrice)
+  const [stopLoss, setStopLoss] = useState(initialStopLoss)
+  const [takeProfit, setTakeProfit] = useState(initialTakeProfit)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -38,35 +86,93 @@ export const PaperTradingPanel: React.FC = () => {
     return undefined
   }, [lastExecutedAction, clearActionNotification])
 
+  const isCentAccount = accountType === 'cent' || account.accountType === 'cent'
   const currentQuote = symbol ? prices[symbol] : undefined
-  const currentPrice = currentQuote?.price ?? 0
+  const livePrice = currentQuote?.price ?? 0
+  const liveAsk = currentQuote?.ask ?? currentQuote?.price ?? 0
+  const liveBid = currentQuote?.bid ?? currentQuote?.price ?? 0
+
+  const activeMarketPrice = side === 'buy' ? liveAsk : liveBid
+  const effectivePrice =
+    executionMode === 'custom' ? parseFloat(customPrice) || 0 : activeMarketPrice
+
+  const { pricePrecision } = getSymbolPrecision(symbol || '', undefined, livePrice)
+
+  // Pip specifications for currency/asset heuristics
+  // ponytail: pip stepper uses standard pip formula; upgrade to broker point spec when exotic pairs are added
+  const { pipSize, pipDecimals } = useMemo(() => {
+    const upper = (symbol || '').toUpperCase()
+    const isJpy = upper.includes('JPY')
+    const isCrypto = ['BTC', 'ETH', 'SOL', 'USDT'].some((c) => upper.includes(c))
+    const pSize = isCrypto ? 1.0 : isJpy ? 0.01 : 0.0001
+    const pDecimals = isCrypto ? 2 : isJpy ? 3 : 5
+    return { pipSize: pSize, pipDecimals: pDecimals }
+  }, [symbol])
+
   const orderSizeNum = parseFloat(size) || 0
-  const orderEstValue = orderSizeNum * currentPrice
+  const orderMargin = orderSizeNum * effectivePrice
+  const orderEstValue = orderSizeNum * effectivePrice
+  const orderPipValue = orderSizeNum * pipSize
 
-  // Calculate total unrealized PnL and invested margin across all open positions
-  const positionsWithLiveMetrics = account.positions.map((pos) => {
-    const livePrice = prices[pos.symbol]?.price ?? pos.entryPrice
-    const pnl =
-      pos.side === 'buy'
-        ? (livePrice - pos.entryPrice) * pos.size
-        : (pos.entryPrice - livePrice) * pos.size
-    const pnlPercent = (pnl / (pos.entryPrice * pos.size)) * 100
-
-    return {
-      ...pos,
-      livePrice,
-      pnl,
-      pnlPercent
+  // Format currency value based on account mode
+  const formatCurrency = (val: number): string => {
+    if (isCentAccount) {
+      return `${Math.round(val).toLocaleString('en-US')} ¢`
     }
-  })
+    return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 
-  const totalUnrealizedPnl = positionsWithLiveMetrics.reduce((acc, pos) => acc + pos.pnl, 0)
-  const totalInvestedMargin = positionsWithLiveMetrics.reduce(
-    (acc, pos) => acc + pos.size * pos.entryPrice,
-    0
-  )
+  // Calculate live metrics for open positions
+  const positionsWithLiveMetrics = useMemo(() => {
+    return (account.positions || []).map((pos) => {
+      const liveQ = prices[pos.symbol]
+      const markPrice = liveQ?.price ?? pos.entryPrice
+      const pnl =
+        pos.side === 'buy'
+          ? (markPrice - pos.entryPrice) * pos.size
+          : (pos.entryPrice - markPrice) * pos.size
+      const pnlPercent = pos.entryPrice > 0 ? (pnl / (pos.entryPrice * pos.size)) * 100 : 0
+      const posMargin = pos.size * pos.entryPrice
+      const { pricePrecision: posPrecision } = getSymbolPrecision(
+        pos.symbol,
+        undefined,
+        pos.entryPrice
+      )
+
+      return {
+        ...pos,
+        livePrice: markPrice,
+        pnl,
+        pnlPercent,
+        margin: posMargin,
+        precision: posPrecision
+      }
+    })
+  }, [account.positions, prices])
+
+  const totalUnrealizedPnl = useMemo(() => {
+    return positionsWithLiveMetrics.reduce((acc, pos) => acc + pos.pnl, 0)
+  }, [positionsWithLiveMetrics])
+
+  const totalInvestedMargin = useMemo(() => {
+    return positionsWithLiveMetrics.reduce((acc, pos) => acc + pos.margin, 0)
+  }, [positionsWithLiveMetrics])
 
   const portfolioEquity = account.balance + totalInvestedMargin + totalUnrealizedPnl
+
+  const handleApplyPips = (target: 'sl' | 'tp', pips: number): void => {
+    const basePrice = effectivePrice > 0 ? effectivePrice : livePrice
+    if (basePrice <= 0) return
+
+    let targetPrice: number
+    if (target === 'sl') {
+      targetPrice = side === 'buy' ? basePrice - pips * pipSize : basePrice + pips * pipSize
+      setStopLoss(targetPrice > 0 ? targetPrice.toFixed(pipDecimals) : '')
+    } else {
+      targetPrice = side === 'buy' ? basePrice + pips * pipSize : basePrice - pips * pipSize
+      setTakeProfit(targetPrice > 0 ? targetPrice.toFixed(pipDecimals) : '')
+    }
+  }
 
   const handlePlaceOrder = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -77,13 +183,17 @@ export const PaperTradingPanel: React.FC = () => {
       return
     }
 
-    if (currentPrice <= 0) {
-      setOrderError('Waiting for live market price feed...')
+    if (orderSizeNum <= 0) {
+      setOrderError('Please enter a valid lot size')
       return
     }
 
-    if (orderSizeNum <= 0) {
-      setOrderError('Please enter a valid order size')
+    if (effectivePrice <= 0) {
+      setOrderError(
+        executionMode === 'custom'
+          ? 'Please enter a valid custom entry price'
+          : 'Waiting for live market price feed...'
+      )
       return
     }
 
@@ -95,9 +205,11 @@ export const PaperTradingPanel: React.FC = () => {
       symbol,
       side,
       size: orderSizeNum,
-      price: currentPrice,
+      price: effectivePrice,
       stopLoss: !isNaN(slNum) && slNum > 0 ? slNum : undefined,
-      takeProfit: !isNaN(tpNum) && tpNum > 0 ? tpNum : undefined
+      takeProfit: !isNaN(tpNum) && tpNum > 0 ? tpNum : undefined,
+      accountType: isCentAccount ? 'cent' : 'standard',
+      source: 'manual'
     })
 
     setIsSubmitting(false)
@@ -110,12 +222,33 @@ export const PaperTradingPanel: React.FC = () => {
   }
 
   const handleReset = (): void => {
-    if (
-      window.confirm('Are you sure you want to reset paper trading account balance to $100,000.00?')
-    ) {
-      resetAccount(100000)
+    const initialBal = isCentAccount ? 10000000 : 100000
+    const label = isCentAccount ? '10,000,000 ¢' : '$100,000.00'
+    if (typeof window !== 'undefined' && window.confirm) {
+      if (
+        !window.confirm(`Are you sure you want to reset paper trading account balance to ${label}?`)
+      ) {
+        return
+      }
+    }
+    resetAccount(initialBal)
+  }
+
+  const handleOpenImportModal = (): void => {
+    if (onImportClick) {
+      onImportClick()
+    } else {
+      setImportPositionsModalOpen(true, 'import')
     }
   }
+
+  const isBullish = side === 'buy'
+  const jewelBg = isBullish
+    ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+    : 'linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)'
+  const jewelShadow = isBullish
+    ? '0 2px 10px rgba(16, 185, 129, 0.35)'
+    : '0 2px 10px rgba(244, 63, 94, 0.35)'
 
   return (
     <div
@@ -147,7 +280,7 @@ export const PaperTradingPanel: React.FC = () => {
                 fontSize: 9,
                 padding: '1px 5px',
                 borderRadius: 4,
-                backgroundColor: 'rgba(41, 98, 255, 0.15)',
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
                 color: THEME_TOKENS.colors.accent,
                 fontWeight: 700
               }}
@@ -160,14 +293,63 @@ export const PaperTradingPanel: React.FC = () => {
             type="button"
             onClick={handleReset}
             className="tv-btn"
-            title="Reset to $100,000.00"
+            title="Reset Account Balance"
             style={{ fontSize: 10, padding: '2px 6px', color: THEME_TOKENS.colors.textSecondary }}
           >
             Reset
           </button>
         </div>
 
-        {/* Portfolio Stats Matrix */}
+        {/* Standard / Cent Pill Toggle */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            backgroundColor: THEME_TOKENS.colors.bgApp,
+            padding: 2,
+            borderRadius: 6,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setAccountType('standard')}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              borderRadius: 4,
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor: !isCentAccount ? THEME_TOKENS.colors.accent : 'transparent',
+              color: !isCentAccount ? '#ffffff' : THEME_TOKENS.colors.textSecondary,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Standard (100k)
+          </button>
+          <button
+            type="button"
+            onClick={() => setAccountType('cent')}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              borderRadius: 4,
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor: isCentAccount ? THEME_TOKENS.colors.gold : 'transparent',
+              color: isCentAccount ? '#ffffff' : THEME_TOKENS.colors.textSecondary,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Cent (1k)
+          </button>
+        </div>
+
+        {/* Account Metrics Capsule */}
         <div
           style={{
             display: 'grid',
@@ -181,7 +363,7 @@ export const PaperTradingPanel: React.FC = () => {
         >
           <div>
             <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
-              Cash Balance
+              Balance
             </div>
             <div
               style={{
@@ -191,11 +373,7 @@ export const PaperTradingPanel: React.FC = () => {
                 color: THEME_TOKENS.colors.textBright
               }}
             >
-              $
-              {account.balance.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
+              {formatCurrency(account.balance)}
             </div>
           </div>
 
@@ -209,11 +387,7 @@ export const PaperTradingPanel: React.FC = () => {
                 color: THEME_TOKENS.colors.textBright
               }}
             >
-              $
-              {portfolioEquity.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
+              {formatCurrency(portfolioEquity)}
             </div>
           </div>
 
@@ -234,11 +408,8 @@ export const PaperTradingPanel: React.FC = () => {
                       : THEME_TOKENS.colors.textSecondary
               }}
             >
-              {totalUnrealizedPnl >= 0 ? '+' : ''}$
-              {totalUnrealizedPnl.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
+              {totalUnrealizedPnl >= 0 ? '+' : ''}
+              {formatCurrency(totalUnrealizedPnl)}
             </div>
           </div>
         </div>
@@ -251,7 +422,7 @@ export const PaperTradingPanel: React.FC = () => {
             margin: '8px 14px 0 14px',
             padding: '6px 10px',
             borderRadius: 4,
-            backgroundColor: 'rgba(41, 98, 255, 0.15)',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
             border: `1px solid ${THEME_TOKENS.colors.accent}`,
             color: THEME_TOKENS.colors.textBright,
             fontSize: 11,
@@ -290,14 +461,90 @@ export const PaperTradingPanel: React.FC = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
-            Order Entry ({symbol})
+            Order Entry ({symbol || '---'})
           </span>
           <span
             style={{ fontSize: 11, fontFamily: 'monospace', color: THEME_TOKENS.colors.accent }}
           >
-            {currentPrice > 0 ? `$${currentPrice.toFixed(2)}` : 'Loading...'}
+            {livePrice > 0 ? `$${livePrice.toFixed(pricePrecision)}` : 'Loading...'}
           </span>
         </div>
+
+        {/* Execution Mode: Market vs Custom Entry */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            backgroundColor: THEME_TOKENS.colors.bgApp,
+            padding: 2,
+            borderRadius: 5,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setExecutionMode('market')}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              borderRadius: 4,
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor:
+                executionMode === 'market' ? THEME_TOKENS.colors.bgActive : 'transparent',
+              color:
+                executionMode === 'market'
+                  ? THEME_TOKENS.colors.textBright
+                  : THEME_TOKENS.colors.textSecondary,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Market
+          </button>
+          <button
+            type="button"
+            onClick={() => setExecutionMode('custom')}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              borderRadius: 4,
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor:
+                executionMode === 'custom' ? THEME_TOKENS.colors.bgActive : 'transparent',
+              color:
+                executionMode === 'custom'
+                  ? THEME_TOKENS.colors.textBright
+                  : THEME_TOKENS.colors.textSecondary,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Custom Entry
+          </button>
+        </div>
+
+        {/* Custom Entry Price Numeric Input (when in Custom Entry mode) */}
+        {executionMode === 'custom' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+              Custom Entry Price
+            </label>
+            <input
+              type="number"
+              step="any"
+              value={customPrice}
+              onChange={(e) => setCustomPrice(e.target.value)}
+              className="tv-input"
+              style={{ fontSize: 12, padding: '5px 8px' }}
+              placeholder={livePrice > 0 ? livePrice.toFixed(pricePrecision) : 'Enter entry price'}
+              required
+            />
+          </div>
+        )}
 
         {/* Buy / Sell Tab Selectors */}
         <div style={{ display: 'flex', gap: 6 }}>
@@ -306,19 +553,26 @@ export const PaperTradingPanel: React.FC = () => {
             onClick={() => setSide('buy')}
             style={{
               flex: 1,
-              padding: '6px 0',
+              padding: '6px 4px',
               borderRadius: 4,
               border: 'none',
               fontWeight: 700,
-              fontSize: 12,
+              fontSize: 11,
               cursor: 'pointer',
               backgroundColor:
                 side === 'buy' ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bgApp,
               color: side === 'buy' ? '#ffffff' : THEME_TOKENS.colors.textSecondary,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
               transition: 'all 0.15s ease'
             }}
           >
-            BUY / LONG
+            <span>BUY / LONG</span>
+            <span style={{ fontSize: 10, fontFamily: 'monospace', opacity: 0.9 }}>
+              {liveAsk > 0 ? liveAsk.toFixed(pricePrecision) : '---'}
+            </span>
           </button>
 
           <button
@@ -326,23 +580,30 @@ export const PaperTradingPanel: React.FC = () => {
             onClick={() => setSide('sell')}
             style={{
               flex: 1,
-              padding: '6px 0',
+              padding: '6px 4px',
               borderRadius: 4,
               border: 'none',
               fontWeight: 700,
-              fontSize: 12,
+              fontSize: 11,
               cursor: 'pointer',
               backgroundColor:
                 side === 'sell' ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.bgApp,
               color: side === 'sell' ? '#ffffff' : THEME_TOKENS.colors.textSecondary,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
               transition: 'all 0.15s ease'
             }}
           >
-            SELL / SHORT
+            <span>SELL / SHORT</span>
+            <span style={{ fontSize: 10, fontFamily: 'monospace', opacity: 0.9 }}>
+              {liveBid > 0 ? liveBid.toFixed(pricePrecision) : '---'}
+            </span>
           </button>
         </div>
 
-        {/* Order Size */}
+        {/* Quick Lot Presets + Custom Input */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div
             style={{
@@ -352,27 +613,90 @@ export const PaperTradingPanel: React.FC = () => {
               color: THEME_TOKENS.colors.textSecondary
             }}
           >
-            <span>Order Quantity</span>
-            {orderEstValue > 0 && <span>Est. Value: ${orderEstValue.toFixed(2)}</span>}
+            <span>Lot Size</span>
+            <span style={{ fontFamily: 'monospace' }}>{`${orderSizeNum.toFixed(2)} L`}</span>
           </div>
+
+          {/* 8 Preset Pills */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+            {LOT_PRESETS.map((preset) => {
+              const isSelected = size === preset
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setSize(preset)}
+                  style={{
+                    padding: '3px 0',
+                    borderRadius: 4,
+                    border: `1px solid ${isSelected ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.borderSubtle}`,
+                    backgroundColor: isSelected
+                      ? 'rgba(59, 130, 246, 0.18)'
+                      : THEME_TOKENS.colors.bgApp,
+                    color: isSelected
+                      ? THEME_TOKENS.colors.accent
+                      : THEME_TOKENS.colors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: isSelected ? 700 : 500,
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {preset}
+                </button>
+              )
+            })}
+          </div>
+
           <input
             type="number"
             step="any"
             value={size}
             onChange={(e) => setSize(e.target.value)}
             className="tv-input"
-            style={{ fontSize: 12, padding: '5px 8px' }}
-            placeholder="Size in units"
+            style={{ fontSize: 12, padding: '5px 8px', marginTop: 2 }}
+            placeholder="Custom lot size (e.g. 0.10)"
             required
           />
         </div>
 
-        {/* Optional SL & TP */}
+        {/* SL & TP with Pip Steppers */}
         <div style={{ display: 'flex', gap: 8 }}>
+          {/* Stop Loss */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
-              Stop Loss (Optional)
-            </label>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                Stop Loss
+              </label>
+              <div style={{ display: 'flex', gap: 2 }}>
+                {[10, 25, 50].map((pips) => (
+                  <button
+                    key={pips}
+                    type="button"
+                    onClick={() => handleApplyPips('sl', pips)}
+                    title={`Add ${pips} pips SL`}
+                    style={{
+                      padding: '1px 3px',
+                      fontSize: 8,
+                      borderRadius: 3,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      backgroundColor: THEME_TOKENS.colors.bgApp,
+                      color: THEME_TOKENS.colors.bearish,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {`+${pips}`}
+                  </button>
+                ))}
+              </div>
+            </div>
             <input
               type="number"
               step="any"
@@ -384,10 +708,40 @@ export const PaperTradingPanel: React.FC = () => {
             />
           </div>
 
+          {/* Take Profit */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
-              Take Profit (Optional)
-            </label>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                Take Profit
+              </label>
+              <div style={{ display: 'flex', gap: 2 }}>
+                {[10, 25, 50].map((pips) => (
+                  <button
+                    key={pips}
+                    type="button"
+                    onClick={() => handleApplyPips('tp', pips)}
+                    title={`Add ${pips} pips TP`}
+                    style={{
+                      padding: '1px 3px',
+                      fontSize: 8,
+                      borderRadius: 3,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      backgroundColor: THEME_TOKENS.colors.bgApp,
+                      color: THEME_TOKENS.colors.bullish,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {`+${pips}`}
+                  </button>
+                ))}
+              </div>
+            </div>
             <input
               type="number"
               step="any"
@@ -400,33 +754,97 @@ export const PaperTradingPanel: React.FC = () => {
           </div>
         </div>
 
+        {/* Order Estimate Summary (Margin required, Pip value, Est. value) */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 6,
+            padding: '8px 10px',
+            borderRadius: 5,
+            backgroundColor: THEME_TOKENS.colors.bgApp,
+            border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+            fontSize: 10
+          }}
+        >
+          <div>
+            <div style={{ color: THEME_TOKENS.colors.textSecondary }}>Margin Required</div>
+            <div
+              style={{
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: THEME_TOKENS.colors.textBright
+              }}
+            >
+              {formatCurrency(orderMargin)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: THEME_TOKENS.colors.textSecondary }}>Pip Value</div>
+            <div
+              style={{
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: THEME_TOKENS.colors.textBright
+              }}
+            >
+              {formatCurrency(orderPipValue)}
+            </div>
+          </div>
+          <div
+            style={{
+              gridColumn: 'span 2',
+              display: 'flex',
+              justifyContent: 'space-between',
+              borderTop: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+              paddingTop: 4
+            }}
+          >
+            <span style={{ color: THEME_TOKENS.colors.textSecondary }}>Est. Value</span>
+            <span
+              style={{
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: THEME_TOKENS.colors.textBright
+              }}
+            >
+              {formatCurrency(orderEstValue)}
+            </span>
+          </div>
+        </div>
+
         {orderError && (
           <div style={{ fontSize: 11, color: THEME_TOKENS.colors.bearish }}>{orderError}</div>
         )}
 
+        {/* Submit Button (Chamfered Jewel Button) */}
         <button
           type="submit"
-          disabled={isSubmitting || currentPrice <= 0}
+          disabled={isSubmitting || effectivePrice <= 0}
           style={{
-            padding: '7px 0',
-            borderRadius: 4,
+            padding: '9px 12px',
+            borderRadius: 6,
             border: 'none',
             fontWeight: 700,
             fontSize: 12,
-            cursor: currentPrice <= 0 ? 'not-allowed' : 'pointer',
-            backgroundColor:
-              side === 'buy' ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+            letterSpacing: 0.3,
+            cursor: effectivePrice <= 0 ? 'not-allowed' : 'pointer',
+            background: jewelBg,
+            boxShadow: jewelShadow,
             color: '#ffffff',
-            opacity: currentPrice <= 0 ? 0.6 : 1
+            opacity: effectivePrice <= 0 ? 0.6 : 1,
+            transition: 'all 0.15s ease'
           }}
         >
           {isSubmitting
             ? 'Placing Order...'
-            : `Place ${side.toUpperCase()} Order (${orderSizeNum} ${symbol})`}
+            : effectivePrice > 0
+              ? `${side.toUpperCase()} ${orderSizeNum.toFixed(2)} L @ ${effectivePrice.toFixed(pricePrecision)}`
+              : `Place ${side.toUpperCase()} Order (${orderSizeNum.toFixed(2)} L)`}
         </button>
       </form>
 
-      {/* Open Positions List */}
+      {/* Positions & Utilities */}
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span
@@ -440,6 +858,31 @@ export const PaperTradingPanel: React.FC = () => {
             Open Positions ({account.positions.length})
           </span>
         </div>
+
+        {/* Action Shortcut: [↓ Import Positions] */}
+        <button
+          type="button"
+          onClick={handleOpenImportModal}
+          className="tv-btn"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            width: '100%',
+            padding: '7px 10px',
+            borderRadius: 5,
+            backgroundColor: 'rgba(59, 130, 246, 0.12)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            color: THEME_TOKENS.colors.accent,
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>↓ Import Positions</span>
+        </button>
 
         {account.positions.length === 0 ? (
           <div
@@ -488,8 +931,8 @@ export const PaperTradingPanel: React.FC = () => {
                         borderRadius: 3,
                         backgroundColor:
                           pos.side === 'buy'
-                            ? 'rgba(8, 153, 129, 0.15)'
-                            : 'rgba(242, 54, 69, 0.15)',
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : 'rgba(244, 63, 94, 0.15)',
                         color:
                           pos.side === 'buy'
                             ? THEME_TOKENS.colors.bullish
@@ -499,22 +942,25 @@ export const PaperTradingPanel: React.FC = () => {
                       {pos.side.toUpperCase()}
                     </span>
                     <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
-                      {pos.size} units
+                      {`${pos.size.toFixed(2)} L`}
                     </span>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => closePosition(pos.id, pos.livePrice)}
-                    className="tv-btn"
+                    title="Close position"
                     style={{
-                      fontSize: 10,
-                      padding: '2px 8px',
+                      fontSize: 11,
+                      padding: '2px 6px',
                       color: THEME_TOKENS.colors.bearish,
-                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+                      background: 'none',
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      borderRadius: 4,
+                      cursor: 'pointer'
                     }}
                   >
-                    Close
+                    ✕
                   </button>
                 </div>
 
@@ -527,10 +973,10 @@ export const PaperTradingPanel: React.FC = () => {
                   }}
                 >
                   <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                    Entry: ${pos.entryPrice.toFixed(2)}
+                    {`Entry: ${pos.entryPrice.toFixed(pos.precision)}`}
                   </span>
                   <span style={{ color: THEME_TOKENS.colors.textBright }}>
-                    Mark: ${pos.livePrice.toFixed(2)}
+                    {`Mark: ${pos.livePrice.toFixed(pos.precision)}`}
                   </span>
                   <span
                     style={{
@@ -539,8 +985,7 @@ export const PaperTradingPanel: React.FC = () => {
                         pos.pnl >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
                     }}
                   >
-                    {pos.pnl >= 0 ? '+' : ''}${pos.pnl.toFixed(2)} ({pos.pnlPercent >= 0 ? '+' : ''}
-                    {pos.pnlPercent.toFixed(2)}%)
+                    {`${pos.pnl >= 0 ? '+' : ''}${formatCurrency(pos.pnl)} (${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%)`}
                   </span>
                 </div>
 
@@ -553,8 +998,8 @@ export const PaperTradingPanel: React.FC = () => {
                       color: THEME_TOKENS.colors.textSecondary
                     }}
                   >
-                    {pos.stopLoss && <span>SL: ${pos.stopLoss.toFixed(2)}</span>}
-                    {pos.takeProfit && <span>TP: ${pos.takeProfit.toFixed(2)}</span>}
+                    {pos.stopLoss && <span>{`SL: ${pos.stopLoss.toFixed(pos.precision)}`}</span>}
+                    {pos.takeProfit && <span>{`TP: ${pos.takeProfit.toFixed(pos.precision)}`}</span>}
                   </div>
                 )}
               </div>
