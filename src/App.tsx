@@ -26,6 +26,7 @@ import { SymbolSearchModal } from './components/modals/SymbolSearchModal'
 import { IndicatorModal } from './components/modals/IndicatorModal'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { SnapshotModal } from './components/modals/SnapshotModal'
+import { ImportPositionsModal } from './components/modals/ImportPositionsModal'
 
 import { useMarketStore } from './stores/useMarketStore'
 import { useWorkspaceStore } from './stores/useWorkspaceStore'
@@ -77,6 +78,7 @@ export function App(): React.JSX.Element {
   const setSymbolSearchOpen = useWorkspaceStore((state) => state.setSymbolSearchOpen)
   const setIndicatorModalOpen = useWorkspaceStore((state) => state.setIndicatorModalOpen)
   const setSettingsModalOpen = useWorkspaceStore((state) => state.setSettingsModalOpen)
+  const setImportPositionsModalOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
   const isSnapshotModalOpen = useWorkspaceStore((state) => state.isSnapshotModalOpen)
   const closeSnapshotModal = useWorkspaceStore((state) => state.closeSnapshotModal)
   const snapshotDataUrl = useWorkspaceStore((state) => state.snapshotDataUrl)
@@ -149,6 +151,7 @@ export function App(): React.JSX.Element {
         setSymbolSearchOpen(false)
         setIndicatorModalOpen(false)
         setSettingsModalOpen(false)
+        setImportPositionsModalOpen(false)
       }
 
       // Ctrl+K: Open Symbol Search
@@ -186,7 +189,7 @@ export function App(): React.JSX.Element {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setActiveTool, setSymbolSearchOpen, setIndicatorModalOpen, setSettingsModalOpen])
+  }, [setActiveTool, setSymbolSearchOpen, setIndicatorModalOpen, setSettingsModalOpen, setImportPositionsModalOpen])
 
   return (
     <div
@@ -395,6 +398,7 @@ export function App(): React.JSX.Element {
       <SymbolSearchModal />
       <IndicatorModal />
       <SettingsModal />
+      <ImportPositionsModal />
       <SnapshotModal
         isOpen={isSnapshotModalOpen}
         onClose={closeSnapshotModal}

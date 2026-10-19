@@ -53,6 +53,7 @@ interface WorkspaceState {
   isSettingsModalOpen: boolean
   isSnapshotModalOpen: boolean
   snapshotDataUrl: string | null
+  isImportPositionsModalOpen: boolean
 
   // Actions
   setTheme: (theme: AppTheme) => void
@@ -62,6 +63,7 @@ interface WorkspaceState {
   setSymbolSearchOpen: (open: boolean) => void
   setIndicatorModalOpen: (open: boolean) => void
   setSettingsModalOpen: (open: boolean) => void
+  setImportPositionsModalOpen: (open: boolean) => void
   openSnapshotModal: (url: string) => void
   closeSnapshotModal: () => void
 }
@@ -75,6 +77,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   isSettingsModalOpen: false,
   isSnapshotModalOpen: false,
   snapshotDataUrl: null,
+  isImportPositionsModalOpen: false,
 
   setTheme: (theme: AppTheme) => {
     try {
@@ -115,6 +118,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setSymbolSearchOpen: (open: boolean) => set({ isSymbolSearchOpen: open }),
   setIndicatorModalOpen: (open: boolean) => set({ isIndicatorModalOpen: open }),
   setSettingsModalOpen: (open: boolean) => set({ isSettingsModalOpen: open }),
+  setImportPositionsModalOpen: (open: boolean) => set({ isImportPositionsModalOpen: open }),
   openSnapshotModal: (url: string) => set({ isSnapshotModalOpen: true, snapshotDataUrl: url }),
   closeSnapshotModal: () => set({ isSnapshotModalOpen: false, snapshotDataUrl: null })
 }))
