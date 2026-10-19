@@ -35,6 +35,9 @@ import { useSettingsStore } from './stores/useSettingsStore'
 import { useAlertsStore } from './stores/useAlertsStore'
 import { useTabStore } from './stores/useTabStore'
 import { useUpdaterStore } from './stores/useUpdaterStore'
+import { usePaperTradingStore } from './stores/usePaperTradingStore'
+import { checkForAppUpdates } from './services/auto-updater'
+import { useScalpingHotkeys } from './hooks/useScalpingHotkeys'
 import { THEME_TOKENS } from './theme/tokens'
 
 const SuperchartsHub = lazy(() =>
@@ -67,6 +70,7 @@ const featureFallback = (
 export function App(): React.JSX.Element {
   const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
   const subscribeToMarketEvents = useMarketStore((state) => state.subscribeToMarketEvents)
+  const loadPaperAccount = usePaperTradingStore((state) => state.loadAccount)
   const tabs = useTabStore((state) => state.tabs)
   const activeTabId = useTabStore((state) => state.activeTabId)
   const activeTabItem = tabs.find((tab) => tab.id === activeTabId) || tabs[0]
@@ -115,6 +119,9 @@ export function App(): React.JSX.Element {
   }
   const initUpdaterListener = useUpdaterStore((state) => state.initUpdaterListener)
 
+  // Global scalping keyboard shortcuts (Shift+B, Shift+S, Shift+X)
+  useScalpingHotkeys()
+
   // Initialize background update listener
   useEffect(() => {
     const unsub = initUpdaterListener()
@@ -132,15 +139,17 @@ export function App(): React.JSX.Element {
     return undefined
   }, [lastTriggeredAlert, dismissBanner])
 
-  // Initialize market data subscriptions & credentials
+  // Initialize market data subscriptions, credentials & paper trading positions
   useEffect(() => {
     fetchSymbols()
     loadCredentials()
+    loadPaperAccount()
+    void checkForAppUpdates({ silent: true })
     const unsubscribe = subscribeToMarketEvents()
     return () => {
       unsubscribe()
     }
-  }, [fetchSymbols, loadCredentials, subscribeToMarketEvents])
+  }, [fetchSymbols, loadCredentials, loadPaperAccount, subscribeToMarketEvents])
 
   // Global keyboard shortcuts
   useEffect(() => {
