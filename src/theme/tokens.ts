@@ -6,43 +6,47 @@
 import type { DeepPartial, Styles } from 'klinecharts'
 
 export const THEME_COLORS_DARK = {
-  bgApp: '#131722',
-  bgSurface: '#1e222d',
-  bgSurfaceHover: '#2a2e39',
-  bgActive: '#2a2e39',
-  borderSubtle: '#2a2e39',
-  borderMedium: '#363a45',
-  borderFocus: '#2962ff',
-  textPrimary: '#d1d4dc',
-  textSecondary: '#787b86',
-  textMuted: '#50535e',
-  textBright: '#f0f3fa',
-  bullish: '#089981',
-  bullishBg: 'rgba(8, 153, 129, 0.12)',
-  bearish: '#f23645',
-  bearishBg: 'rgba(242, 54, 69, 0.12)',
-  accent: '#2962ff',
-  accentHover: '#1e53e5'
+  bgApp: '#0b0e14',
+  bgSurface: '#11151f',
+  bgSurfaceHover: '#181e2b',
+  bgActive: '#1e2638',
+  borderSubtle: 'rgba(255, 255, 255, 0.07)',
+  borderMedium: 'rgba(255, 255, 255, 0.12)',
+  borderFocus: '#3b82f6',
+  textPrimary: '#d8dce6',
+  textSecondary: '#838896',
+  textMuted: '#525766',
+  textBright: '#f4f6fc',
+  bullish: '#10b981',
+  bullishBg: 'rgba(16, 185, 129, 0.12)',
+  bearish: '#f43f5e',
+  bearishBg: 'rgba(244, 63, 94, 0.12)',
+  accent: '#3b82f6',
+  accentHover: '#2563eb',
+  gold: '#f59e0b',
+  goldBg: 'rgba(245, 158, 11, 0.12)'
 } as const
 
 export const THEME_COLORS_LIGHT = {
-  bgApp: '#ffffff',
+  bgApp: '#f8fafc',
   bgSurface: '#ffffff',
-  bgSurfaceHover: '#f0f3fa',
-  bgActive: '#e0e3eb',
-  borderSubtle: '#e0e3eb',
-  borderMedium: '#d1d4dc',
-  borderFocus: '#2962ff',
-  textPrimary: '#131722',
-  textSecondary: '#787b86',
-  textMuted: '#9598a1',
-  textBright: '#131722',
-  bullish: '#089981',
-  bullishBg: 'rgba(8, 153, 129, 0.10)',
-  bearish: '#f23645',
-  bearishBg: 'rgba(242, 54, 69, 0.10)',
-  accent: '#2962ff',
-  accentHover: '#1e53e5'
+  bgSurfaceHover: '#f1f5f9',
+  bgActive: '#e2e8f0',
+  borderSubtle: '#e2e8f0',
+  borderMedium: '#cbd5e1',
+  borderFocus: '#3b82f6',
+  textPrimary: '#0f172a',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  textBright: '#020617',
+  bullish: '#10b981',
+  bullishBg: 'rgba(16, 185, 129, 0.10)',
+  bearish: '#f43f5e',
+  bearishBg: 'rgba(244, 63, 94, 0.10)',
+  accent: '#3b82f6',
+  accentHover: '#2563eb',
+  gold: '#f59e0b',
+  goldBg: 'rgba(245, 158, 11, 0.10)'
 } as const
 
 export const THEME_TOKENS = {
@@ -67,10 +71,12 @@ export const THEME_TOKENS = {
 
     accent: 'var(--accent)',
     accentHover: 'var(--accent-hover)',
+    gold: 'var(--gold, #f59e0b)',
+    goldBg: 'var(--gold-bg, rgba(245, 158, 11, 0.12))',
 
     impactHigh: 'var(--bearish)',
-    impactMedium: '#ff9800',
-    impactLow: '#26a69a',
+    impactMedium: '#f59e0b',
+    impactLow: '#10b981',
     impactNone: 'var(--text-muted)',
 
     modalBackdrop: 'var(--modal-backdrop)',
@@ -85,8 +91,8 @@ export const THEME_TOKENS = {
     bottomStatusHeight: '26px'
   },
   typography: {
-    fontSans: "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif",
-    fontMono: "'Trebuchet MS', Roboto, 'Consolas', monospace"
+    fontSans: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif",
+    fontMono: "'SF Mono', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
   }
 } as const
 
@@ -96,11 +102,11 @@ export const THEME_TOKENS = {
  */
 export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles> {
   const isDark = theme === 'dark'
-  const bgColor = isDark ? '#131722' : '#ffffff'
-  const gridColor = isDark ? 'rgba(42, 46, 57, 0.5)' : '#f0f3fa'
-  const axisColor = isDark ? '#2a2e39' : '#e0e3eb'
-  const textMuted = isDark ? '#787b86' : '#787b86'
-  const textBright = isDark ? '#f0f3fa' : '#131722'
+  const bgColor = isDark ? '#0b0e14' : '#f8fafc'
+  const gridColor = isDark ? 'rgba(255, 255, 255, 0.035)' : 'rgba(0, 0, 0, 0.04)'
+  const axisColor = isDark ? 'rgba(255, 255, 255, 0.08)' : '#cbd5e1'
+  const textMuted = isDark ? '#838896' : '#64748b'
+  const textBright = isDark ? '#f4f6fc' : '#0f172a'
 
   return {
     grid: {
@@ -110,36 +116,36 @@ export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles
         size: 1,
         color: gridColor,
         style: 'dashed',
-        dashedValue: [2, 2]
+        dashedValue: [2, 3]
       },
       vertical: {
         show: true,
         size: 1,
         color: gridColor,
         style: 'dashed',
-        dashedValue: [2, 2]
+        dashedValue: [2, 3]
       }
     },
     candle: {
       bar: {
-        upColor: '#089981',
-        downColor: '#f23645',
+        upColor: '#10b981',
+        downColor: '#f43f5e',
         noChangeColor: textMuted,
-        upBorderColor: '#089981',
-        downBorderColor: '#f23645',
+        upBorderColor: '#10b981',
+        downBorderColor: '#f43f5e',
         noChangeBorderColor: textMuted,
-        upWickColor: '#089981',
-        downWickColor: '#f23645',
+        upWickColor: '#10b981',
+        downWickColor: '#f43f5e',
         noChangeWickColor: textMuted
       },
       area: {
         lineSize: 2,
-        lineColor: '#2962ff',
+        lineColor: '#3b82f6',
         value: 'close',
         smooth: true,
         backgroundColor: [
-          { offset: 0, color: 'rgba(41, 98, 255, 0.20)' },
-          { offset: 1, color: 'rgba(41, 98, 255, 0.0)' }
+          { offset: 0, color: 'rgba(59, 130, 246, 0.22)' },
+          { offset: 1, color: 'rgba(59, 130, 246, 0.0)' }
         ]
       },
       priceMark: {
@@ -153,8 +159,8 @@ export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles
         },
         last: {
           show: true,
-          upColor: '#089981',
-          downColor: '#f23645',
+          upColor: '#10b981',
+          downColor: '#f43f5e',
           noChangeColor: textMuted,
           line: {
             show: true,
@@ -166,7 +172,7 @@ export function getChartThemeStyles(theme: 'dark' | 'light'): DeepPartial<Styles
             show: true,
             color: '#ffffff',
             size: 11,
-            family: "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, sans-serif"
+            family: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif"
           }
         }
       },

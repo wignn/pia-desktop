@@ -86,6 +86,27 @@ describe('CandleEngine', () => {
     })
   })
 
+  it('updates active bar even if tick timestamp has slight clock skew within active window', async () => {
+    const engine = new CandleEngine()
+    const onBarUpdate = vi.fn()
+    engine.addListener({ onHistoryLoaded: vi.fn(), onBarUpdate })
+    const bars = await engine.setSymbolAndTimeframe('XAUUSD', '1m')
+    const latest = bars.at(-1)!
+    // Tick timestamp slightly behind latest bar's start (e.g. 5 seconds clock drift)
+    const quote: PriceQuote = {
+      symbol: 'XAU/USD',
+      price: 111,
+      timestamp: latest.timestamp - 5_000
+    }
+
+    engine.handleTick(quote)
+
+    expect(engine.getActiveBars().at(-1)).toMatchObject({
+      close: 111
+    })
+    expect(onBarUpdate).toHaveBeenCalledOnce()
+  })
+
   it('maps every supported timeframe without silently changing intervals', () => {
     const engine = new CandleEngine()
     expect(engine.timeframeToMs('30m')).toBe(30 * 60 * 1000)

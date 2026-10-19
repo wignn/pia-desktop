@@ -88,14 +88,19 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
           <span
             style={{
               fontSize: 10,
-              backgroundColor: 'rgba(41, 98, 255, 0.15)',
-              color: THEME_TOKENS.colors.accent,
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              color: THEME_TOKENS.colors.bullish,
               padding: '1px 6px',
               borderRadius: 10,
-              fontWeight: 600
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4
             }}
           >
-            Live
+            <span className="live-beacon" style={{ width: 5, height: 5 }} />
+            LIVE
           </span>
         </div>
         <button
@@ -219,6 +224,8 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
                     <img
                       src={item.imageUrl}
                       alt={item.title}
+                      crossOrigin="anonymous"
+                      referrerPolicy="no-referrer"
                       onError={() => handleImageError(item.id)}
                       style={{
                         width: '100%',
@@ -277,7 +284,15 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
               >
                 {/* Meta row: Source & Time */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                  <span style={{ fontWeight: 600, color: THEME_TOKENS.colors.accent }}>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color:
+                        item.source?.toLowerCase().includes('fxstreet')
+                          ? THEME_TOKENS.colors.gold
+                          : THEME_TOKENS.colors.accent
+                    }}
+                  >
                     {item.source}
                   </span>
                   <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
@@ -288,10 +303,13 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
                     <span
                       style={{
                         marginLeft: 'auto',
-                        fontSize: 10,
-                        fontWeight: 600,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: '0.03em',
+                        textTransform: 'uppercase',
                         color: THEME_TOKENS.colors.textSecondary,
                         backgroundColor: THEME_TOKENS.colors.bgApp,
+                        border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                         padding: '1px 5px',
                         borderRadius: 3
                       }}
@@ -347,6 +365,8 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
                     <img
                       src={item.imageUrl}
                       alt={item.title}
+                      crossOrigin="anonymous"
+                      referrerPolicy="no-referrer"
                       onError={() => handleImageError(item.id)}
                       style={{
                         width: '100%',

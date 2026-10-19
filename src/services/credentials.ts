@@ -4,6 +4,30 @@ import type { CredentialStatus } from '@shared/types'
 const DEFAULT_BASE_URL = 'https://api-engine.wign.dev'
 const DEFAULT_WS_URL = 'wss://api-engine.wign.dev/api/v1/ws'
 
+export function normalizeBaseUrl(url?: string | null): string {
+  if (!url || !url.trim()) return DEFAULT_BASE_URL
+  return url.trim().replace(/\/+$/, '')
+}
+
+export function normalizeWsUrl(url?: string | null): string {
+  if (!url || !url.trim()) return DEFAULT_WS_URL
+  let trimmed = url.trim()
+  if (trimmed.startsWith('http://')) {
+    trimmed = 'ws://' + trimmed.slice(7)
+  } else if (trimmed.startsWith('https://')) {
+    trimmed = 'wss://' + trimmed.slice(8)
+  }
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.pathname === '/' || parsed.pathname === '') {
+      parsed.pathname = '/api/v1/ws'
+    }
+    return parsed.toString().replace(/\/+$/, '')
+  } catch {
+    return trimmed
+  }
+}
+
 interface StoredCredentials {
   apiKey: string
   baseUrl?: string
@@ -31,10 +55,16 @@ export class CredentialManager {
     if (!this.inMemoryCreds?.apiKey && process.env.PIA_API_KEY) {
       this.inMemoryCreds = {
         apiKey: process.env.PIA_API_KEY,
-        baseUrl: process.env.PIA_BASE_URL || DEFAULT_BASE_URL,
-        wsUrl: process.env.PIA_WS_URL || DEFAULT_WS_URL
+        baseUrl: normalizeBaseUrl(process.env.PIA_BASE_URL),
+        wsUrl: normalizeWsUrl(process.env.PIA_WS_URL)
       }
     }
+
+    if (this.inMemoryCreds) {
+      this.inMemoryCreds.baseUrl = normalizeBaseUrl(this.inMemoryCreds.baseUrl)
+      this.inMemoryCreds.wsUrl = normalizeWsUrl(this.inMemoryCreds.wsUrl)
+    }
+
     this.initialized = true
   }
 
@@ -42,8 +72,8 @@ export class CredentialManager {
     return {
       hasApiKey: Boolean(this.inMemoryCreds?.apiKey),
       isSecureStorage: true,
-      baseUrl: this.inMemoryCreds?.baseUrl || DEFAULT_BASE_URL,
-      wsUrl: this.inMemoryCreds?.wsUrl || DEFAULT_WS_URL
+      baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
+      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl)
     }
   }
 
@@ -52,18 +82,18 @@ export class CredentialManager {
   }
 
   public getBaseUrl(): string {
-    return this.inMemoryCreds?.baseUrl || DEFAULT_BASE_URL
+    return normalizeBaseUrl(this.inMemoryCreds?.baseUrl)
   }
 
   public getWsUrl(): string {
-    return this.inMemoryCreds?.wsUrl || DEFAULT_WS_URL
+    return normalizeWsUrl(this.inMemoryCreds?.wsUrl)
   }
 
   public async saveCredentials(apiKey: string, baseUrl?: string, wsUrl?: string): Promise<boolean> {
     this.inMemoryCreds = {
       apiKey,
-      baseUrl: baseUrl || DEFAULT_BASE_URL,
-      wsUrl: wsUrl || DEFAULT_WS_URL
+      baseUrl: normalizeBaseUrl(baseUrl),
+      wsUrl: normalizeWsUrl(wsUrl)
     }
     const serialized = JSON.stringify(this.inMemoryCreds)
     try {

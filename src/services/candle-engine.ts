@@ -214,7 +214,10 @@ export class CandleEngine {
    * Handle incoming realtime price tick from WebSocket
    */
   public handleTick(quote: PriceQuote): void {
-    if (quote.symbol !== this.currentSymbol) {
+    if (!quote || !quote.symbol) return
+    const quoteSym = quote.symbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
+    const curSym = this.currentSymbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
+    if (quoteSym !== curSym) {
       return
     }
 
@@ -243,8 +246,6 @@ export class CandleEngine {
     let ts = quote.timestamp
     if (ts < 1e11) ts *= 1000
 
-    const barStartTimestamp = Math.floor(ts / intervalMs) * intervalMs
-    const price = quote.price
     const currentGen = this.generationId
 
     // History is expected before live reconciliation. Never turn a delayed
@@ -255,6 +256,16 @@ export class CandleEngine {
 
     const lastBarIndex = this.activeBars.length - 1
     const lastBar = this.activeBars[lastBarIndex]
+
+    // Discard truly stale historical ticks (> 2 candle intervals behind)
+    if (ts < lastBar.timestamp - intervalMs * 2) {
+      return
+    }
+
+    // Tolerate minor client/exchange clock skew by clamping within the active window
+    const effectiveTs = Math.max(ts, lastBar.timestamp)
+    const barStartTimestamp = Math.floor(effectiveTs / intervalMs) * intervalMs
+    const price = quote.price
 
     if (barStartTimestamp === lastBar.timestamp) {
       // Update current active bar
@@ -288,7 +299,6 @@ export class CandleEngine {
         }
       }
     }
-    // Note: If barStartTimestamp < lastBar.timestamp, tick is from a delayed/out-of-order packet; ignore.
   }
 
   /**

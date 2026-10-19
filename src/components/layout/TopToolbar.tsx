@@ -57,8 +57,8 @@ export const TopToolbar: React.FC = () => {
   }, [])
 
   const currentPrice = quote?.price
-  const priceChange24h = quote?.change24hPercent ?? 0
-  const isUp = priceChange24h >= 0
+  const priceChange24h = quote?.change24hPercent
+  const isUp = (priceChange24h ?? 0) >= 0
 
   const handleSave = async (): Promise<void> => {
     await saveCurrentLayout()
@@ -96,12 +96,15 @@ export const TopToolbar: React.FC = () => {
       style={{
         height: THEME_TOKENS.dimensions.topToolbarHeight,
         minHeight: THEME_TOKENS.dimensions.topToolbarHeight,
-        backgroundColor: THEME_TOKENS.colors.bgApp,
+        backgroundColor: theme === 'dark' ? 'rgba(11, 14, 20, 0.88)' : 'rgba(248, 250, 252, 0.92)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+        boxShadow: 'inset 0 -1px 0 0 rgba(255, 255, 255, 0.02)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 6px',
-        gap: 2,
+        padding: '0 8px',
+        gap: 3,
         zIndex: 30,
         position: 'relative',
         userSelect: 'none'
@@ -207,20 +210,36 @@ export const TopToolbar: React.FC = () => {
         className="tv-btn"
         style={{
           height: 28,
-          padding: '0 6px',
+          padding: '0 8px',
           fontWeight: 700,
           fontSize: 13,
           color: THEME_TOKENS.colors.textBright,
           display: 'flex',
           alignItems: 'center',
-          gap: 6
+          gap: 6,
+          backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+          borderRadius: 5,
+          boxShadow: 'inset 0 1px 0 0 rgba(255, 255, 255, 0.04)'
         }}
         title="Search Symbol (Ctrl+K)"
       >
         <SymbolLogo symbol={symbol} size={18} />
         <span style={{ letterSpacing: '0.2px' }}>{symbol || 'Select'}</span>
         {symInfo?.category && (
-          <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary, textTransform: 'uppercase', fontWeight: 600 }}>
+          <span
+            style={{
+              fontSize: 9,
+              color: THEME_TOKENS.colors.gold,
+              backgroundColor: THEME_TOKENS.colors.goldBg,
+              border: '1px solid rgba(245, 158, 11, 0.24)',
+              borderRadius: 3,
+              padding: '1px 5px',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              letterSpacing: '0.04em'
+            }}
+          >
             {symInfo.category}
           </span>
         )}
@@ -230,11 +249,30 @@ export const TopToolbar: React.FC = () => {
               fontSize: 12,
               fontWeight: 600,
               fontFamily: THEME_TOKENS.typography.fontMono,
+              fontVariantNumeric: 'tabular-nums',
               color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
               marginLeft: 2
             }}
           >
             {currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </span>
+        )}
+        {priceChange24h !== undefined && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              fontFamily: THEME_TOKENS.typography.fontMono,
+              fontVariantNumeric: 'tabular-nums',
+              color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+              padding: '1px 5px',
+              borderRadius: 3,
+              backgroundColor: isUp ? THEME_TOKENS.colors.bullishBg : THEME_TOKENS.colors.bearishBg,
+              border: `1px solid ${isUp ? 'rgba(16, 185, 129, 0.22)' : 'rgba(244, 63, 94, 0.22)'}`,
+              marginLeft: 4
+            }}
+          >
+            {priceChange24h > 0 ? '+' : ''}{priceChange24h.toFixed(2)}%
           </span>
         )}
       </button>
@@ -674,15 +712,37 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      {/* 16. Publish / Action Button (TradingView signature blue pill button) */}
+      {/* 16. Institutional Live Telemetry Badge */}
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '2px 8px',
+          borderRadius: 12,
+          backgroundColor: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.22)',
+          fontSize: 10,
+          fontWeight: 700,
+          color: THEME_TOKENS.colors.bullish,
+          letterSpacing: '0.04em',
+          marginLeft: 4
+        }}
+        title="Institutional Live Market Feed Connected"
+      >
+        <span className="live-beacon" />
+        <span>LIVE</span>
+      </div>
+
+      {/* 17. Publish / Action Button (TradingView signature blue pill button) */}
       <button
         type="button"
         onClick={handleSave}
         style={{
           height: 26,
-          backgroundColor: THEME_TOKENS.colors.accent,
+          background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
           color: '#ffffff',
-          border: 'none',
+          border: '1px solid rgba(255, 255, 255, 0.16)',
           borderRadius: 4,
           padding: '0 12px',
           fontWeight: 600,
@@ -691,11 +751,12 @@ export const TopToolbar: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          marginLeft: 4,
-          transition: 'background 0.1s ease'
+          marginLeft: 6,
+          boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+          transition: 'all 0.15s ease'
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.accentHover }}
-        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.accent }}
+        onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
         title="Save & Share Chart"
       >
         <span>Publish</span>

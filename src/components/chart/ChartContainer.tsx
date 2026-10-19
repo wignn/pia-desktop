@@ -532,7 +532,7 @@ export const ChartContainer: React.FC = () => {
     if (!chart) return
 
     try {
-      const bgColor = theme === 'dark' ? '#131722' : '#ffffff'
+      const bgColor = theme === 'dark' ? '#0b0e14' : '#ffffff'
       const dataUrl = chart.getConvertPictureUrl(true, 'png', bgColor)
       if (dataUrl) {
         useWorkspaceStore.getState().openSnapshotModal(dataUrl)

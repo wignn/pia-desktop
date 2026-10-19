@@ -143,6 +143,11 @@ export class PiaProvider {
   private realtimeErrorDetail: string | null = null
   private candleCache = new Map<string, { bars: CandleBar[]; cachedAt: number }>()
   private listeners = new Map<string, Set<(data: any) => void>>()
+  // ponytail: 30m in-memory day-open cache prevents redundant rollup queries; upgrade to server 24h ticker feed when backend exposes it.
+  private dayOpenCache = new Map<string, { open: number; cachedAt: number }>()
+  private dayOpenPending = new Set<string>()
+  private sessionBaselinePrices = new Map<string, number>()
+  private latestQuotes = new Map<string, PriceQuote>()
 
   constructor(credManager: CredentialManager) {
     this.credManager = credManager
@@ -188,6 +193,7 @@ export class PiaProvider {
       this.refreshSymbolsCatalog().catch((err) => {
         console.warn('Initial refreshSymbolsCatalog error:', err)
       })
+      this.preloadMajorDayOpens()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Failed to initialize PiaClient:', msg)
@@ -372,15 +378,54 @@ export class PiaProvider {
       volume?: number
       volume_type?: 'exchange' | 'tick' | 'unavailable'
       volume_available?: boolean
+      trade_time_ms?: number
+      received_at?: string
     }
+    const cleanSymbol = raw.symbol.trim().toUpperCase()
     const price = Number(raw.price)
     if (isNaN(price) || price <= 0) return null
 
-    let ts = Number(raw.timestamp || Date.now())
+    let rawTs: number | undefined
+    if (raw.timestamp !== undefined && raw.timestamp !== null) {
+      rawTs = Number(raw.timestamp)
+    } else if (rawValue.trade_time_ms !== undefined && rawValue.trade_time_ms !== null) {
+      rawTs = Number(rawValue.trade_time_ms)
+    } else if (rawValue.received_at) {
+      const parsed = Date.parse(rawValue.received_at)
+      if (!isNaN(parsed)) rawTs = parsed
+    }
+
+    let ts = rawTs !== undefined && !isNaN(rawTs) ? rawTs : Date.now()
     if (ts < 1e11) ts *= 1000
 
-    return {
-      symbol: raw.symbol,
+    let change24h: number | undefined
+    let change24hPercent: number | undefined
+
+    if (raw.change_24h_pct !== undefined && !isNaN(Number(raw.change_24h_pct))) {
+      change24hPercent = Number(raw.change_24h_pct)
+      change24h = (price * change24hPercent) / 100
+    } else {
+      const cached = this.dayOpenCache.get(cleanSymbol)
+      let baseline: number | undefined
+
+      if (cached && cached.open > 0) {
+        baseline = cached.open
+      } else {
+        void this.requestDayOpen(cleanSymbol)
+        if (!this.sessionBaselinePrices.has(cleanSymbol)) {
+          this.sessionBaselinePrices.set(cleanSymbol, price)
+        }
+        baseline = this.sessionBaselinePrices.get(cleanSymbol)
+      }
+
+      if (baseline !== undefined && baseline > 0) {
+        change24h = price - baseline
+        change24hPercent = ((price - baseline) / baseline) * 100
+      }
+    }
+
+    const quote: PriceQuote = {
+      symbol: cleanSymbol,
       price,
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
@@ -404,11 +449,73 @@ export class PiaProvider {
       volumeAvailable:
         rawValue.volume_available ??
         (raw.volume_24h !== undefined || rawValue.volume !== undefined),
-      change24h:
-        raw.change_24h_pct !== undefined ? (price * Number(raw.change_24h_pct)) / 100 : undefined,
-      change24hPercent: raw.change_24h_pct !== undefined ? Number(raw.change_24h_pct) : undefined,
+      change24h,
+      change24hPercent,
       high24h: raw.high_24h !== undefined ? Number(raw.high_24h) : undefined,
       low24h: raw.low_24h !== undefined ? Number(raw.low_24h) : undefined
+    }
+
+    this.latestQuotes.set(cleanSymbol, quote)
+    return quote
+  }
+
+  private async requestDayOpen(symbol: string): Promise<void> {
+    const clean = symbol.trim().toUpperCase()
+    if (!this.client || this.dayOpenPending.has(clean)) return
+
+    const cached = this.dayOpenCache.get(clean)
+    if (cached && Date.now() - cached.cachedAt < 30 * 60 * 1000) {
+      return
+    }
+
+    this.dayOpenPending.add(clean)
+    try {
+      const res = await this.client.market.getCandles(clean, {
+        timeframe: '1d',
+        limit: 1
+      })
+      if (res && Array.isArray(res.candles) && res.candles.length > 0) {
+        const lastCandle = res.candles[res.candles.length - 1]
+        const open = Number(lastCandle.open)
+        if (!isNaN(open) && open > 0) {
+          this.dayOpenCache.set(clean, { open, cachedAt: Date.now() })
+          const existing = this.latestQuotes.get(clean)
+          if (existing) {
+            const change24h = existing.price - open
+            const change24hPercent = ((existing.price - open) / open) * 100
+            const updated: PriceQuote = {
+              ...existing,
+              change24h,
+              change24hPercent
+            }
+            this.latestQuotes.set(clean, updated)
+            this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, updated)
+          }
+        }
+      }
+    } catch {
+      // keep silent on error
+    } finally {
+      this.dayOpenPending.delete(clean)
+    }
+  }
+
+  private preloadMajorDayOpens(): void {
+    const majors = [
+      'EURUSD',
+      'BTCUSDT',
+      'XAUUSD',
+      'USDJPY',
+      'GBPUSD',
+      'AUDUSD',
+      'USDCAD',
+      'USDCHF',
+      'NZDUSD',
+      'ETHUSDT',
+      'US30'
+    ]
+    for (const sym of majors) {
+      void this.requestDayOpen(sym)
     }
   }
 
@@ -832,6 +939,7 @@ export class PiaProvider {
     if (!clean) return false
     const current = this.subscriptionCounts.get(clean) || 0
     this.subscriptionCounts.set(clean, current + 1)
+    void this.requestDayOpen(clean)
 
     if (this.client) {
       const state = this.client.realtime.getState()
@@ -949,13 +1057,14 @@ export class PiaProvider {
       }
       return res.items.map((item: any, idx: number) => ({
         id: item.id || `news-${idx}`,
-        title: item.title || 'Market Update',
-        summary: item.summary || '',
-        url: item.url || 'https://wign.dev',
-        source: item.source || 'Financial Wire',
+        title: item.title || item.original_title || 'Market Update',
+        summary: item.summary || item.content || '',
+        url: item.url || item.original_url || 'https://wign.dev',
+        source: item.source_name || item.source || 'Financial Wire',
         publishedAt: item.published_at ? new Date(item.published_at).getTime() : Date.now(),
         category: item.category,
         imageUrl:
+          item.media_url ||
           item.image_url ||
           item.imageUrl ||
           item.image ||
@@ -1117,29 +1226,45 @@ export class PiaProvider {
   }
 
   private normalizeNewsArticle(item: Record<string, unknown>, fallbackId: string): NewsArticle {
-    return {
-      id: typeof item.id === 'string' ? item.id : fallbackId,
-      title: typeof item.title === 'string' ? item.title : 'Market News',
-      summary: typeof item.summary === 'string' ? item.summary : '',
-      url: typeof item.url === 'string' ? item.url : '',
-      source: typeof item.source === 'string' ? item.source : 'PIA News',
-      publishedAt:
-        typeof item.published_at === 'string' ? new Date(item.published_at).getTime() : Date.now(),
-      category: typeof item.category === 'string' ? item.category : undefined,
-      imageUrl:
-        typeof item.image_url === 'string'
-          ? item.image_url
-          : typeof item.imageUrl === 'string'
-            ? item.imageUrl
-            : typeof item.image === 'string'
-              ? item.image
-              : typeof item.thumbnail === 'string'
-                ? item.thumbnail
+    const raw = item as Record<string, any>
+    const source =
+      typeof raw.source_name === 'string' && raw.source_name.trim()
+        ? raw.source_name
+        : typeof raw.source === 'string' && raw.source.trim()
+          ? raw.source
+          : 'PIA News'
+    const imageUrl =
+      typeof raw.media_url === 'string' && raw.media_url.trim()
+        ? raw.media_url
+        : typeof raw.image_url === 'string' && raw.image_url.trim()
+          ? raw.image_url
+          : typeof raw.imageUrl === 'string' && raw.imageUrl.trim()
+            ? raw.imageUrl
+            : typeof raw.image === 'string' && raw.image.trim()
+              ? raw.image
+              : typeof raw.thumbnail === 'string' && raw.thumbnail.trim()
+                ? raw.thumbnail
                 : resolveNewsImage(
-                    typeof item.title === 'string' ? item.title : '',
-                    typeof item.summary === 'string' ? item.summary : '',
-                    typeof item.category === 'string' ? item.category : ''
+                    typeof raw.title === 'string' ? raw.title : '',
+                    typeof raw.summary === 'string' ? raw.summary : '',
+                    typeof raw.category === 'string' ? raw.category : ''
                   )
+
+    return {
+      id: typeof raw.id === 'string' ? raw.id : fallbackId,
+      title: typeof raw.title === 'string' ? raw.title : 'Market News',
+      summary: typeof raw.summary === 'string' ? raw.summary : '',
+      url:
+        typeof raw.url === 'string' && raw.url
+          ? raw.url
+          : typeof raw.original_url === 'string'
+            ? raw.original_url
+            : '',
+      source,
+      publishedAt:
+        typeof raw.published_at === 'string' ? new Date(raw.published_at).getTime() : Date.now(),
+      category: typeof raw.category === 'string' ? raw.category : undefined,
+      imageUrl
     }
   }
 

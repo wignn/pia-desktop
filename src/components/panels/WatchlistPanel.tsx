@@ -94,6 +94,22 @@ export const WatchlistPanel: React.FC = () => {
     )
   }, [activeGroup, catalogMap, searchQuery])
 
+  // ponytail: subscribes only currently displayed watchlist symbols to WS; upgrade to server-side batch subscription if list exceeds 100 items.
+  useEffect(() => {
+    const symbolsToSub = displayedSymbols.map((item) => item.symbol).filter(Boolean)
+    if (symbolsToSub.length === 0) return
+
+    for (const sym of symbolsToSub) {
+      void window.api.market.subscribePrice(sym)
+    }
+
+    return () => {
+      for (const sym of symbolsToSub) {
+        void window.api.market.unsubscribePrice(sym)
+      }
+    }
+  }, [displayedSymbols])
+
   // Selected item quote and statistics for bottom card
   const selectedQuote = currentSymbol ? prices[currentSymbol] : undefined
   const selectedSymInfo = currentSymbol ? catalogMap.get(currentSymbol) : undefined
@@ -104,8 +120,8 @@ export const WatchlistPanel: React.FC = () => {
   )
 
   const currentPrice = selectedQuote?.price ?? latestBar?.close
-  const change24hPercent = selectedQuote?.change24hPercent ?? 0
-  const isUp = change24hPercent >= 0
+  const change24hPercent = selectedQuote?.change24hPercent
+  const isUp = (change24hPercent ?? 0) >= 0
 
   // Day's high and low for Range Slider
   const dayHigh = selectedQuote?.high24h ?? latestBar?.high ?? (currentPrice ? currentPrice * 1.012 : 100)
@@ -295,9 +311,11 @@ export const WatchlistPanel: React.FC = () => {
           display: 'grid',
           gridTemplateColumns: '1.2fr 1fr 0.8fr 1fr',
           padding: '6px 8px',
-          color: THEME_TOKENS.colors.textSecondary,
-          fontSize: 11,
-          fontWeight: 600,
+          color: THEME_TOKENS.colors.textMuted,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
           borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           backgroundColor: THEME_TOKENS.colors.bgApp
         }}
@@ -321,9 +339,9 @@ export const WatchlistPanel: React.FC = () => {
           const isSelected = sym === currentSymbol
           const quote = prices[sym]
           const price = quote?.price
-          const changePercent = quote?.change24hPercent ?? 0
-          const changeVal = price && changePercent ? (price * changePercent) / 100 : undefined
-          const rowUp = changePercent >= 0
+          const changePercent = quote?.change24hPercent
+          const changeVal = quote?.change24h ?? (price && changePercent !== undefined ? (price * changePercent) / 100 : undefined)
+          const rowUp = (changePercent ?? 0) >= 0
           const precision = item.precision ?? (sym.includes('JPY') ? 3 : 2)
 
           return (
@@ -336,12 +354,14 @@ export const WatchlistPanel: React.FC = () => {
                 padding: '6px 8px',
                 alignItems: 'center',
                 cursor: 'pointer',
-                backgroundColor: isSelected ? THEME_TOKENS.colors.bgActive : 'transparent',
-                borderLeft: isSelected ? `3px solid ${THEME_TOKENS.colors.accent}` : '3px solid transparent',
+                backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                borderLeft: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
                 borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
                 fontFamily: THEME_TOKENS.typography?.fontMono,
+                fontVariantNumeric: 'tabular-nums',
                 contentVisibility: 'auto',
-                containIntrinsicSize: '30px'
+                containIntrinsicSize: '30px',
+                transition: 'background 0.12s ease'
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) e.currentTarget.style.backgroundColor = THEME_TOKENS.colors.bgSurfaceHover
@@ -359,6 +379,7 @@ export const WatchlistPanel: React.FC = () => {
                     height: 5,
                     borderRadius: '50%',
                     backgroundColor: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+                    boxShadow: rowUp ? '0 0 6px rgba(16, 185, 129, 0.5)' : '0 0 6px rgba(244, 63, 94, 0.5)',
                     flexShrink: 0
                   }}
                 />
@@ -368,7 +389,7 @@ export const WatchlistPanel: React.FC = () => {
               </div>
 
               {/* Last Price */}
-              <div style={{ textAlign: 'right', color: THEME_TOKENS.colors.textPrimary }}>
+              <div style={{ textAlign: 'right', color: THEME_TOKENS.colors.textPrimary, fontWeight: 500 }}>
                 {price !== undefined
                   ? price.toLocaleString(undefined, { minimumFractionDigits: precision, maximumFractionDigits: precision })
                   : '--'}
@@ -376,23 +397,27 @@ export const WatchlistPanel: React.FC = () => {
 
               {/* Net Change */}
               <div style={{ textAlign: 'right', color: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontSize: 11 }}>
-                {changeVal !== undefined ? `${rowUp ? '+' : ''}${changeVal.toFixed(2)}` : '--'}
+                {changeVal !== undefined
+                  ? `${changeVal > 0 ? '+' : ''}${changeVal.toLocaleString(undefined, { minimumFractionDigits: precision, maximumFractionDigits: precision })}`
+                  : '--'}
               </div>
 
-              {/* Change % Badge */}
+              {/* Change % Badge (Jewel Pill) */}
               <div style={{ textAlign: 'right' }}>
                 <span
                   style={{
                     display: 'inline-block',
-                    padding: '1px 5px',
+                    padding: '2px 6px',
                     borderRadius: 3,
                     fontSize: 10,
                     fontWeight: 700,
                     backgroundColor: rowUp ? THEME_TOKENS.colors.bullishBg : THEME_TOKENS.colors.bearishBg,
-                    color: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                    color: rowUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+                    border: `1px solid ${rowUp ? 'rgba(16, 185, 129, 0.22)' : 'rgba(244, 63, 94, 0.22)'}`,
+                    boxShadow: rowUp ? '0 0 8px rgba(16, 185, 129, 0.08)' : '0 0 8px rgba(244, 63, 94, 0.08)'
                   }}
                 >
-                  {rowUp ? '+' : ''}{changePercent.toFixed(2)}%
+                  {changePercent !== undefined ? `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%` : '--'}
                 </span>
               </div>
             </div>
@@ -485,7 +510,7 @@ export const WatchlistPanel: React.FC = () => {
                 fontFamily: THEME_TOKENS.typography?.fontMono
               }}
             >
-              {isUp ? '+' : ''}{change24hPercent.toFixed(2)}%
+              {change24hPercent !== undefined ? `${change24hPercent > 0 ? '+' : ''}${change24hPercent.toFixed(2)}%` : '--'}
             </span>
           </div>
 

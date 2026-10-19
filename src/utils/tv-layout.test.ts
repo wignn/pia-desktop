@@ -333,6 +333,25 @@ describe('TradingView Layout & Chart helpers', () => {
       )
       expect(fallbackHtml).toContain('Bloomberg')
       expect(fallbackHtml).toContain('Macro Economy Update')
+
+      // FXStreet news with editorial media_url
+      const fxstreetArticles = [
+        {
+          id: 'n-fxs',
+          title: 'Australian Dollar holds gains above 0.6950',
+          summary: 'Fading expectations for Fed hike.',
+          url: 'https://www.fxstreet.com/news/123',
+          source: 'FXStreet',
+          publishedAt: Date.now(),
+          imageUrl: 'https://editorial.fxsstatic.com/images/i/AUD-bullish-animal_Medium.png'
+        }
+      ]
+      const fxsHtml = renderToStaticMarkup(
+        React.createElement(NewsPanel, { customArticles: fxstreetArticles })
+      )
+      expect(fxsHtml).toContain('FXStreet')
+      expect(fxsHtml).toContain('Australian Dollar holds gains above 0.6950')
+      expect(fxsHtml).toContain('https://editorial.fxsstatic.com/images/i/AUD-bullish-animal_Medium.png')
     })
 
     it('resolves topic-based financial imagery accurately', () => {
@@ -572,6 +591,66 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(html).toContain('data-testid="symbol-logo-dual"')
       expect(html).toContain('width:16px')
       expect(html).toContain('height:16px')
+    })
+    it('renders live non-zero percentage badge in WatchlistPanel when change24hPercent is provided', () => {
+      useWatchlistStore.setState({
+        watchlists: [
+          { id: 'wl-1', name: 'Majors', symbols: ['EURUSD', 'BTCUSDT'], isDefault: true, createdAt: Date.now() }
+        ],
+        activeListId: 'wl-1'
+      })
+      useMarketStore.setState({
+        symbols: [
+          { symbol: 'EURUSD', name: 'Euro / US Dollar', category: 'forex', pricePrecision: 5 },
+          { symbol: 'BTCUSDT', name: 'Bitcoin', category: 'crypto', pricePrecision: 2 }
+        ],
+        prices: {
+          EURUSD: {
+            symbol: 'EURUSD',
+            price: 1.1235,
+            timestamp: Date.now(),
+            change24h: 0.00105,
+            change24hPercent: 0.0935
+          },
+          BTCUSDT: {
+            symbol: 'BTCUSDT',
+            price: 82500,
+            timestamp: Date.now(),
+            change24h: 430.5,
+            change24hPercent: 0.5246
+          }
+        }
+      })
+
+      const html = renderToStaticMarkup(React.createElement(WatchlistPanel))
+      expect(html).toContain('+0.09%')
+      expect(html).toContain('+0.52%')
+    })
+
+    it('renders bearish percentage badge with minus sign when change24hPercent is negative', () => {
+      useWatchlistStore.setState({
+        watchlists: [
+          { id: 'wl-1', name: 'Majors', symbols: ['USDJPY'], isDefault: true, createdAt: Date.now() }
+        ],
+        activeListId: 'wl-1'
+      })
+      useMarketStore.setState({
+        symbols: [
+          { symbol: 'USDJPY', name: 'US Dollar / Yen', category: 'forex', pricePrecision: 3 }
+        ],
+        prices: {
+          USDJPY: {
+            symbol: 'USDJPY',
+            price: 157.85,
+            timestamp: Date.now(),
+            change24h: -0.172,
+            change24hPercent: -0.1088
+          }
+        }
+      })
+
+      const html = renderToStaticMarkup(React.createElement(WatchlistPanel))
+      expect(html).toContain('-0.11%')
     })
   })
 })

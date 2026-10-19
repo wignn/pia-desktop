@@ -216,8 +216,7 @@ export const LeftDrawingToolbar: React.FC = () => {
                   padding: 0,
                   position: 'relative',
                   borderRadius: 4,
-                  color: isGroupActive ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary,
-                  backgroundColor: isGroupActive ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+                  color: isGroupActive ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary
                 }}
               >
                 {group.icon}
@@ -317,8 +316,7 @@ export const LeftDrawingToolbar: React.FC = () => {
           width: 32,
           height: 30,
           padding: 0,
-          color: activeTool === 'measure' ? THEME_TOKENS.colors.accent : 'currentColor',
-          backgroundColor: activeTool === 'measure' ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+          color: activeTool === 'measure' ? THEME_TOKENS.colors.accent : 'currentColor'
         }}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -339,8 +337,7 @@ export const LeftDrawingToolbar: React.FC = () => {
           width: 32,
           height: 30,
           padding: 0,
-          color: magnetMode ? THEME_TOKENS.colors.accent : 'currentColor',
-          backgroundColor: magnetMode ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+          color: magnetMode ? THEME_TOKENS.colors.accent : 'currentColor'
         }}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -362,8 +359,7 @@ export const LeftDrawingToolbar: React.FC = () => {
           width: 32,
           height: 30,
           padding: 0,
-          color: stayInDrawingMode ? THEME_TOKENS.colors.accent : 'currentColor',
-          backgroundColor: stayInDrawingMode ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+          color: stayInDrawingMode ? THEME_TOKENS.colors.accent : 'currentColor'
         }}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -381,8 +377,7 @@ export const LeftDrawingToolbar: React.FC = () => {
           width: 32,
           height: 30,
           padding: 0,
-          color: isDrawingsLocked ? THEME_TOKENS.colors.accent : 'currentColor',
-          backgroundColor: isDrawingsLocked ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+          color: isDrawingsLocked ? THEME_TOKENS.colors.accent : 'currentColor'
         }}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -401,8 +396,7 @@ export const LeftDrawingToolbar: React.FC = () => {
           width: 32,
           height: 30,
           padding: 0,
-          color: isDrawingsHidden ? THEME_TOKENS.colors.accent : 'currentColor',
-          backgroundColor: isDrawingsHidden ? 'rgba(41, 98, 255, 0.15)' : 'transparent'
+          color: isDrawingsHidden ? THEME_TOKENS.colors.accent : 'currentColor'
         }}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

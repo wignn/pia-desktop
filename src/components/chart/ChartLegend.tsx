@@ -62,21 +62,28 @@ export const ChartLegend: React.FC = () => {
         userSelect: 'none'
       }}
     >
-      {/* 1. Main Symbol Info & OHLC Status Bar */}
+      {/* 1. Main Symbol Info & OHLC Status Bar with Frosted Capsule */}
       <div
         style={{
-          display: 'flex',
+          display: 'inline-flex',
           alignItems: 'center',
           flexWrap: 'nowrap',
-          gap: 6,
-          lineHeight: '18px',
-          whiteSpace: 'nowrap'
+          gap: 8,
+          lineHeight: '20px',
+          whiteSpace: 'nowrap',
+          backgroundColor: 'rgba(11, 14, 20, 0.72)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.07)',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+          borderRadius: 6,
+          padding: '2px 8px'
         }}
       >
         {/* Symbol & Timeframe & Exchange badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <SymbolLogo symbol={symbol} size={16} />
-          <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, fontSize: 13 }}>
+          <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, fontSize: 13, letterSpacing: '0.02em' }}>
             {symbol}
           </span>
           <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
@@ -90,7 +97,19 @@ export const ChartLegend: React.FC = () => {
             {timeframe.toUpperCase()}
           </span>
           <span style={{ color: THEME_TOKENS.colors.textMuted }}>•</span>
-          <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted, textTransform: 'uppercase' }}>
+          <span
+            style={{
+              fontSize: 9,
+              color: THEME_TOKENS.colors.gold,
+              backgroundColor: THEME_TOKENS.colors.goldBg,
+              border: '1px solid rgba(245, 158, 11, 0.22)',
+              borderRadius: 3,
+              padding: '0 4px',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              letterSpacing: '0.04em'
+            }}
+          >
             {symInfo?.category || 'FOREX'}
           </span>
         </div>
@@ -101,24 +120,25 @@ export const ChartLegend: React.FC = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 7,
               color: THEME_TOKENS.colors.textSecondary,
-              fontFamily: THEME_TOKENS.typography?.fontMono
+              fontFamily: THEME_TOKENS.typography?.fontMono,
+              fontVariantNumeric: 'tabular-nums'
             }}
           >
             {open !== undefined && (
               <span>
-                O <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>{formatPrice(open)}</span>
+                O <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontWeight: 500 }}>{formatPrice(open)}</span>
               </span>
             )}
             {high !== undefined && (
               <span>
-                H <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>{formatPrice(high)}</span>
+                H <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontWeight: 500 }}>{formatPrice(high)}</span>
               </span>
             )}
             {low !== undefined && (
               <span>
-                L <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>{formatPrice(low)}</span>
+                L <span style={{ color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish, fontWeight: 500 }}>{formatPrice(low)}</span>
               </span>
             )}
             <span>

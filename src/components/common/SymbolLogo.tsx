@@ -387,6 +387,8 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
             <img
               src={`https://cdn.jsdelivr.net/gh/lipis/flag-icons@main/flags/4x3/${baseCountry}.svg`}
               alt={forex.base}
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               onError={() => setBaseFlagError(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
@@ -420,6 +422,8 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
             <img
               src={`https://cdn.jsdelivr.net/gh/lipis/flag-icons@main/flags/4x3/${quoteCountry}.svg`}
               alt={forex.quote}
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               onError={() => setQuoteFlagError(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
@@ -476,6 +480,8 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
       alt={symbol}
       loading="lazy"
       decoding="async"
+      crossOrigin="anonymous"
+      referrerPolicy="no-referrer"
       onLoad={() => {
         if (normSym && currentCandidateUrl) {
           LOGO_SUCCESS_CACHE.set(normSym, currentCandidateUrl)

@@ -219,8 +219,8 @@ const SymbolSearchDialog: React.FC = () => {
             const isSelected = idx === selectedIndex
             const quote = prices[item.symbol]
             const price = quote?.price
-            const changePercent = quote?.change24hPercent ?? 0
-            const isUp = changePercent >= 0
+            const changePercent = quote?.change24hPercent
+            const isUp = (changePercent ?? 0) >= 0
 
             return (
               <div
@@ -284,16 +284,18 @@ const SymbolSearchDialog: React.FC = () => {
                     >
                       {price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
-                        color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
-                      }}
-                    >
-                      {isUp ? '+' : ''}{changePercent.toFixed(2)}%
-                    </span>
+                    {changePercent !== undefined && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
+                          color: isUp ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
+                        }}
+                      >
+                        {changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

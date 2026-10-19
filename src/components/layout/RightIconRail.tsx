@@ -164,17 +164,6 @@ const RAIL_ITEMS: RailItem[] = [
         <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
       </svg>
     )
-  },
-  {
-    id: 'live',
-    title: 'Financial Broadcast & Live TV',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f23645" strokeWidth="2">
-        <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
-        <polyline points="17 2 12 7 7 2" />
-        <circle cx="12" cy="14" r="2" fill="#f23645" />
-      </svg>
-    )
   }
 ]
 
@@ -218,8 +207,10 @@ export const RightIconRail: React.FC = () => {
               height: 30,
               padding: 0,
               color: isSelected ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textSecondary,
-              backgroundColor: isSelected ? 'rgba(41, 98, 255, 0.15)' : 'transparent',
-              borderRadius: 4
+              backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+              borderRadius: 5,
+              border: isSelected ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+              boxShadow: isSelected ? 'inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 10px rgba(59, 130, 246, 0.15)' : 'none'
             }}
           >
             {item.icon}

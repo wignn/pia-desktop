@@ -314,6 +314,7 @@ export const SocialPanel: React.FC = () => {
                         src={mediaUrl}
                         alt="attachment"
                         loading="lazy"
+                        crossOrigin="anonymous"
                         referrerPolicy="no-referrer"
                         style={{
                           width: '100%',
