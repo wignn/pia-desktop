@@ -209,4 +209,172 @@ describe('usePaperTradingStore', () => {
     expect(state.account.currency).toBe('USC')
     expect(state.account.accountType).toBe('cent')
   })
+
+  it('allows freely setting custom account balance/equity without losing positions', async () => {
+    const store = usePaperTradingStore.getState()
+    await store.openPosition({ symbol: 'EURUSD', side: 'buy', size: 1, price: 1.1 })
+    expect(usePaperTradingStore.getState().account.positions).toHaveLength(1)
+
+    // Set custom equity/balance freely
+    const success = await store.setBalance(25430.5)
+    expect(success).toBe(true)
+
+    const state = usePaperTradingStore.getState()
+    expect(state.account.balance).toBe(25430.5)
+    expect(state.account.positions).toHaveLength(1)
+    expect(savedAccounts[savedAccounts.length - 1].balance).toBe(25430.5)
+  })
+
+  describe('Pending Orders Engine', () => {
+    it('places, updates, and cancels pending orders', async () => {
+      const store = usePaperTradingStore.getState()
+      const res = await store.placeOrder({
+        symbol: 'BTCUSDT',
+        type: 'buy_limit',
+        price: 60000,
+        size: 0.5,
+        stopLoss: 59000,
+        takeProfit: 65000
+      })
+
+      expect(res.success).toBe(true)
+      expect(usePaperTradingStore.getState().account.orders).toHaveLength(1)
+      const order = usePaperTradingStore.getState().account.orders![0]
+      expect(order.type).toBe('buy_limit')
+      expect(order.side).toBe('buy')
+      expect(order.price).toBe(60000)
+      expect(order.size).toBe(0.5)
+
+      // Update order price
+      const updateRes = await store.updateOrder(order.id, { price: 60500 })
+      expect(updateRes).toBe(true)
+      expect(usePaperTradingStore.getState().account.orders![0].price).toBe(60500)
+
+      // Cancel order
+      const cancelRes = await store.cancelOrder(order.id)
+      expect(cancelRes).toBe(true)
+      expect(usePaperTradingStore.getState().account.orders).toHaveLength(0)
+    })
+
+    it('triggers and fills buy_limit when price falls to or below order price', async () => {
+      const store = usePaperTradingStore.getState()
+      await store.placeOrder({
+        symbol: 'ETHUSDT',
+        type: 'buy_limit',
+        price: 3000,
+        size: 1.0,
+        stopLoss: 2900,
+        takeProfit: 3300
+      })
+
+      expect(usePaperTradingStore.getState().account.orders).toHaveLength(1)
+      expect(usePaperTradingStore.getState().account.positions).toHaveLength(0)
+
+      // Quote higher than limit - no fill
+      store.checkPositionsSLTP({
+        symbol: 'ETHUSDT',
+        price: 3050,
+        change24h: 0,
+        high24h: 3100,
+        low24h: 2900,
+        timestamp: Date.now()
+      })
+      expect(usePaperTradingStore.getState().account.orders).toHaveLength(1)
+      expect(usePaperTradingStore.getState().account.positions).toHaveLength(0)
+
+      // Quote at or below limit - triggers fill!
+      store.checkPositionsSLTP({
+        symbol: 'ETHUSDT',
+        price: 2995,
+        change24h: 0,
+        high24h: 3100,
+        low24h: 2900,
+        timestamp: Date.now()
+      })
+
+      const state = usePaperTradingStore.getState()
+      expect(state.account.orders).toHaveLength(0)
+      expect(state.account.positions).toHaveLength(1)
+      const pos = state.account.positions[0]
+      expect(pos.symbol).toBe('ETHUSDT')
+      expect(pos.side).toBe('buy')
+      expect(pos.entryPrice).toBe(3000)
+      expect(pos.stopLoss).toBe(2900)
+      expect(pos.takeProfit).toBe(3300)
+    })
+
+    it('triggers and fills sell_limit when price rises to or above order price', async () => {
+      const store = usePaperTradingStore.getState()
+      await store.placeOrder({
+        symbol: 'ETHUSDT',
+        type: 'sell_limit',
+        price: 3200,
+        size: 1.0
+      })
+
+      // Quote at or above limit - triggers fill
+      store.checkPositionsSLTP({
+        symbol: 'ETHUSDT',
+        price: 3205,
+        change24h: 0,
+        high24h: 3250,
+        low24h: 3000,
+        timestamp: Date.now()
+      })
+
+      const state = usePaperTradingStore.getState()
+      expect(state.account.orders).toHaveLength(0)
+      expect(state.account.positions).toHaveLength(1)
+      expect(state.account.positions[0].side).toBe('sell')
+      expect(state.account.positions[0].entryPrice).toBe(3200)
+    })
+
+    it('triggers and fills buy_stop and sell_stop correctly', async () => {
+      const store = usePaperTradingStore.getState()
+      await store.placeOrder({
+        symbol: 'SOLUSDT',
+        type: 'buy_stop',
+        price: 150,
+        size: 2.0
+      })
+
+      // Price rises to buy_stop
+      store.checkPositionsSLTP({
+        symbol: 'SOLUSDT',
+        price: 151,
+        change24h: 0,
+        high24h: 155,
+        low24h: 140,
+        timestamp: Date.now()
+      })
+
+      let state = usePaperTradingStore.getState()
+      expect(state.account.orders).toHaveLength(0)
+      expect(state.account.positions).toHaveLength(1)
+      expect(state.account.positions[0].side).toBe('buy')
+
+      // Now place a sell_stop
+      await store.placeOrder({
+        symbol: 'SOLUSDT',
+        type: 'sell_stop',
+        price: 140,
+        size: 1.0
+      })
+
+      // Price falls to sell_stop
+      store.checkPositionsSLTP({
+        symbol: 'SOLUSDT',
+        price: 139,
+        change24h: 0,
+        high24h: 155,
+        low24h: 135,
+        timestamp: Date.now()
+      })
+
+      state = usePaperTradingStore.getState()
+      expect(state.account.orders).toHaveLength(0)
+      expect(state.account.positions).toHaveLength(2)
+      expect(state.account.positions[1].side).toBe('sell')
+    })
+  })
 })

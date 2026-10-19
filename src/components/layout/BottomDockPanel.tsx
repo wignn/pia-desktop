@@ -16,6 +16,7 @@ interface BottomTab {
 export interface BottomDockPanelProps {
   initialOpen?: boolean
   initialTab?: BottomTabId
+  initialTradingSubTab?: 'positions' | 'orders'
 }
 
 const TABS: BottomTab[] = [
@@ -27,9 +28,11 @@ const TABS: BottomTab[] = [
 
 export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
   initialOpen = false,
-  initialTab = 'screener'
+  initialTab = 'screener',
+  initialTradingSubTab = 'positions'
 }) => {
   const [activeTab, setActiveTab] = useState<BottomTabId>(initialTab)
+  const [tradingSubTab, setTradingSubTab] = useState<'positions' | 'orders'>(initialTradingSubTab)
   const [isOpen, setIsOpen] = useState(initialOpen)
   const [drawerHeight, setDrawerHeight] = useState(260)
   const [screenerFilter, setScreenerFilter] = useState<'all' | 'gainers' | 'losers' | 'volume'>('all')
@@ -50,6 +53,10 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
   const setAccountType = usePaperTradingStore((state) => state.setAccountType)
   const closePosition = usePaperTradingStore((state) => state.closePosition)
   const closeAllPositions = usePaperTradingStore((state) => state.closeAllPositions)
+  const cancelOrder = usePaperTradingStore((state) => state.cancelOrder)
+  const setBalance = usePaperTradingStore((state) => state.setBalance)
+  const [isEditingBalance, setIsEditingBalance] = useState(false)
+  const [balanceInput, setBalanceInput] = useState('')
 
   // Workspace Store
   const setImportPositionsModalOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
@@ -112,10 +119,12 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
     return (account.positions || []).map((pos) => {
       const quote = prices[pos.symbol]
       const markPrice = quote?.price ?? pos.entryPrice
-      const diff = pos.side === 'buy' ? markPrice - pos.entryPrice : pos.entryPrice - markPrice
-      const pnl = diff * pos.size
-      const margin = pos.size * pos.entryPrice
       const isPosCent = pos.accountType === 'cent' || pos.lotType === 'cent' || isCentAccount
+      const diff = pos.side === 'buy' ? markPrice - pos.entryPrice : pos.entryPrice - markPrice
+      // In a USD Cent (USC) account, 1 USD = 100 US Cents (¢)
+      const multiplier = isPosCent ? 100 : 1
+      const pnl = diff * pos.size * multiplier
+      const margin = pos.size * pos.entryPrice * multiplier
       const { pricePrecision } = getSymbolPrecision(pos.symbol, undefined, pos.entryPrice)
 
       return {
@@ -128,6 +137,10 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
       }
     })
   }, [account.positions, prices, isCentAccount])
+
+  const activeOrders = React.useMemo(() => {
+    return (account.orders || []).filter((o) => !o.status || o.status === 'pending')
+  }, [account.orders])
 
   const totalUnrealizedPnl = React.useMemo(() => {
     return positionsWithMetrics.reduce((sum, p) => sum + p.pnl, 0)
@@ -144,7 +157,7 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
 
   const formatCurrencyValue = (val: number, isCent: boolean): string => {
     if (isCent) {
-      return `${Math.round(val).toLocaleString('en-US')} ¢`
+      return `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ¢`
     }
     return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
@@ -156,7 +169,7 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
   const pnlBoxShadow = totalUnrealizedPnl >= 0 ? '0 0 10px rgba(16, 185, 129, 0.2)' : '0 0 10px rgba(244, 63, 94, 0.2)'
 
   const pnlText = isCentAccount
-    ? `${totalUnrealizedPnl >= 0 ? '+' : ''}${Math.round(totalUnrealizedPnl).toLocaleString('en-US')} ¢ (${totalUnrealizedPnl >= 0 ? '+' : ''}${unrealizedPnlPercent.toFixed(2)}%)`
+    ? `${pnlSign}${Math.abs(totalUnrealizedPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ¢ (${totalUnrealizedPnl >= 0 ? '+' : ''}${unrealizedPnlPercent.toFixed(2)}%)`
     : `${pnlSign}$${Math.abs(totalUnrealizedPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${totalUnrealizedPnl >= 0 ? '+' : ''}${unrealizedPnlPercent.toFixed(2)}%)`
 
   const toggleOpen = (): void => {
@@ -555,12 +568,69 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
 
                   {/* Balance Badge */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>
-                      Balance
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: THEME_TOKENS.colors.textBright, fontFamily: THEME_TOKENS.typography?.fontMono }}>
-                      {formatCurrencyValue(balance, isCentAccount)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 9, color: THEME_TOKENS.colors.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>
+                        Balance
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBalanceInput(balance.toString())
+                          setIsEditingBalance(true)
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: THEME_TOKENS.colors.accent,
+                          fontSize: 9,
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline'
+                        }}
+                        title="Set custom account balance/equity"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    {isEditingBalance ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <input
+                          type="number"
+                          step="any"
+                          value={balanceInput}
+                          onChange={(e) => setBalanceInput(e.target.value)}
+                          className="tv-input"
+                          style={{ fontSize: 10, padding: '1px 4px', width: 80, height: 18 }}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const val = parseFloat(balanceInput)
+                            if (!isNaN(val) && val >= 0) {
+                              await setBalance(val)
+                            }
+                            setIsEditingBalance(false)
+                          }}
+                          className="tv-btn"
+                          style={{ fontSize: 9, padding: '1px 4px', height: 18 }}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingBalance(false)}
+                          className="tv-btn"
+                          style={{ fontSize: 9, padding: '1px 4px', height: 18 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: THEME_TOKENS.colors.textBright, fontFamily: THEME_TOKENS.typography?.fontMono }}>
+                        {formatCurrencyValue(balance, isCentAccount)}
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle }} />
@@ -695,9 +765,65 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                 </div>
               </div>
 
+              {/* Sub-tab Navigation: Positions (N) vs Orders (N) */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 12px',
+                  backgroundColor: THEME_TOKENS.colors.bgSurface,
+                  borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setTradingSubTab('positions')}
+                  className={`tv-btn ${tradingSubTab === 'positions' ? 'active' : ''}`}
+                  style={{
+                    padding: '3px 10px',
+                    fontSize: 11,
+                    fontWeight: tradingSubTab === 'positions' ? 700 : 500,
+                    backgroundColor:
+                      tradingSubTab === 'positions' ? THEME_TOKENS.colors.bgActive : 'transparent',
+                    color:
+                      tradingSubTab === 'positions'
+                        ? THEME_TOKENS.colors.textBright
+                        : THEME_TOKENS.colors.textSecondary,
+                    border: `1px solid ${tradingSubTab === 'positions' ? THEME_TOKENS.colors.borderMedium : 'transparent'}`,
+                    borderRadius: 4,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {`Positions (${positionsWithMetrics.length})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTradingSubTab('orders')}
+                  className={`tv-btn ${tradingSubTab === 'orders' ? 'active' : ''}`}
+                  style={{
+                    padding: '3px 10px',
+                    fontSize: 11,
+                    fontWeight: tradingSubTab === 'orders' ? 700 : 500,
+                    backgroundColor:
+                      tradingSubTab === 'orders' ? THEME_TOKENS.colors.bgActive : 'transparent',
+                    color:
+                      tradingSubTab === 'orders'
+                        ? THEME_TOKENS.colors.textBright
+                        : THEME_TOKENS.colors.textSecondary,
+                    border: `1px solid ${tradingSubTab === 'orders' ? THEME_TOKENS.colors.borderMedium : 'transparent'}`,
+                    borderRadius: 4,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {`Orders (${activeOrders.length})`}
+                </button>
+              </div>
+
               {/* Table or Empty State Container */}
               <div style={{ flex: 1, overflowY: 'auto' }}>
-                {positionsWithMetrics.length === 0 ? (
+                {tradingSubTab === 'positions' ? (
+                  positionsWithMetrics.length === 0 ? (
                   <div
                     style={{
                       display: 'flex',
@@ -797,9 +923,10 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                             ? markPriceQuote.price.toFixed(pos.precision)
                             : pos.entryPrice.toFixed(pos.precision)
 
+                        const rowPnlSign = pos.pnl >= 0 ? '+' : '-'
                         const pnlValFormatted = pos.isPosCent
-                          ? `${pos.pnl >= 0 ? '+' : ''}${Math.round(pos.pnl).toLocaleString('en-US')} ¢`
-                          : `${pos.pnl >= 0 ? '+' : '-'}$${Math.abs(pos.pnl).toFixed(2)}`
+                          ? `${rowPnlSign}${Math.abs(pos.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ¢`
+                          : `${rowPnlSign}$${Math.abs(pos.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
                         return (
                           <tr
@@ -961,6 +1088,178 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                       })}
                     </tbody>
                   </table>
+                )
+              ) : (
+                activeOrders.length === 0 ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '32px 16px',
+                        gap: 8,
+                        textAlign: 'center'
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
+                        No pending orders
+                      </div>
+                      <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, maxWidth: 400 }}>
+                        Place Limit or Stop orders on the chart or in Order Entry to queue pending trades.
+                      </div>
+                    </div>
+                  ) : (
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        fontSize: 11,
+                        textAlign: 'left',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <thead
+                        style={{
+                          position: 'sticky',
+                          top: 0,
+                          backgroundColor: THEME_TOKENS.colors.bgSurface,
+                          borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                          zIndex: 5
+                        }}
+                      >
+                        <tr style={{ color: THEME_TOKENS.colors.textSecondary, fontSize: 10, fontWeight: 600 }}>
+                          <th style={{ padding: '6px 10px' }}>Ticket</th>
+                          <th style={{ padding: '6px 8px' }}>Time</th>
+                          <th style={{ padding: '6px 8px' }}>Symbol</th>
+                          <th style={{ padding: '6px 8px' }}>Type</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Lots</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Order Price</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Market Price</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Stop Loss</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right' }}>Take Profit</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeOrders.map((ord) => {
+                          const q = prices[ord.symbol]
+                          const markPrice = q?.price ?? ord.price
+                          const isBuy = ord.side === 'buy' || ord.type.startsWith('buy')
+                          const { pricePrecision: pPrecision } = getSymbolPrecision(
+                            ord.symbol,
+                            undefined,
+                            ord.price
+                          )
+                          return (
+                            <tr
+                              key={ord.id}
+                              onClick={() => setSymbol(ord.symbol)}
+                              style={{
+                                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                                cursor: 'pointer',
+                                backgroundColor:
+                                  currentSymbol === ord.symbol ? THEME_TOKENS.colors.bgActive : 'transparent',
+                                fontFamily: THEME_TOKENS.typography?.fontMono
+                              }}
+                            >
+                              <td style={{ padding: '5px 10px', color: THEME_TOKENS.colors.textMuted, fontSize: 10 }}>
+                                {ord.ticket ? ord.ticket : `#${ord.id.slice(-6)}`}
+                              </td>
+                              <td style={{ padding: '5px 8px', color: THEME_TOKENS.colors.textSecondary }}>
+                                {new Date(ord.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <SymbolLogo symbol={ord.symbol} size={14} />
+                                  <span style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>
+                                    {ord.symbol}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '5px 8px' }}>
+                                <span
+                                  style={{
+                                    padding: '1px 5px',
+                                    borderRadius: 3,
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    backgroundColor: isBuy
+                                      ? 'rgba(6, 182, 212, 0.15)'
+                                      : 'rgba(245, 158, 11, 0.15)',
+                                    color: isBuy ? '#06b6d4' : '#f59e0b',
+                                    border: `1px solid ${isBuy ? 'rgba(6, 182, 212, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                                  }}
+                                >
+                                  {ord.type.replace('_', ' ').toUpperCase()}
+                                </span>
+                              </td>
+                              <td style={{ padding: '5px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textPrimary }}>
+                                {`${ord.size.toFixed(2)} L`}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '5px 8px',
+                                  textAlign: 'right',
+                                  color: THEME_TOKENS.colors.textBright,
+                                  fontWeight: 600
+                                }}
+                              >
+                                {ord.price.toFixed(pPrecision)}
+                              </td>
+                              <td style={{ padding: '5px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textSecondary }}>
+                                {markPrice.toFixed(pPrecision)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '5px 8px',
+                                  textAlign: 'right',
+                                  color: ord.stopLoss ? THEME_TOKENS.colors.bearish : THEME_TOKENS.colors.textMuted
+                                }}
+                              >
+                                {ord.stopLoss ? ord.stopLoss.toFixed(pPrecision) : '--'}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '5px 8px',
+                                  textAlign: 'right',
+                                  color: ord.takeProfit ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.textMuted
+                                }}
+                              >
+                                {ord.takeProfit ? ord.takeProfit.toFixed(pPrecision) : '--'}
+                              </td>
+                              <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    cancelOrder(ord.id)
+                                  }}
+                                  className="tv-btn"
+                                  style={{
+                                    padding: '2px 6px',
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    color: THEME_TOKENS.colors.bearish,
+                                    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                                    border: '1px solid rgba(244, 63, 94, 0.25)',
+                                    borderRadius: 3,
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Cancel pending order"
+                                >
+                                  ✕ Cancel
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )
                 )}
               </div>
             </div>

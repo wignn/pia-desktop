@@ -130,7 +130,7 @@ describe('BottomDockPanel - Institutional Trading Account Manager', () => {
       const html = renderToString(React.createElement(BottomDockPanel, { initialOpen: true, initialTab: 'trading' }))
 
       expect(html).toContain('Cent Account')
-      expect(html).toContain('10,000,000 ¢')
+      expect(html).toContain('10,000,000.00 ¢')
     })
   })
 
@@ -214,6 +214,77 @@ describe('BottomDockPanel - Institutional Trading Account Manager', () => {
       expect(html).toContain('EURUSD')
       expect(html).toContain('2.00 L')
       expect(html).toContain('SELL')
+    })
+
+    it('renders sub-tabs for Positions and Pending Orders with counts', () => {
+      usePaperTradingStore.setState({
+        account: {
+          balance: 100000,
+          initialBalance: 100000,
+          currency: 'USD',
+          positions: [
+            {
+              id: 'pos_1',
+              symbol: 'EURUSD',
+              side: 'buy',
+              entryPrice: 1.08,
+              size: 1.0,
+              timestamp: Date.now()
+            }
+          ],
+          orders: [
+            {
+              id: 'ord_1',
+              symbol: 'BTCUSDT',
+              type: 'buy_limit',
+              side: 'buy',
+              price: 85000,
+              size: 0.25,
+              timestamp: Date.now(),
+              ticket: 'ORD-7701',
+              status: 'pending'
+            }
+          ],
+          updatedAt: Date.now()
+        }
+      })
+
+      const html = renderToString(React.createElement(BottomDockPanel, { initialOpen: true, initialTab: 'trading' }))
+      expect(html).toContain('Positions (1)')
+      expect(html).toContain('Orders (1)')
+    })
+
+    it('renders pending orders table when initialTradingSubTab is orders', () => {
+      usePaperTradingStore.setState({
+        account: {
+          balance: 100000,
+          initialBalance: 100000,
+          currency: 'USD',
+          positions: [],
+          orders: [
+            {
+              id: 'ord_1',
+              symbol: 'BTCUSDT',
+              type: 'buy_limit',
+              side: 'buy',
+              price: 85000,
+              size: 0.25,
+              timestamp: Date.now(),
+              ticket: 'ORD-7701',
+              status: 'pending'
+            }
+          ],
+          updatedAt: Date.now()
+        }
+      })
+
+      const html = renderToString(React.createElement(BottomDockPanel, { initialOpen: true, initialTab: 'trading', initialTradingSubTab: 'orders' }))
+      expect(html).toContain('ORD-7701')
+      expect(html).toContain('BTCUSDT')
+      expect(html).toContain('BUY LIMIT')
+      expect(html).toContain('0.25 L')
+      expect(html).toContain('85000')
+      expect(html).toContain('Cancel')
     })
   })
 

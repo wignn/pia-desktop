@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import type { PaperOrderType } from '@shared/types'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -6,7 +7,7 @@ import { getSymbolPrecision } from '@shared/market-utils'
 import { THEME_TOKENS } from '../../theme/tokens'
 
 export interface PaperTradingPanelProps {
-  initialExecutionMode?: 'market' | 'custom'
+  initialExecutionMode?: 'market' | 'limit' | 'stop' | 'custom'
   initialLotSize?: string
   initialCustomPrice?: string
   initialSide?: 'buy' | 'sell'
@@ -48,12 +49,16 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
   const setAccountType = usePaperTradingStore((state) => state.setAccountType)
   const storeOpenPosition = usePaperTradingStore((state) => state.openPosition)
   const openPosition = onOpenPosition || storeOpenPosition
+  const placeOrder = usePaperTradingStore((state) => state.placeOrder)
   const storeClosePosition = usePaperTradingStore((state) => state.closePosition)
   const closePosition = onClosePosition || storeClosePosition
   const resetAccount = usePaperTradingStore((state) => state.resetAccount)
   const lastExecutedAction = usePaperTradingStore((state) => state.lastExecutedAction)
   const clearActionNotification = usePaperTradingStore((state) => state.clearActionNotification)
   const loadAccount = usePaperTradingStore((state) => state.loadAccount)
+  const customEntryDraft = usePaperTradingStore((state) => state.customEntryDraft)
+  const setCustomEntryDraft = usePaperTradingStore((state) => state.setCustomEntryDraft)
+  const setActiveLotSize = usePaperTradingStore((state) => state.setActiveLotSize)
 
   const setImportPositionsModalOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
 
@@ -62,7 +67,9 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
   const hookPrices = useMarketStore((state) => state.prices)
   const prices = useMarketStore.getState().prices || hookPrices
 
-  const [executionMode, setExecutionMode] = useState<'market' | 'custom'>(initialExecutionMode)
+  const [executionMode, setExecutionMode] = useState<'market' | 'limit' | 'stop' | 'custom'>(
+    initialExecutionMode
+  )
   const [side, setSide] = useState<'buy' | 'sell'>(initialSide)
   const [size, setSize] = useState(initialLotSize)
   const [customPrice, setCustomPrice] = useState(initialCustomPrice)
@@ -70,6 +77,9 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
   const [takeProfit, setTakeProfit] = useState(initialTakeProfit)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isEditingBalance, setIsEditingBalance] = useState(false)
+  const [customBalanceInput, setCustomBalanceInput] = useState('')
+  const setBalance = usePaperTradingStore((state) => state.setBalance)
 
   useEffect(() => {
     loadAccount()
@@ -93,10 +103,58 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
   const liveBid = currentQuote?.bid ?? currentQuote?.price ?? 0
 
   const activeMarketPrice = side === 'buy' ? liveAsk : liveBid
-  const effectivePrice =
-    executionMode === 'custom' ? parseFloat(customPrice) || 0 : activeMarketPrice
+  const isPendingMode = executionMode !== 'market'
+  const effectivePrice = isPendingMode ? parseFloat(customPrice) || 0 : activeMarketPrice
 
   const { pricePrecision } = getSymbolPrecision(symbol || '', undefined, livePrice)
+
+  // Synchronize custom entry draft with input fields
+  useEffect(() => {
+    if (executionMode !== 'market' && symbol) {
+      const parsedPrice = parseFloat(customPrice) || livePrice || 0
+      if (parsedPrice > 0) {
+        setCustomEntryDraft({
+          symbol,
+          price: parsedPrice,
+          side,
+          size: parseFloat(size) || 0.1,
+          active: true,
+          orderType:
+            executionMode === 'limit'
+              ? 'limit'
+              : executionMode === 'stop'
+                ? 'stop'
+                : undefined
+        })
+      }
+    } else {
+      setCustomEntryDraft(null)
+    }
+  }, [executionMode, symbol, side, size, customPrice, livePrice, setCustomEntryDraft])
+
+  // When customEntryDraft price changes via chart slide/drag, sync back to customPrice input
+  useEffect(() => {
+    if (executionMode !== 'market' && customEntryDraft?.active && customEntryDraft.price > 0) {
+      const currentNumeric = parseFloat(customPrice)
+      if (isNaN(currentNumeric) || Math.abs(currentNumeric - customEntryDraft.price) > 0.0000001) {
+        setCustomPrice(customEntryDraft.price.toFixed(pricePrecision))
+      }
+    }
+  }, [customEntryDraft?.price, executionMode, pricePrecision])
+
+  // Clear draft on unmount
+  useEffect(() => {
+    return () => {
+      setCustomEntryDraft(null)
+    }
+  }, [setCustomEntryDraft])
+
+  useEffect(() => {
+    const num = parseFloat(size)
+    if (num > 0) {
+      setActiveLotSize(num)
+    }
+  }, [size, setActiveLotSize])
 
   // Pip specifications for currency/asset heuristics
   // ponytail: pip stepper uses standard pip formula; upgrade to broker point spec when exotic pairs are added
@@ -110,16 +168,23 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
   }, [symbol])
 
   const orderSizeNum = parseFloat(size) || 0
-  const orderMargin = orderSizeNum * effectivePrice
-  const orderEstValue = orderSizeNum * effectivePrice
-  const orderPipValue = orderSizeNum * pipSize
+  const orderMultiplier = isCentAccount ? 100 : 1
+  const orderMargin = orderSizeNum * effectivePrice * orderMultiplier
+  const orderEstValue = orderSizeNum * effectivePrice * orderMultiplier
+  const orderPipValue = orderSizeNum * pipSize * orderMultiplier
 
   // Format currency value based on account mode
-  const formatCurrency = (val: number): string => {
+  const formatCurrency = (val: number, forceSign = false): string => {
+    const isNegative = val < 0
+    const sign = isNegative ? '-' : forceSign ? '+' : ''
+    const absStr = Math.abs(val).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
     if (isCentAccount) {
-      return `${Math.round(val).toLocaleString('en-US')} ¢`
+      return `${sign}${absStr} ¢`
     }
-    return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return `${sign}$${absStr}`
   }
 
   // Calculate live metrics for open positions
@@ -127,12 +192,12 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
     return (account.positions || []).map((pos) => {
       const liveQ = prices[pos.symbol]
       const markPrice = liveQ?.price ?? pos.entryPrice
-      const pnl =
-        pos.side === 'buy'
-          ? (markPrice - pos.entryPrice) * pos.size
-          : (pos.entryPrice - markPrice) * pos.size
-      const pnlPercent = pos.entryPrice > 0 ? (pnl / (pos.entryPrice * pos.size)) * 100 : 0
-      const posMargin = pos.size * pos.entryPrice
+      const isPosCent = pos.accountType === 'cent' || isCentAccount
+      const multiplier = isPosCent ? 100 : 1
+      const diff = pos.side === 'buy' ? markPrice - pos.entryPrice : pos.entryPrice - markPrice
+      const pnl = diff * pos.size * multiplier
+      const pnlPercent = pos.entryPrice > 0 ? (diff / pos.entryPrice) * 100 : 0
+      const posMargin = pos.size * pos.entryPrice * multiplier
       const { pricePrecision: posPrecision } = getSymbolPrecision(
         pos.symbol,
         undefined,
@@ -148,7 +213,7 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
         precision: posPrecision
       }
     })
-  }, [account.positions, prices])
+  }, [account.positions, prices, isCentAccount])
 
   const totalUnrealizedPnl = useMemo(() => {
     return positionsWithLiveMetrics.reduce((acc, pos) => acc + pos.pnl, 0)
@@ -190,8 +255,8 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
 
     if (effectivePrice <= 0) {
       setOrderError(
-        executionMode === 'custom'
-          ? 'Please enter a valid custom entry price'
+        isPendingMode
+          ? 'Please enter a valid order price'
           : 'Waiting for live market price feed...'
       )
       return
@@ -200,6 +265,36 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
     setIsSubmitting(true)
     const slNum = parseFloat(stopLoss)
     const tpNum = parseFloat(takeProfit)
+
+    if (executionMode === 'limit' || executionMode === 'stop') {
+      const orderType: PaperOrderType =
+        executionMode === 'limit'
+          ? side === 'buy'
+            ? 'buy_limit'
+            : 'sell_limit'
+          : side === 'buy'
+            ? 'buy_stop'
+            : 'sell_stop'
+
+      const res = await placeOrder({
+        symbol,
+        type: orderType,
+        price: effectivePrice,
+        size: orderSizeNum,
+        stopLoss: !isNaN(slNum) && slNum > 0 ? slNum : undefined,
+        takeProfit: !isNaN(tpNum) && tpNum > 0 ? tpNum : undefined,
+        accountType: isCentAccount ? 'cent' : 'standard'
+      })
+
+      setIsSubmitting(false)
+      if (!res.success) {
+        setOrderError(res.error || 'Failed to place pending order')
+      } else {
+        setStopLoss('')
+        setTakeProfit('')
+      }
+      return
+    }
 
     const res = await openPosition({
       symbol,
@@ -362,19 +457,76 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
           }}
         >
           <div>
-            <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
-              Balance
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                Balance
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomBalanceInput(account.balance.toString())
+                  setIsEditingBalance(true)
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: THEME_TOKENS.colors.accent,
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline'
+                }}
+                title="Set custom account balance/equity"
+              >
+                Edit
+              </button>
             </div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                color: THEME_TOKENS.colors.textBright
-              }}
-            >
-              {formatCurrency(account.balance)}
-            </div>
+            {isEditingBalance ? (
+              <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>
+                <input
+                  type="number"
+                  step="any"
+                  value={customBalanceInput}
+                  onChange={(e) => setCustomBalanceInput(e.target.value)}
+                  className="tv-input"
+                  style={{ fontSize: 11, padding: '2px 4px', width: '70%' }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const parsed = parseFloat(customBalanceInput)
+                    if (!isNaN(parsed) && parsed >= 0) {
+                      await setBalance(parsed)
+                    }
+                    setIsEditingBalance(false)
+                  }}
+                  className="tv-btn"
+                  style={{ fontSize: 9, padding: '2px 4px' }}
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingBalance(false)}
+                  className="tv-btn"
+                  style={{ fontSize: 9, padding: '2px 4px' }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  color: THEME_TOKENS.colors.textBright
+                }}
+              >
+                {formatCurrency(account.balance)}
+              </div>
+            )}
           </div>
 
           <div>
@@ -408,8 +560,7 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
                       : THEME_TOKENS.colors.textSecondary
               }}
             >
-              {totalUnrealizedPnl >= 0 ? '+' : ''}
-              {formatCurrency(totalUnrealizedPnl)}
+              {formatCurrency(totalUnrealizedPnl, true)}
             </div>
           </div>
         </div>
@@ -470,7 +621,7 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
           </span>
         </div>
 
-        {/* Execution Mode: Market vs Custom Entry */}
+        {/* Execution Mode: Market vs Limit vs Stop */}
         <div
           style={{
             display: 'flex',
@@ -505,7 +656,13 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setExecutionMode('custom')}
+            onClick={() => {
+              setExecutionMode('limit')
+              if (!customPrice && livePrice > 0) {
+                const defaultLimit = side === 'buy' ? livePrice * 0.998 : livePrice * 1.002
+                setCustomPrice(defaultLimit.toFixed(pricePrecision))
+              }
+            }}
             style={{
               flex: 1,
               padding: '4px 6px',
@@ -515,24 +672,57 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
               fontWeight: 700,
               cursor: 'pointer',
               backgroundColor:
-                executionMode === 'custom' ? THEME_TOKENS.colors.bgActive : 'transparent',
+                executionMode === 'limit' ? THEME_TOKENS.colors.bgActive : 'transparent',
               color:
-                executionMode === 'custom'
+                executionMode === 'limit'
                   ? THEME_TOKENS.colors.textBright
                   : THEME_TOKENS.colors.textSecondary,
               transition: 'all 0.15s ease'
             }}
           >
-            Custom Entry
+            Limit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setExecutionMode('stop')
+              if (!customPrice && livePrice > 0) {
+                const defaultStop = side === 'buy' ? livePrice * 1.002 : livePrice * 0.998
+                setCustomPrice(defaultStop.toFixed(pricePrecision))
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              borderRadius: 4,
+              border: 'none',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor:
+                executionMode === 'stop' ? THEME_TOKENS.colors.bgActive : 'transparent',
+              color:
+                executionMode === 'stop'
+                  ? THEME_TOKENS.colors.textBright
+                  : THEME_TOKENS.colors.textSecondary,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Stop
           </button>
         </div>
 
-        {/* Custom Entry Price Numeric Input (when in Custom Entry mode) */}
-        {executionMode === 'custom' && (
+        {/* Order Price Numeric Input (when in Limit, Stop, or Custom mode) */}
+        {executionMode !== 'market' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
-              Custom Entry Price
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                Order Price
+              </label>
+              <span style={{ fontSize: 9, color: THEME_TOKENS.colors.gold, fontWeight: 600 }}>
+                ↕ Slide on chart
+              </span>
+            </div>
             <input
               type="number"
               step="any"
@@ -838,9 +1028,13 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
         >
           {isSubmitting
             ? 'Placing Order...'
-            : effectivePrice > 0
-              ? `${side.toUpperCase()} ${orderSizeNum.toFixed(2)} L @ ${effectivePrice.toFixed(pricePrecision)}`
-              : `Place ${side.toUpperCase()} Order (${orderSizeNum.toFixed(2)} L)`}
+            : executionMode === 'limit'
+              ? `PLACE ${side.toUpperCase()} LIMIT (${orderSizeNum.toFixed(2)} L @ ${effectivePrice.toFixed(pricePrecision)})`
+              : executionMode === 'stop'
+                ? `PLACE ${side.toUpperCase()} STOP (${orderSizeNum.toFixed(2)} L @ ${effectivePrice.toFixed(pricePrecision)})`
+                : effectivePrice > 0
+                  ? `${side.toUpperCase()} ${orderSizeNum.toFixed(2)} L @ ${effectivePrice.toFixed(pricePrecision)}`
+                  : `Place ${side.toUpperCase()} Order (${orderSizeNum.toFixed(2)} L)`}
         </button>
       </form>
 
@@ -985,7 +1179,7 @@ export const PaperTradingPanel: React.FC<PaperTradingPanelProps> = ({
                         pos.pnl >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish
                     }}
                   >
-                    {`${pos.pnl >= 0 ? '+' : ''}${formatCurrency(pos.pnl)} (${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%)`}
+                    {`${formatCurrency(pos.pnl, true)} (${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%)`}
                   </span>
                 </div>
 

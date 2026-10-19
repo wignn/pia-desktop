@@ -5,16 +5,21 @@
  */
 
 import { create } from 'zustand'
-import type { PaperAccount, PaperPosition, PriceQuote } from '@shared/types'
+import type { CustomEntryDraft, PaperAccount, PaperOrder, PaperOrderType, PaperPosition, PriceQuote } from '@shared/types'
+import { playOrderFilledSound } from '../utils/sound'
 
 interface PaperTradingState {
   account: PaperAccount
   accountType: 'standard' | 'cent'
+  customEntryDraft: CustomEntryDraft | null
+  activeLotSize: number
   isLoading: boolean
   lastExecutedAction: string | null
 
   loadAccount: () => Promise<void>
   setAccountType: (type: 'standard' | 'cent') => void
+  setActiveLotSize: (size: number) => void
+  setCustomEntryDraft: (draft: CustomEntryDraft | null) => void
   openPosition: (params: {
     symbol: string
     side: 'buy' | 'sell'
@@ -27,6 +32,22 @@ interface PaperTradingState {
     accountType?: 'standard' | 'cent'
     source?: 'manual' | 'import'
   }) => Promise<{ success: boolean; error?: string }>
+  placeOrder: (params: {
+    symbol: string
+    type: PaperOrderType
+    price: number
+    size: number
+    stopLoss?: number
+    takeProfit?: number
+    ticket?: string
+    comment?: string
+    accountType?: 'standard' | 'cent'
+  }) => Promise<{ success: boolean; error?: string }>
+  updateOrder: (
+    orderId: string,
+    updates: { price?: number; size?: number; stopLoss?: number; takeProfit?: number }
+  ) => Promise<boolean>
+  cancelOrder: (orderId: string) => Promise<boolean>
   importPositions: (positions: Array<{
     symbol: string
     side: 'buy' | 'sell'
@@ -45,6 +66,7 @@ interface PaperTradingState {
   closePosition: (positionId: string, currentPrice: number) => Promise<boolean>
   closeAllPositions: (symbol?: string, currentPrice?: number) => Promise<boolean>
   resetAccount: (initialBalance?: number) => Promise<boolean>
+  setBalance: (newBalance: number) => Promise<boolean>
   checkPositionsSLTP: (quote: PriceQuote) => void
   clearActionNotification: () => void
 }
@@ -61,8 +83,19 @@ const DEFAULT_ACCOUNT: PaperAccount = {
 export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
   account: DEFAULT_ACCOUNT,
   accountType: 'standard',
+  customEntryDraft: null,
+  activeLotSize: 0.10,
   isLoading: false,
   lastExecutedAction: null,
+
+  setActiveLotSize: (size: number) => {
+    if (size > 0) set({ activeLotSize: size })
+  },
+
+  setCustomEntryDraft: (draft) => {
+    // ponytail: memory-only draft state synced to active chart overlay; upgrade to persistent local order drafts if requested.
+    set({ customEntryDraft: draft })
+  },
 
   loadAccount: async () => {
     set({ isLoading: true })
@@ -105,8 +138,9 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
 
     const posAccountType = params.accountType ?? account.accountType ?? storeAccountType ?? 'standard'
     const isCent = posAccountType === 'cent'
-    // ponytail: notional simplifies forex 100k lot contract sizing to direct units (size * price); upgrade to contract size table when asset-class specific margin rules are needed
-    const notional = params.size * params.price
+    // In a USD Cent (USC) account, 1 USD = 100 US Cents (¢)
+    const multiplier = isCent ? 100 : 1
+    const notional = params.size * params.price * multiplier
 
     // Require sufficient balance to back the trade margin
     if (notional > account.balance) {
@@ -143,6 +177,7 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     try {
       const success = await window.api.paper.saveAccount(updatedAccount)
       if (success) {
+        playOrderFilledSound()
         set({
           account: updatedAccount,
           lastExecutedAction: `Opened ${params.side.toUpperCase()} ${params.size} ${params.symbol} @ ${isCent ? '¢' : '$'}${params.price.toFixed(2)}`
@@ -153,6 +188,115 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     } catch (err) {
       console.error('[PaperTradingStore] Error opening position:', err)
       return { success: false, error: 'Internal execution error' }
+    }
+  },
+
+  placeOrder: async (params) => {
+    const { account, accountType: storeAccountType } = get()
+
+    if (params.size <= 0 || params.price <= 0) {
+      return { success: false, error: 'Order size and price must be positive numbers' }
+    }
+
+    const isBuy = params.type.startsWith('buy')
+    const side: 'buy' | 'sell' = isBuy ? 'buy' : 'sell'
+    const newOrder: PaperOrder = {
+      id: 'ord_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      symbol: params.symbol.toUpperCase(),
+      type: params.type,
+      side,
+      price: params.price,
+      size: params.size,
+      stopLoss: params.stopLoss,
+      takeProfit: params.takeProfit,
+      timestamp: Date.now(),
+      ticket: params.ticket || Math.floor(10000000 + Math.random() * 90000000).toString(),
+      comment: params.comment,
+      accountType: params.accountType ?? account.accountType ?? storeAccountType ?? 'standard',
+      status: 'pending'
+    }
+
+    const updatedOrders = [...(account.orders || []), newOrder]
+    const updatedAccount: PaperAccount = {
+      ...account,
+      orders: updatedOrders,
+      updatedAt: Date.now()
+    }
+
+    try {
+      const success = await window.api.paper.saveAccount(updatedAccount)
+      if (success) {
+        set({
+          account: updatedAccount,
+          lastExecutedAction: `Placed ${params.type.replace('_', ' ').toUpperCase()} for ${params.symbol}`
+        })
+        return { success: true }
+      }
+      return { success: false, error: 'Database persistence failed' }
+    } catch (err) {
+      console.error('[PaperTradingStore] Error placing pending order:', err)
+      return { success: false, error: 'Internal order placement error' }
+    }
+  },
+
+  updateOrder: async (orderId, updates) => {
+    const { account } = get()
+    const orders = account.orders || []
+    const orderIndex = orders.findIndex((o) => o.id === orderId)
+    if (orderIndex === -1) return false
+
+    const updatedOrder = { ...orders[orderIndex], ...updates }
+    const updatedOrders = [...orders]
+    updatedOrders[orderIndex] = updatedOrder
+
+    const updatedAccount: PaperAccount = {
+      ...account,
+      orders: updatedOrders,
+      updatedAt: Date.now()
+    }
+
+    try {
+      const success = await window.api.paper.saveAccount(updatedAccount)
+      if (success) {
+        set({
+          account: updatedAccount,
+          lastExecutedAction: `Order #${updatedOrder.ticket || orderId} updated`
+        })
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('[PaperTradingStore] Error updating pending order:', err)
+      return false
+    }
+  },
+
+  cancelOrder: async (orderId) => {
+    const { account } = get()
+    const orders = account.orders || []
+    const target = orders.find((o) => o.id === orderId)
+    if (!target) return false
+
+    const updatedOrders = orders.filter((o) => o.id !== orderId)
+    const updatedAccount: PaperAccount = {
+      ...account,
+      orders: updatedOrders,
+      updatedAt: Date.now()
+    }
+
+    try {
+      const success = await window.api.paper.saveAccount(updatedAccount)
+      if (success) {
+        set({
+          account: updatedAccount,
+          lastExecutedAction: `Cancelled ${target.type.replace('_', ' ').toUpperCase()} #${target.ticket || target.id}`
+        })
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('[PaperTradingStore] Error cancelling order:', err)
+      return false
     }
   },
 
@@ -259,12 +403,14 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     if (!targetPos) return false
 
     // Realized PnL calculation
+    const isCent = targetPos.accountType === 'cent' || account.accountType === 'cent'
+    const multiplier = isCent ? 100 : 1
     const priceDiff =
       targetPos.side === 'buy'
         ? currentPrice - targetPos.entryPrice
         : targetPos.entryPrice - currentPrice
-    const realizedPnl = priceDiff * targetPos.size
-    const originalNotional = targetPos.size * targetPos.entryPrice
+    const realizedPnl = priceDiff * targetPos.size * multiplier
+    const originalNotional = targetPos.size * targetPos.entryPrice * multiplier
 
     // Return original notional + realized PnL to balance
     const returnedFunds = originalNotional + realizedPnl
@@ -277,12 +423,12 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
       updatedAt: Date.now()
     }
 
-    const isCent = targetPos.accountType === 'cent' || account.accountType === 'cent'
     const prefix = isCent ? '¢' : '$'
 
     try {
       const success = await window.api.paper.saveAccount(updatedAccount)
       if (success) {
+        playOrderFilledSound()
         set({
           account: updatedAccount,
           lastExecutedAction: `Closed ${targetPos.side.toUpperCase()} ${targetPos.symbol} (PnL: ${realizedPnl >= 0 ? '+' : ''}${prefix}${realizedPnl.toFixed(2)})`
@@ -312,8 +458,10 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
         pos.side === 'buy'
           ? closePrice - pos.entryPrice
           : pos.entryPrice - closePrice
-      const realizedPnl = priceDiff * pos.size
-      const originalNotional = pos.size * pos.entryPrice
+      const isCent = pos.accountType === 'cent' || account.accountType === 'cent'
+      const multiplier = isCent ? 100 : 1
+      const realizedPnl = priceDiff * pos.size * multiplier
+      const originalNotional = pos.size * pos.entryPrice * multiplier
       totalReturnedFunds += originalNotional + realizedPnl
     }
 
@@ -332,6 +480,9 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     try {
       const success = await window.api.paper.saveAccount(updatedAccount)
       if (success) {
+        if (positionsToClose.length > 0) {
+          playOrderFilledSound()
+        }
         set({
           account: updatedAccount,
           lastExecutedAction: `Closed ${positionsToClose.length} position${positionsToClose.length > 1 ? 's' : ''}`
@@ -372,11 +523,41 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     }
   },
 
+  setBalance: async (newBalance: number) => {
+    const { account } = get()
+    if (typeof newBalance !== 'number' || isNaN(newBalance) || newBalance < 0) {
+      return false
+    }
+    const updatedAccount: PaperAccount = {
+      ...account,
+      balance: newBalance,
+      updatedAt: Date.now()
+    }
+
+    try {
+      const success = await window.api.paper.saveAccount(updatedAccount)
+      if (success) {
+        set({
+          account: updatedAccount,
+          lastExecutedAction: `Account balance updated to ${newBalance}`
+        })
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('[PaperTradingStore] Error setting balance:', err)
+      return false
+    }
+  },
+
   checkPositionsSLTP: (quote: PriceQuote) => {
     const { account, closePosition } = get()
-    const matchingPositions = account.positions.filter((p) => p.symbol === quote.symbol)
-    if (matchingPositions.length === 0) return
+    const cleanQuoteSymbol = (quote.symbol || '').toUpperCase()
 
+    // 1. Check open positions SL/TP
+    const matchingPositions = account.positions.filter(
+      (p) => (p.symbol || '').toUpperCase() === cleanQuoteSymbol
+    )
     for (const pos of matchingPositions) {
       const price = quote.price
       let triggeredSLTP = false
@@ -398,6 +579,68 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
       if (triggeredSLTP) {
         closePosition(pos.id, price)
       }
+    }
+
+    // 2. Check pending orders trigger
+    const activeOrders = (account.orders || []).filter(
+      (o) =>
+        (o.symbol || '').toUpperCase() === cleanQuoteSymbol &&
+        (!o.status || o.status === 'pending')
+    )
+    if (activeOrders.length === 0) return
+
+    let accountModified = false
+    const currentAccount = get().account
+    const newPositions = [...currentAccount.positions]
+    let remainingOrders = [...(currentAccount.orders || [])]
+
+    for (const order of activeOrders) {
+      let isTriggered = false
+      if (order.type === 'buy_limit' && quote.price <= order.price) {
+        isTriggered = true
+      } else if (order.type === 'sell_limit' && quote.price >= order.price) {
+        isTriggered = true
+      } else if (order.type === 'buy_stop' && quote.price >= order.price) {
+        isTriggered = true
+      } else if (order.type === 'sell_stop' && quote.price <= order.price) {
+        isTriggered = true
+      }
+
+      if (isTriggered) {
+        accountModified = true
+        // Fill order into live position
+        const filledPos: PaperPosition = {
+          id: 'pos_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+          symbol: order.symbol,
+          side: order.side,
+          entryPrice: order.price,
+          size: order.size,
+          timestamp: Date.now(),
+          stopLoss: order.stopLoss,
+          takeProfit: order.takeProfit,
+          accountType: order.accountType,
+          ticket: order.ticket,
+          comment: order.comment || `Filled from ${order.type.replace('_', ' ').toUpperCase()}`,
+          source: 'manual'
+        }
+        newPositions.push(filledPos)
+        remainingOrders = remainingOrders.filter((o) => o.id !== order.id)
+        playOrderFilledSound()
+      }
+    }
+
+    if (accountModified) {
+      const updatedAccount: PaperAccount = {
+        ...currentAccount,
+        positions: newPositions,
+        orders: remainingOrders,
+        updatedAt: Date.now()
+      }
+      set({
+        account: updatedAccount,
+        lastExecutedAction: 'Pending order executed'
+      })
+      window.api?.paper?.saveAccount?.(updatedAccount).catch(() => {})
     }
   },
 

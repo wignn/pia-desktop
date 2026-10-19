@@ -111,10 +111,35 @@ describe('PaperTradingPanel', () => {
   })
 
   describe('Execution Mode & Custom Entry', () => {
-    it('renders Market and Custom Entry mode toggles', () => {
+    it('renders Market, Limit, and Stop mode toggles according to TradingView / MT5 institutional standards', () => {
       const html = renderToString(React.createElement(PaperTradingPanel))
       expect(html).toContain('Market')
-      expect(html).toContain('Custom Entry')
+      expect(html).toContain('Limit')
+      expect(html).toContain('Stop')
+    })
+
+    it('shows price input and Limit Order button when in limit mode', () => {
+      const htmlLimit = renderToString(
+        React.createElement(PaperTradingPanel, {
+          initialExecutionMode: 'limit',
+          initialCustomPrice: '1.08200'
+        })
+      )
+      expect(htmlLimit).toContain('Order Price')
+      expect(htmlLimit).toContain('1.08200')
+      expect(htmlLimit).toContain('LIMIT')
+    })
+
+    it('shows price input and Stop Order button when in stop mode', () => {
+      const htmlStop = renderToString(
+        React.createElement(PaperTradingPanel, {
+          initialExecutionMode: 'stop',
+          initialCustomPrice: '1.08900'
+        })
+      )
+      expect(htmlStop).toContain('Order Price')
+      expect(htmlStop).toContain('1.08900')
+      expect(htmlStop).toContain('STOP')
     })
 
     it('shows custom price input when in Custom Entry mode', () => {
@@ -129,7 +154,7 @@ describe('PaperTradingPanel', () => {
           initialCustomPrice: '1.08750'
         })
       )
-      expect(htmlCustom).toContain('Custom Entry Price')
+      expect(htmlCustom).toContain('Order Price')
       expect(htmlCustom).toContain('1.08750')
     })
   })

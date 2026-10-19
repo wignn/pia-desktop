@@ -176,11 +176,39 @@ export interface PaperPosition {
   source?: 'manual' | 'import'
 }
 
+export type PaperOrderType = 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop'
+
+export interface PaperOrder {
+  id: string
+  symbol: string
+  type: PaperOrderType
+  side: 'buy' | 'sell'
+  price: number
+  size: number
+  stopLoss?: number
+  takeProfit?: number
+  timestamp: number
+  ticket?: string
+  comment?: string
+  accountType?: 'standard' | 'cent'
+  status?: 'pending' | 'filled' | 'cancelled'
+}
+
+export interface CustomEntryDraft {
+  symbol: string
+  price: number
+  side: 'buy' | 'sell'
+  size: number
+  active: boolean
+  orderType?: 'limit' | 'stop' | 'market'
+}
+
 export interface PaperAccount {
   balance: number
   initialBalance: number
   currency: string
   positions: PaperPosition[]
+  orders?: PaperOrder[]
   updatedAt: number
   accountType?: 'standard' | 'cent'
 }

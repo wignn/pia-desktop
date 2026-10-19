@@ -63,8 +63,14 @@ export const ChartContainer: React.FC = () => {
   const timeframe = useMarketStore((state) => state.timeframe)
   const prices = useMarketStore((state) => state.prices)
   const positions = usePaperTradingStore((state) => state.account.positions)
+  const orders = usePaperTradingStore((state) => state.account.orders)
   const accountType = usePaperTradingStore((state) => state.accountType)
   const closePosition = usePaperTradingStore((state) => state.closePosition)
+  const updatePosition = usePaperTradingStore((state) => state.updatePosition)
+  const cancelOrder = usePaperTradingStore((state) => state.cancelOrder)
+  const updateOrder = usePaperTradingStore((state) => state.updateOrder)
+  const customEntryDraft = usePaperTradingStore((state) => state.customEntryDraft)
+  const setCustomEntryDraft = usePaperTradingStore((state) => state.setCustomEntryDraft)
   const setSelectedBar = useMarketStore((state) => state.setSelectedBar)
   const setLatestBar = useMarketStore((state) => state.setLatestBar)
   const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
@@ -492,6 +498,40 @@ export const ChartContainer: React.FC = () => {
     [closePosition]
   )
 
+  const handleUpdatePositionFromOverlay = useCallback(
+    (
+      positionId: string,
+      updates: { entryPrice?: number; takeProfit?: number; stopLoss?: number }
+    ): void => {
+      updatePosition(positionId, updates)
+    },
+    [updatePosition]
+  )
+
+  const handleUpdateCustomEntryPrice = useCallback(
+    (newPrice: number): void => {
+      const currentDraft = usePaperTradingStore.getState().customEntryDraft
+      if (currentDraft && currentDraft.active) {
+        setCustomEntryDraft({ ...currentDraft, price: newPrice })
+      }
+    },
+    [setCustomEntryDraft]
+  )
+
+  const handleCancelOrderFromOverlay = useCallback(
+    (orderId: string): void => {
+      cancelOrder(orderId)
+    },
+    [cancelOrder]
+  )
+
+  const handleUpdateOrderFromOverlay = useCallback(
+    (orderId: string, updates: { price: number }): void => {
+      updateOrder(orderId, updates)
+    },
+    [updateOrder]
+  )
+
   // Handle clearing all drawings signal
   useEffect(() => {
     if (drawingsClearSignal > 0 && chartRef.current) {
@@ -513,18 +553,36 @@ export const ChartContainer: React.FC = () => {
           {
             chart: chartRef.current,
             positions,
+            orders,
             currentSymbol,
             prices,
             accountType,
-            onClosePosition: handleClosePositionFromOverlay
+            customEntryDraft,
+            onClosePosition: handleClosePositionFromOverlay,
+            onUpdatePosition: handleUpdatePositionFromOverlay,
+            onCancelOrder: handleCancelOrderFromOverlay,
+            onUpdateOrder: handleUpdateOrderFromOverlay,
+            onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice
           },
           positionOverlayIdsRef
         )
       }
     }
-  }, [drawingsClearSignal, positions, prices, accountType, handleClosePositionFromOverlay])
+  }, [
+    drawingsClearSignal,
+    positions,
+    orders,
+    prices,
+    accountType,
+    customEntryDraft,
+    handleClosePositionFromOverlay,
+    handleUpdatePositionFromOverlay,
+    handleCancelOrderFromOverlay,
+    handleUpdateOrderFromOverlay,
+    handleUpdateCustomEntryPrice
+  ])
 
-  // Synchronize live paper trading position overlays (Entry, TP, SL)
+  // Synchronize live paper trading position overlays (Entry, TP, SL, Custom Draft)
   useEffect(() => {
     const chart = chartRef.current
     if (!chart || !symbol) return
@@ -533,14 +591,32 @@ export const ChartContainer: React.FC = () => {
       {
         chart,
         positions,
+        orders,
         currentSymbol: symbol,
         prices,
         accountType,
-        onClosePosition: handleClosePositionFromOverlay
+        customEntryDraft,
+        onClosePosition: handleClosePositionFromOverlay,
+        onUpdatePosition: handleUpdatePositionFromOverlay,
+        onCancelOrder: handleCancelOrderFromOverlay,
+        onUpdateOrder: handleUpdateOrderFromOverlay,
+        onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice
       },
       positionOverlayIdsRef
     )
-  }, [positions, prices, symbol, accountType, handleClosePositionFromOverlay])
+  }, [
+    positions,
+    orders,
+    prices,
+    symbol,
+    accountType,
+    customEntryDraft,
+    handleClosePositionFromOverlay,
+    handleUpdatePositionFromOverlay,
+    handleCancelOrderFromOverlay,
+    handleUpdateOrderFromOverlay,
+    handleUpdateCustomEntryPrice
+  ])
 
   // Clear position overlays on symbol switch or unmount
   useEffect(() => {
