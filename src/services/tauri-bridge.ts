@@ -50,7 +50,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
-    currentVersion: '1.1.0'
+    currentVersion: '1.1.1'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {
@@ -235,19 +235,19 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         if (res.state === 'available') {
           currentUpdaterStatus = {
             state: 'available',
-            currentVersion: res.currentVersion || '1.1.0',
+            currentVersion: res.currentVersion || '1.1.1',
             availableVersion: res.availableVersion,
             progressPercent: 0
           }
         } else if (res.state === 'up-to-date') {
           currentUpdaterStatus = {
             state: 'not-available',
-            currentVersion: res.currentVersion || '1.1.0'
+            currentVersion: res.currentVersion || '1.1.1'
           }
         } else {
           currentUpdaterStatus = {
             state: 'error',
-            currentVersion: '1.1.0',
+            currentVersion: '1.1.1',
             error: res.error
           }
         }
