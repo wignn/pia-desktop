@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { BottomDockPanel } from './BottomDockPanel'
@@ -7,6 +7,21 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 
 describe('BottomDockPanel - Institutional Trading Account Manager', () => {
+  beforeAll(() => {
+    if (typeof (globalThis as any).window === 'undefined') {
+      ;(globalThis as any).window = {}
+    }
+    if (!(globalThis as any).window.api) {
+      ;(globalThis as any).window.api = {}
+    }
+    if (!(globalThis as any).window.api.paper) {
+      ;(globalThis as any).window.api.paper = {
+        saveAccount: async () => true,
+        getAccount: async () => null
+      }
+    }
+  })
+
   beforeEach(() => {
     // Reset stores
     useMarketStore.setState({
@@ -232,15 +247,6 @@ describe('BottomDockPanel - Institutional Trading Account Manager', () => {
           accountType: 'standard'
         }
       })
-
-      // Stub window.api.paper.saveAccount if needed
-      if (typeof window !== 'undefined' && (!window.api || !window.api.paper)) {
-        ;(window as unknown as { api: { paper: { saveAccount: () => Promise<boolean> } } }).api = {
-          paper: {
-            saveAccount: async () => true
-          }
-        }
-      }
 
       await usePaperTradingStore.getState().closePosition('pos_btc_close_test', 90000)
       expect(
