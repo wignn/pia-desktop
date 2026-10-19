@@ -642,3 +642,52 @@ export interface UpdaterStatus {
   downloadSpeed?: number
   error?: string
 }
+
+export interface PiaScriptPlot {
+  title: string
+  color: string
+  values: Array<number | null>
+}
+
+export interface PiaScriptSignal {
+  index: number
+  timestamp: number
+  action: 'BUY' | 'SELL' | 'CLOSE'
+  price: number
+  comment?: string
+}
+
+export interface PiaScriptTrade {
+  entry_time: number
+  exit_time: number
+  action: string
+  entry_price: number
+  exit_price: number
+  pnl: number
+  pnl_percent: number
+}
+
+export interface PiaScriptBacktest {
+  initial_capital: number
+  final_equity: number
+  net_profit: number
+  net_profit_percent: number
+  total_trades: number
+  win_trades: number
+  loss_trades: number
+  win_rate: number
+  profit_factor: number
+  max_drawdown: number
+  max_drawdown_percent: number
+  trades: PiaScriptTrade[]
+  equity_curve: number[]
+}
+
+export interface PiaScriptResult {
+  success: boolean
+  error?: string | null
+  plots: PiaScriptPlot[]
+  signals: PiaScriptSignal[]
+  backtest?: PiaScriptBacktest | null
+}
+

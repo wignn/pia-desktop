@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { handleScalpingHotkey, isEditableElement } from './useScalpingHotkeys'
 import { useMarketStore } from '../stores/useMarketStore'
 import { usePaperTradingStore } from '../stores/usePaperTradingStore'

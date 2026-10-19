@@ -21,6 +21,8 @@ import { ChartLegend } from './ChartLegend'
 import { DrawingPropertyBar } from './DrawingPropertyBar'
 import { ReplayControlBar } from './ReplayControlBar'
 import { registerCustomOverlays } from './register-overlays'
+import { registerPiaScriptIndicator } from './register-piascript-indicator'
+import { usePiaScriptStore } from '../../stores/usePiaScriptStore'
 import { syncPositionOverlays, clearPositionOverlays } from './position-overlay-sync'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { getSymbolPrecision } from '@shared/market-utils'
@@ -83,6 +85,9 @@ export const ChartContainer: React.FC = () => {
   const isLoadingCandles = useMarketStore((state) => state.isLoadingCandles)
   const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
   const positionOverlayIdsRef = useRef<Set<string>>(new Set())
+  const piascriptOverlayIdsRef = useRef<Set<string>>(new Set())
+  const isPiaScriptApplied = usePiaScriptStore((s) => s.isAppliedToChart)
+  const piaScriptResult = usePiaScriptStore((s) => s.result)
   const isPositionOverlayDraggingRef = useRef(false)
   const {
     chartType,
@@ -224,6 +229,7 @@ export const ChartContainer: React.FC = () => {
   // Initialize KLineChart instance
   useEffect(() => {
     registerCustomOverlays()
+    registerPiaScriptIndicator()
     const container = containerRef.current
     if (!container) return
 
@@ -393,6 +399,12 @@ export const ChartContainer: React.FC = () => {
       unsubEngine()
       resizeObserver.disconnect()
       clearPositionOverlays(chartRef.current, positionOverlayIdsRef)
+      if (chartRef.current) {
+        piascriptOverlayIdsRef.current.forEach((id) => {
+          chartRef.current?.removeOverlay({ id })
+        })
+      }
+      piascriptOverlayIdsRef.current.clear()
       dispose(container)
       chartRef.current = null
       liveSubscriberRef.current = null
@@ -712,6 +724,37 @@ export const ChartContainer: React.FC = () => {
       }
     }
   }, [activeIndicators])
+
+  // Synchronize PiaScript custom indicators and strategy signals
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+
+    piascriptOverlayIdsRef.current.forEach((id) => {
+      chart.removeOverlay({ id })
+    })
+    piascriptOverlayIdsRef.current.clear()
+
+    if (isPiaScriptApplied && piaScriptResult?.success) {
+      chart.removeIndicator({ name: 'PiaScript' })
+      if (piaScriptResult.plots && piaScriptResult.plots.length > 0) {
+        chart.createIndicator({ name: 'PiaScript', paneId: 'candle_pane' }, true)
+      }
+      if (piaScriptResult.signals && piaScriptResult.signals.length > 0) {
+        for (const sig of piaScriptResult.signals) {
+          const id = chart.createOverlay({
+            name: 'simpleAnnotation',
+            points: [{ timestamp: sig.timestamp, value: sig.price }],
+            extendData: `${sig.action} @ ${sig.price}`,
+            lock: true
+          })
+          if (typeof id === 'string') piascriptOverlayIdsRef.current.add(id)
+        }
+      }
+    } else {
+      chart.removeIndicator({ name: 'PiaScript' })
+    }
+  }, [isPiaScriptApplied, piaScriptResult])
 
   // Handle Chart Image Snapshot (Save to PNG and Copy to Clipboard)
   useEffect(() => {

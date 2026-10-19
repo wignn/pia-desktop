@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { CredentialManager, normalizeWsUrl, normalizeBaseUrl } from './credentials'
 
 describe('normalizeWsUrl & normalizeBaseUrl', () => {

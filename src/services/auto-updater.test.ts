@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, vi } from 'vitest'
 import {
   checkForAppUpdates,
   formatUpdateMessage,
@@ -30,7 +30,7 @@ describe('auto-updater service', () => {
   })
 
   it('returns graceful status when updater checker encounters network error', async () => {
-    const mockCheck = mock(async () => {
+    const mockCheck = vi.fn(async () => {
       throw new Error('Network timeout reaching releases.json')
     })
 
@@ -43,7 +43,7 @@ describe('auto-updater service', () => {
   })
 
   it('detects available update correctly from checker payload', async () => {
-    const mockCheck = mock(async () => ({
+    const mockCheck = vi.fn(async () => ({
       available: true,
       version: '0.2.0',
       currentVersion: '0.1.0',
@@ -61,7 +61,7 @@ describe('auto-updater service', () => {
   })
 
   it('reports up-to-date when checker returns available=false', async () => {
-    const mockCheck = mock(async () => ({
+    const mockCheck = vi.fn(async () => ({
       available: false,
       currentVersion: '0.1.0'
     }))

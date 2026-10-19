@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { usePiaScriptStore } from '../../stores/usePiaScriptStore'
 import { SymbolLogo } from '../common/SymbolLogo'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { THEME_TOKENS } from '../../theme/tokens'
@@ -21,7 +22,7 @@ export interface BottomDockPanelProps {
 
 const TABS: BottomTab[] = [
   { id: 'screener', label: 'Stock Screener' },
-  { id: 'pine', label: 'Pine Editor' },
+  { id: 'pine', label: 'PiaScript' },
   { id: 'strategy', label: 'Strategy Tester' },
   { id: 'trading', label: 'Trading Panel' }
 ]
@@ -60,6 +61,19 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
 
   // Workspace Store
   const setImportPositionsModalOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
+
+  // PiaScript Store
+  const script = usePiaScriptStore((state) => state.script)
+  const setScript = usePiaScriptStore((state) => state.setScript)
+  const isRunningScript = usePiaScriptStore((state) => state.isRunning)
+  const scriptError = usePiaScriptStore((state) => state.error)
+  const scriptResult = usePiaScriptStore((state) => state.result)
+  const isAppliedToChart = usePiaScriptStore((state) => state.isAppliedToChart)
+  const toggleApplyToChart = usePiaScriptStore((state) => state.toggleApplyToChart)
+  const runScript = usePiaScriptStore((state) => state.runScript)
+  const initialCapital = usePiaScriptStore((state) => state.initialCapital)
+  const setInitialCapital = usePiaScriptStore((state) => state.setInitialCapital)
+  const [saveStatus, setSaveStatus] = useState<string | null>(null)
 
   const isDraggingRef = useRef(false)
   const startYRef = useRef(0)
@@ -416,7 +430,7 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
             </div>
           )}
 
-          {/* TAB 2: PINE SCRIPT EDITOR */}
+          {/* TAB 2: PIASCRIPT / PINE EDITOR */}
           {activeTab === 'pine' && (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontSize: 11 }}>
               <div
@@ -429,80 +443,278 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                   borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
                 }}
               >
-                <span style={{ color: THEME_TOKENS.colors.textPrimary, fontWeight: 600 }}>
-                  Script: My_Custom_Strategy.pine
-                </span>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" className="tv-btn active" style={{ height: 22, fontSize: 11, padding: '0 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: THEME_TOKENS.colors.textPrimary, fontWeight: 600 }}>
+                    Script: strategy.py (PiaScript Rust Engine)
+                  </span>
+                  {saveStatus && (
+                    <span style={{ color: THEME_TOKENS.colors.bullish, fontSize: 10, fontWeight: 600 }}>{saveStatus}</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="tv-btn"
+                    style={{ height: 22, fontSize: 11, padding: '0 8px' }}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem('piascript_saved', script)
+                        setSaveStatus('Saved')
+                        setTimeout(() => setSaveStatus(null), 2000)
+                      } catch {}
+                    }}
+                  >
                     Save
                   </button>
-                  <button type="button" className="tv-btn" style={{ height: 22, fontSize: 11, padding: '0 8px' }}>
-                    Add to chart
+                  <button
+                    type="button"
+                    className={`tv-btn ${isAppliedToChart ? 'active' : ''}`}
+                    style={{ height: 22, fontSize: 11, padding: '0 8px' }}
+                    onClick={() => toggleApplyToChart()}
+                  >
+                    {isAppliedToChart ? 'Hide on chart' : 'Show on chart'}
+                  </button>
+                  <button
+                    type="button"
+                    className="tv-btn active"
+                    style={{
+                      height: 22,
+                      fontSize: 11,
+                      padding: '0 10px',
+                      backgroundColor: THEME_TOKENS.colors.accent,
+                      color: '#fff',
+                      fontWeight: 600
+                    }}
+                    disabled={isRunningScript}
+                    onClick={async () => {
+                      const res = await runScript()
+                      if (res && res.success) {
+                        setSaveStatus('Compiled & Run OK')
+                        setTimeout(() => setSaveStatus(null), 2500)
+                      }
+                    }}
+                  >
+                    {isRunningScript ? 'Running...' : 'Run / Backtest'}
                   </button>
                 </div>
               </div>
 
-              <div
+              {scriptError && (
+                <div
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: 'rgba(239, 83, 80, 0.15)',
+                    color: THEME_TOKENS.colors.bearish,
+                    borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                    fontFamily: 'Consolas, monospace',
+                    fontSize: 11
+                  }}
+                >
+                  Compile / Runtime Error: {scriptError}
+                </div>
+              )}
+
+              <textarea
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault()
+                    const target = e.currentTarget
+                    const start = target.selectionStart
+                    const end = target.selectionEnd
+                    const val = target.value
+                    const updated = val.substring(0, start) + '    ' + val.substring(end)
+                    setScript(updated)
+                    setTimeout(() => {
+                      target.selectionStart = target.selectionEnd = start + 4
+                    }, 0)
+                  }
+                }}
+                spellCheck={false}
                 style={{
                   flex: 1,
+                  width: '100%',
                   padding: '10px 14px',
-                  fontFamily: 'Consolas, monospace',
+                  fontFamily: 'Consolas, "Fira Code", monospace',
                   fontSize: 12,
                   color: '#9cdcfe',
-                  backgroundColor: '#1e1e1e',
-                  overflowY: 'auto',
-                  lineHeight: 1.5
+                  backgroundColor: '#12141a',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'none',
+                  lineHeight: 1.6
                 }}
-              >
-                <div><span style={{ color: '#6a9955' }}>//@version=5</span></div>
-                <div><span style={{ color: '#569cd6' }}>indicator</span>(<span style={{ color: '#ce9178' }}>&quot;Custom Relative Trend&quot;</span>, overlay=<span style={{ color: '#569cd6' }}>true</span>)</div>
-                <div><span style={{ color: '#4ec9b0' }}>length</span> = <span style={{ color: '#b5cea8' }}>14</span></div>
-                <div><span style={{ color: '#4ec9b0' }}>src</span> = close</div>
-                <div><span style={{ color: '#4ec9b0' }}>maFast</span> = ta.ema(src, <span style={{ color: '#b5cea8' }}>9</span>)</div>
-                <div><span style={{ color: '#4ec9b0' }}>maSlow</span> = ta.ema(src, <span style={{ color: '#b5cea8' }}>21</span>)</div>
-                <div>plot(maFast, color=color.blue, title=<span style={{ color: '#ce9178' }}>&quot;Fast EMA&quot;</span>)</div>
-                <div>plot(maSlow, color=color.orange, title=<span style={{ color: '#ce9178' }}>&quot;Slow EMA&quot;</span>)</div>
-              </div>
+              />
             </div>
           )}
 
           {/* TAB 3: STRATEGY TESTER */}
           {activeTab === 'strategy' && (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '12px 16px', gap: 12, fontSize: 12, overflowY: 'auto' }}>
-              <div style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright }}>
-                Performance Summary: MACD Momentum Strategy
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-                <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Net Profit</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.bullish, marginTop: 4 }}>+$14,820.00</div>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.bullish }}>+29.64%</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright }}>
+                  PiaScript Performance Summary {currentSymbol ? `(${currentSymbol})` : ''}
                 </div>
-
-                <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Total Closed Trades</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>142</div>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>64.8% Profitable</div>
-                </div>
-
-                <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Profit Factor</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>1.94</div>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>Sharpe: 1.62</div>
-                </div>
-
-                <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Max Drawdown</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.bearish, marginTop: 4 }}>-$2,140.00</div>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.bearish }}>-5.42%</div>
-                </div>
-
-                <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Avg Trade</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.bullish, marginTop: 4 }}>+$104.36</div>
-                  <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>Win/Loss: 1.8</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textMuted }}>Initial Capital:</span>
+                  <input
+                    type="number"
+                    value={initialCapital}
+                    onChange={(e) => setInitialCapital(Number(e.target.value) || 10000)}
+                    style={{
+                      width: 80,
+                      height: 20,
+                      fontSize: 11,
+                      backgroundColor: THEME_TOKENS.colors.bgSurface,
+                      color: THEME_TOKENS.colors.textPrimary,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      borderRadius: 3,
+                      padding: '0 4px'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="tv-btn active"
+                    style={{ height: 22, fontSize: 11, padding: '0 8px' }}
+                    onClick={() => runScript()}
+                  >
+                    {isRunningScript ? 'Testing...' : 'Re-test'}
+                  </button>
                 </div>
               </div>
+
+              {scriptResult?.backtest ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Net Profit</div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: scriptResult.backtest.net_profit >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+                          marginTop: 4
+                        }}
+                      >
+                        {scriptResult.backtest.net_profit >= 0 ? '+' : ''}${scriptResult.backtest.net_profit.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: scriptResult.backtest.net_profit >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
+                        {scriptResult.backtest.net_profit_percent >= 0 ? '+' : ''}{scriptResult.backtest.net_profit_percent.toFixed(2)}%
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Total Closed Trades</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>
+                        {scriptResult.backtest.total_trades}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        {scriptResult.backtest.win_rate.toFixed(1)}% Win Rate
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Profit Factor</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>
+                        {scriptResult.backtest.profit_factor.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        Win: {scriptResult.backtest.win_trades} | Loss: {scriptResult.backtest.loss_trades}
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Max Drawdown</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.bearish, marginTop: 4 }}>
+                        -${scriptResult.backtest.max_drawdown.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.bearish }}>
+                        -{scriptResult.backtest.max_drawdown_percent.toFixed(2)}%
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Final Equity</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>
+                        ${scriptResult.backtest.final_equity.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        from ${scriptResult.backtest.initial_capital.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Closed Trades List */}
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontWeight: 600, color: THEME_TOKENS.colors.textPrimary, marginBottom: 6 }}>
+                      Executed Trade Log ({scriptResult.backtest.trades.length})
+                    </div>
+                    {scriptResult.backtest.trades.length === 0 ? (
+                      <div style={{ color: THEME_TOKENS.colors.textMuted, fontStyle: 'italic', fontSize: 11 }}>
+                        No closed trades generated by strategy signals on current candle dataset.
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto', border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`, borderRadius: 4 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                          <thead>
+                            <tr style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                              <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Action</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Entry Time</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Exit Time</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textMuted }}>Entry Price</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textMuted }}>Exit Price</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textMuted }}>PnL ($)</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textMuted }}>PnL (%)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {scriptResult.backtest.trades.map((t, idx) => (
+                              <tr key={idx} style={{ borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                                <td style={{ padding: '6px 8px', fontWeight: 600, color: t.action === 'BUY' ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
+                                  {t.action}
+                                </td>
+                                <td style={{ padding: '6px 8px', color: THEME_TOKENS.colors.textSecondary }}>
+                                  {new Date(t.entry_time).toLocaleString()}
+                                </td>
+                                <td style={{ padding: '6px 8px', color: THEME_TOKENS.colors.textSecondary }}>
+                                  {new Date(t.exit_time).toLocaleString()}
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textPrimary }}>
+                                  {t.entry_price.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textPrimary }}>
+                                  {t.exit_price.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: t.pnl >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
+                                  {t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', color: t.pnl >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
+                                  {t.pnl_percent >= 0 ? '+' : ''}{t.pnl_percent.toFixed(2)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 10, color: THEME_TOKENS.colors.textMuted, minHeight: 140 }}>
+                  <div>No backtest has been executed yet.</div>
+                  <button
+                    type="button"
+                    className="tv-btn active"
+                    style={{ height: 26, fontSize: 11, padding: '0 12px' }}
+                    onClick={() => {
+                      setActiveTab('pine')
+                    }}
+                  >
+                    Open PiaScript Editor & Run
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

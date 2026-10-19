@@ -1,5 +1,18 @@
+mod piascript;
+
 use std::fs;
 use tauri::Manager;
+use piascript::{PiaCandle, PiaScriptEngine, PiaScriptResult};
+
+#[tauri::command]
+fn execute_piascript(
+    script: String,
+    candles: Vec<PiaCandle>,
+    initial_capital: Option<f64>,
+) -> Result<PiaScriptResult, String> {
+    let mut engine = PiaScriptEngine::new(&candles);
+    Ok(engine.execute(&script, initial_capital))
+}
 
 #[tauri::command]
 fn load_db(app: tauri::AppHandle) -> Result<Vec<u8>, String> {
@@ -115,7 +128,8 @@ pub fn run() {
             load_credentials,
             save_credentials,
             pia_native_candles,
-            pia_native_request
+            pia_native_request,
+            execute_piascript
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

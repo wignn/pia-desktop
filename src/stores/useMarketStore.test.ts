@@ -43,6 +43,8 @@ beforeEach(() => {
   )
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
   vi.stubGlobal('window', {
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     api: {
       market: {
         subscribePrice: vi.fn().mockResolvedValue(undefined),

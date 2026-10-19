@@ -339,6 +339,23 @@ describe('BottomDockPanel - Institutional Trading Account Manager', () => {
     })
   })
 
+  describe('PiaScript & Strategy Tester Tabs', () => {
+    it('renders PiaScript editor with script textarea and Run / Backtest controls', () => {
+      const html = renderToString(React.createElement(BottomDockPanel, { initialOpen: true, initialTab: 'pine' }))
+      expect(html).toContain('Script: strategy.py (PiaScript Rust Engine)')
+      expect(html).toContain('Run / Backtest')
+      expect(html).toContain('Show on chart')
+      expect(html).toContain('Save')
+      expect(html).toContain('fast = ema(close, 9)')
+    })
+
+    it('renders Strategy Tester empty state or summary metrics', () => {
+      const html = renderToString(React.createElement(BottomDockPanel, { initialOpen: true, initialTab: 'strategy' }))
+      expect(html).toContain('PiaScript Performance Summary')
+      expect(html).toContain('Initial Capital:')
+    })
+  })
+
   describe('Neutral Terminology Check', () => {
     it('does NOT contain third-party proprietary software names in rendered output', () => {
       usePaperTradingStore.setState({
