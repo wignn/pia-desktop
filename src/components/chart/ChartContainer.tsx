@@ -78,6 +78,7 @@ export const ChartContainer: React.FC = () => {
   const isLoadingCandles = useMarketStore((state) => state.isLoadingCandles)
   const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
   const positionOverlayIdsRef = useRef<Set<string>>(new Set())
+  const isPositionOverlayDraggingRef = useRef(false)
   const {
     chartType,
     activeTool,
@@ -496,7 +497,11 @@ export const ChartContainer: React.FC = () => {
     (positionId: string): void => {
       const currentSym = useMarketStore.getState().symbol
       const markPrice = currentSym ? useMarketStore.getState().prices[currentSym]?.price ?? 0 : 0
-      closePosition(positionId, markPrice)
+      void closePosition(positionId, markPrice).finally(() => {
+        requestAnimationFrame(() => {
+          isPositionOverlayDraggingRef.current = false
+        })
+      })
     },
     [closePosition]
   )
@@ -506,7 +511,11 @@ export const ChartContainer: React.FC = () => {
       positionId: string,
       updates: { entryPrice?: number; takeProfit?: number; stopLoss?: number }
     ): void => {
-      updatePosition(positionId, updates)
+      void updatePosition(positionId, updates).finally(() => {
+        requestAnimationFrame(() => {
+          isPositionOverlayDraggingRef.current = false
+        })
+      })
     },
     [updatePosition]
   )
@@ -517,20 +526,31 @@ export const ChartContainer: React.FC = () => {
       if (currentDraft && currentDraft.active) {
         setCustomEntryDraft({ ...currentDraft, price: newPrice })
       }
+      requestAnimationFrame(() => {
+        isPositionOverlayDraggingRef.current = false
+      })
     },
     [setCustomEntryDraft]
   )
 
   const handleCancelOrderFromOverlay = useCallback(
     (orderId: string): void => {
-      cancelOrder(orderId)
+      void cancelOrder(orderId).finally(() => {
+        requestAnimationFrame(() => {
+          isPositionOverlayDraggingRef.current = false
+        })
+      })
     },
     [cancelOrder]
   )
 
   const handleUpdateOrderFromOverlay = useCallback(
     (orderId: string, updates: { price: number }): void => {
-      updateOrder(orderId, updates)
+      void updateOrder(orderId, updates).finally(() => {
+        requestAnimationFrame(() => {
+          isPositionOverlayDraggingRef.current = false
+        })
+      })
     },
     [updateOrder]
   )
@@ -565,7 +585,11 @@ export const ChartContainer: React.FC = () => {
             onUpdatePosition: handleUpdatePositionFromOverlay,
             onCancelOrder: handleCancelOrderFromOverlay,
             onUpdateOrder: handleUpdateOrderFromOverlay,
-            onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice
+            onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice,
+            isOverlayDragging: (active) => {
+              if (active !== undefined) isPositionOverlayDraggingRef.current = active
+              return isPositionOverlayDraggingRef.current
+            }
           },
           positionOverlayIdsRef
         )
@@ -603,7 +627,11 @@ export const ChartContainer: React.FC = () => {
         onUpdatePosition: handleUpdatePositionFromOverlay,
         onCancelOrder: handleCancelOrderFromOverlay,
         onUpdateOrder: handleUpdateOrderFromOverlay,
-        onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice
+            onUpdateCustomEntryPrice: handleUpdateCustomEntryPrice,
+            isOverlayDragging: (active) => {
+              if (active !== undefined) isPositionOverlayDraggingRef.current = active
+              return isPositionOverlayDraggingRef.current
+            }
       },
       positionOverlayIdsRef
     )

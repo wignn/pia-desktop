@@ -24,6 +24,7 @@ export interface PositionOverlaySyncParams {
   onCancelOrder?: (orderId: string) => void
   onUpdateOrder?: (orderId: string, updates: { price: number }) => void
   onUpdateCustomEntryPrice?: (newPrice: number) => void
+  isOverlayDragging?: (active?: boolean) => boolean | void
 }
 
 /**
@@ -182,8 +183,13 @@ export function syncPositionOverlays(
     customEntryDraft,
     onClosePosition,
     onUpdatePosition,
-    onUpdateCustomEntryPrice
+    onUpdateCustomEntryPrice,
+    isOverlayDragging
   } = params
+
+  // Price ticks can re-render the chart while a line is being dragged. Keep its
+  // current overlay instance alive until pointer-up, then sync from persisted state.
+  if (isOverlayDragging?.()) return
 
   if (!chart) return
 
@@ -238,7 +244,15 @@ export function syncPositionOverlays(
         type: 'entry',
         positionId: pos.id
       },
-      onClick: onClosePosition ? () => onClosePosition(pos.id) : undefined,
+      onPressedMoveStart: () => {
+        isOverlayDragging?.(true)
+      },
+        onClick: onClosePosition
+          ? () => {
+              isOverlayDragging?.(true)
+              onClosePosition(pos.id)
+            }
+          : undefined,
       onPressedMoving: (event: any) => {
         const newPrice = event?.overlay?.points?.[0]?.value
         if (typeof newPrice === 'number' && newPrice > 0 && event?.overlay?.extendData) {
@@ -355,6 +369,9 @@ export function syncPositionOverlays(
           type: 'tp',
           positionId: pos.id
         },
+        onPressedMoveStart: () => {
+          isOverlayDragging?.(true)
+        },
         onPressedMoving: (event: any) => {
           const newPrice = event?.overlay?.points?.[0]?.value
           if (typeof newPrice === 'number' && newPrice > 0 && event?.overlay?.extendData) {
@@ -450,6 +467,9 @@ export function syncPositionOverlays(
           text: slBadge,
           type: 'sl',
           positionId: pos.id
+        },
+        onPressedMoveStart: () => {
+          isOverlayDragging?.(true)
         },
         onPressedMoving: (event: any) => {
           const newPrice = event?.overlay?.points?.[0]?.value
@@ -551,6 +571,9 @@ export function syncPositionOverlays(
       extendData: {
         text: draftBadge,
         type: 'custom_draft'
+      },
+      onPressedMoveStart: () => {
+        isOverlayDragging?.(true)
       },
       onPressedMoving: (event: any) => {
         const newPrice = event?.overlay?.points?.[0]?.value
@@ -659,7 +682,15 @@ export function syncPositionOverlays(
         type: 'pending_order',
         orderId: order.id
       },
-      onClick: params.onCancelOrder ? () => params.onCancelOrder!(order.id) : undefined,
+      onPressedMoveStart: () => {
+        isOverlayDragging?.(true)
+      },
+        onClick: params.onCancelOrder
+          ? () => {
+              isOverlayDragging?.(true)
+              params.onCancelOrder!(order.id)
+            }
+          : undefined,
       onPressedMoving: (event: any) => {
         const newPrice = event?.overlay?.points?.[0]?.value
         if (typeof newPrice === 'number' && newPrice > 0 && event?.overlay?.extendData) {

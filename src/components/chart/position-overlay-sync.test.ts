@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'bun:test'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Chart } from 'klinecharts'
 import type { PaperPosition, PriceQuote } from '@shared/types'
 import { THEME_TOKENS } from '../../theme/tokens'
@@ -597,6 +597,42 @@ describe('position-overlay-sync', () => {
       // Simulate release
       draftCall.onPressedMoveEnd({ overlay: { points: [{ value: 1.1275 }] } })
       expect(onUpdateCustomPrice).toHaveBeenCalledWith(1.1275)
+    })
+
+    it('marks overlay drag start and persists TP changes on release', () => {
+      const onUpdatePosition = vi.fn()
+      const onOverlayDragging = vi.fn()
+      const position: PaperPosition = {
+        id: 'drag-pos',
+        symbol: 'EURUSD',
+        side: 'buy',
+        entryPrice: 1.12,
+        size: 0.1,
+        timestamp: Date.now(),
+        takeProfit: 1.13
+      }
+
+      syncPositionOverlays(
+        {
+          chart: mockChart as unknown as Chart,
+          positions: [position],
+          currentSymbol: 'EURUSD',
+          prices: samplePrices,
+          accountType: 'standard',
+          onUpdatePosition,
+          isOverlayDragging: onOverlayDragging
+        },
+        activeOverlayIdsRef
+      )
+
+      const tpOverlay = mockChart.createOverlay.mock.calls
+        .map((call: any) => call[0])
+        .find((overlay: any) => overlay.id === 'pos_tp_drag-pos')
+
+      tpOverlay.onPressedMoveStart()
+      expect(onOverlayDragging).toHaveBeenCalledWith(true)
+      tpOverlay.onPressedMoveEnd({ overlay: { points: [{ value: 1.135 }] } })
+      expect(onUpdatePosition).toHaveBeenCalledWith('drag-pos', { takeProfit: 1.135 })
     })
 
     it('renders and supports sliding pending order lines with cancel and update callbacks', () => {
