@@ -169,6 +169,11 @@ export interface PaperPosition {
   timestamp: number
   stopLoss?: number
   takeProfit?: number
+  accountType?: 'standard' | 'cent'
+  ticket?: string
+  comment?: string
+  lotType?: 'standard' | 'cent'
+  source?: 'manual' | 'import'
 }
 
 export interface PaperAccount {
@@ -177,6 +182,7 @@ export interface PaperAccount {
   currency: string
   positions: PaperPosition[]
   updatedAt: number
+  accountType?: 'standard' | 'cent'
 }
 
 export interface CredentialStatus {
