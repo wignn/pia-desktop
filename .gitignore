@@ -11,6 +11,26 @@ node_modules
 dist
 dist-ssr
 *.local
+.superpowers
+docs/**
+# Secrets, Environment & Cryptographic Keys
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.keystore
+pia_credentials.json
+
+# Local databases & runtimes
+*.db
+*.sqlite
+*.sqlite3
+EBWebView/
+
+# Rust & Tauri artifacts
+src-tauri/target/
+target/
 
 # Editor directories and files
 .vscode/*

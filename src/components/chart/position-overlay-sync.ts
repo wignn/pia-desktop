@@ -24,7 +24,7 @@ export interface PositionOverlaySyncParams {
 export function formatPnL(pnl: number, accountType: 'standard' | 'cent'): string {
   if (accountType === 'cent') {
     const formatted = Math.abs(Math.round(pnl)).toLocaleString('en-US')
-    return pnl >= 0 ? `+${formatted} ¢` : `-$${formatted} ¢`
+    return pnl >= 0 ? `+${formatted} ¢` : `-${formatted} ¢`
   }
   const formatted = Math.abs(pnl).toFixed(2)
   return pnl >= 0 ? `+$${formatted}` : `-$${formatted}`

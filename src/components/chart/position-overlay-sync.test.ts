@@ -36,7 +36,7 @@ describe('position-overlay-sync', () => {
 
       // Cent account formatting
       expect(formatPnL(1250, 'cent')).toBe('+1,250 ¢')
-      expect(formatPnL(-450, 'cent')).toBe('-$450 ¢')
+      expect(formatPnL(-450, 'cent')).toBe('-450 ¢')
       expect(formatPnL(0, 'cent')).toBe('+0 ¢')
     })
 
