@@ -19,11 +19,12 @@ const LOT_PRESETS = ['0.01', '0.05', '0.10', '0.25', '0.50', '1.00', '2.00', '5.
 export const ImportPositionsModal: React.FC<ImportPositionsModalProps> = ({
   isOpen,
   onClose,
-  initialTab = 'quick',
+  initialTab,
   initialText = ''
 }) => {
   const hookIsOpen = useWorkspaceStore((state) => state.isImportPositionsModalOpen)
   const stateIsOpen = useWorkspaceStore.getState().isImportPositionsModalOpen
+  const hookTab = useWorkspaceStore((state) => state.importPositionsModalTab)
   const setStoreOpen = useWorkspaceStore((state) => state.setImportPositionsModalOpen)
 
   const isModalOpen = isOpen !== undefined ? isOpen : (hookIsOpen || stateIsOpen)
@@ -35,7 +36,7 @@ export const ImportPositionsModal: React.FC<ImportPositionsModalProps> = ({
 
   return (
     <ImportPositionsModalDialog
-      initialTab={initialTab}
+      initialTab={initialTab || hookTab || 'quick'}
       initialText={initialText}
       onClose={handleClose}
     />

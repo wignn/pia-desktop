@@ -54,6 +54,7 @@ interface WorkspaceState {
   isSnapshotModalOpen: boolean
   snapshotDataUrl: string | null
   isImportPositionsModalOpen: boolean
+  importPositionsModalTab?: 'quick' | 'import' | 'export'
 
   // Actions
   setTheme: (theme: AppTheme) => void
@@ -63,7 +64,7 @@ interface WorkspaceState {
   setSymbolSearchOpen: (open: boolean) => void
   setIndicatorModalOpen: (open: boolean) => void
   setSettingsModalOpen: (open: boolean) => void
-  setImportPositionsModalOpen: (open: boolean) => void
+  setImportPositionsModalOpen: (open: boolean, tab?: 'quick' | 'import' | 'export') => void
   openSnapshotModal: (url: string) => void
   closeSnapshotModal: () => void
 }
@@ -78,6 +79,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   isSnapshotModalOpen: false,
   snapshotDataUrl: null,
   isImportPositionsModalOpen: false,
+  importPositionsModalTab: 'quick',
 
   setTheme: (theme: AppTheme) => {
     try {
@@ -118,7 +120,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setSymbolSearchOpen: (open: boolean) => set({ isSymbolSearchOpen: open }),
   setIndicatorModalOpen: (open: boolean) => set({ isIndicatorModalOpen: open }),
   setSettingsModalOpen: (open: boolean) => set({ isSettingsModalOpen: open }),
-  setImportPositionsModalOpen: (open: boolean) => set({ isImportPositionsModalOpen: open }),
+  setImportPositionsModalOpen: (open: boolean, tab?: 'quick' | 'import' | 'export') =>
+    set((state) => ({
+      isImportPositionsModalOpen: open,
+      importPositionsModalTab: tab ?? (open ? state.importPositionsModalTab ?? 'quick' : state.importPositionsModalTab)
+    })),
   openSnapshotModal: (url: string) => set({ isSnapshotModalOpen: true, snapshotDataUrl: url }),
   closeSnapshotModal: () => set({ isSnapshotModalOpen: false, snapshotDataUrl: null })
 }))
