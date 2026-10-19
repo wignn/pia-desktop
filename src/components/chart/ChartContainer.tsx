@@ -19,6 +19,8 @@ import { ChartLegend } from './ChartLegend'
 import { DrawingPropertyBar } from './DrawingPropertyBar'
 import { ReplayControlBar } from './ReplayControlBar'
 import { registerCustomOverlays } from './register-overlays'
+import { syncPositionOverlays, clearPositionOverlays } from './position-overlay-sync'
+import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { getSymbolPrecision } from '@shared/market-utils'
 import type { DomainPoint, DrawingItem } from '@shared/types'
 function extractDomainPoints(points: Array<Partial<Point>>, dataList: KLineData[]): DomainPoint[] {
@@ -59,9 +61,14 @@ export const ChartContainer: React.FC = () => {
   const theme = useWorkspaceStore((state) => state.theme)
   const symbol = useMarketStore((state) => state.symbol)
   const timeframe = useMarketStore((state) => state.timeframe)
+  const prices = useMarketStore((state) => state.prices)
+  const positions = usePaperTradingStore((state) => state.account.positions)
+  const accountType = usePaperTradingStore((state) => state.accountType)
+  const closePosition = usePaperTradingStore((state) => state.closePosition)
   const setSelectedBar = useMarketStore((state) => state.setSelectedBar)
   const setLatestBar = useMarketStore((state) => state.setLatestBar)
   const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
+  const positionOverlayIdsRef = useRef<Set<string>>(new Set())
   const {
     chartType,
     activeTool,
@@ -127,6 +134,7 @@ export const ChartContainer: React.FC = () => {
 
       isClearingForSymbolSwitchRef.current = true
       try {
+        clearPositionOverlays(chart, positionOverlayIdsRef)
         chart.removeOverlay()
       } finally {
         isClearingForSymbolSwitchRef.current = false
@@ -353,6 +361,7 @@ export const ChartContainer: React.FC = () => {
     return (): void => {
       unsubEngine()
       resizeObserver.disconnect()
+      clearPositionOverlays(chartRef.current, positionOverlayIdsRef)
       dispose(container)
       chartRef.current = null
       liveSubscriberRef.current = null
@@ -474,6 +483,15 @@ export const ChartContainer: React.FC = () => {
     }
   }, [isDrawingsHidden])
 
+  const handleClosePositionFromOverlay = useCallback(
+    (positionId: string): void => {
+      const currentSym = useMarketStore.getState().symbol
+      const markPrice = currentSym ? useMarketStore.getState().prices[currentSym]?.price ?? 0 : 0
+      closePosition(positionId, markPrice)
+    },
+    [closePosition]
+  )
+
   // Handle clearing all drawings signal
   useEffect(() => {
     if (drawingsClearSignal > 0 && chartRef.current) {
@@ -489,8 +507,47 @@ export const ChartContainer: React.FC = () => {
       window.api.drawings.clear({ symbol: currentSymbol ?? undefined }).catch((err) => {
         console.error('[ChartContainer] Failed to clear drawings:', err)
       })
+      if (currentSymbol) {
+        positionOverlayIdsRef.current.clear()
+        syncPositionOverlays(
+          {
+            chart: chartRef.current,
+            positions,
+            currentSymbol,
+            prices,
+            accountType,
+            onClosePosition: handleClosePositionFromOverlay
+          },
+          positionOverlayIdsRef
+        )
+      }
     }
-  }, [drawingsClearSignal])
+  }, [drawingsClearSignal, positions, prices, accountType, handleClosePositionFromOverlay])
+
+  // Synchronize live paper trading position overlays (Entry, TP, SL)
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !symbol) return
+
+    syncPositionOverlays(
+      {
+        chart,
+        positions,
+        currentSymbol: symbol,
+        prices,
+        accountType,
+        onClosePosition: handleClosePositionFromOverlay
+      },
+      positionOverlayIdsRef
+    )
+  }, [positions, prices, symbol, accountType, handleClosePositionFromOverlay])
+
+  // Clear position overlays on symbol switch or unmount
+  useEffect(() => {
+    return (): void => {
+      clearPositionOverlays(chartRef.current, positionOverlayIdsRef)
+    }
+  }, [symbol])
 
   // Synchronize active indicators
   useEffect(() => {
