@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { LOCAL_SYMBOL_ICONS } from './local-symbol-icons'
 
 export interface SymbolLogoProps {
   symbol?: string | null
@@ -6,6 +7,7 @@ export interface SymbolLogoProps {
   style?: React.CSSProperties
   className?: string
   forceFallback?: boolean
+  preferLocal?: boolean
 }
 
 const FIAT_CURRENCIES = new Set([
@@ -299,7 +301,8 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
   size = 20,
   style,
   className,
-  forceFallback = false
+  forceFallback = false,
+  preferLocal = true
 }) => {
   const normSym = (symbol || '').trim().toUpperCase()
   const cachedUrl = LOGO_SUCCESS_CACHE.get(normSym)
@@ -309,9 +312,11 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
   const [isExhausted, setIsExhausted] = useState(() => !forceFallback && LOGO_FAILED_SET.has(normSym))
   const [baseFlagError, setBaseFlagError] = useState(false)
   const [quoteFlagError, setQuoteFlagError] = useState(false)
+  const [localFailed, setLocalFailed] = useState(false)
 
   if (prevSymbol !== symbol) {
     setPrevSymbol(symbol)
+    setLocalFailed(false)
     setCandidateIndex(0)
     setIsExhausted(LOGO_FAILED_SET.has(normSym))
     setBaseFlagError(false)
@@ -332,6 +337,33 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
           ...style
         }}
         className={className}
+      />
+    )
+  }
+
+  // 1. Instant local symbol icon resolution from pre-bundled assets
+  if (preferLocal && !localFailed && !forceFallback && LOCAL_SYMBOL_ICONS.has(normSym)) {
+    return (
+      <img
+        src={`/symbol-icons/${normSym}.png`}
+        alt={symbol}
+        loading="lazy"
+        decoding="async"
+        onError={() => setLocalFailed(true)}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          objectFit: 'contain',
+          display: 'inline-block',
+          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          verticalAlign: 'middle',
+          ...style
+        }}
+        className={className}
+        data-testid="symbol-logo-image"
       />
     )
   }

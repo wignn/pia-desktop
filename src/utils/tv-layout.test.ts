@@ -474,15 +474,18 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(getSymbolLogoCandidates('   ')).toEqual([])
     })
 
-    it('renders single ticker image using first candidate by default', () => {
-      const html = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'BTCUSDT' }))
-      expect(html).toContain('src="https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg"')
-      expect(html).toContain('width:20px')
-      expect(html).toContain('height:20px')
+    it('renders local symbol image first when available, or remote candidate fallback', () => {
+      const htmlLocal = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'BTCUSDT' }))
+      expect(htmlLocal).toContain('src="/symbol-icons/BTCUSDT.png"')
+      expect(htmlLocal).toContain('width:20px')
+      expect(htmlLocal).toContain('height:20px')
+
+      const htmlRemote = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'BTCUSDT', preferLocal: false }))
+      expect(htmlRemote).toContain('src="https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg"')
     })
 
     it('renders overlapping dual flags or currency badges for Forex pairs', () => {
-      const htmlEurUsd = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'EURUSD' }))
+      const htmlEurUsd = renderToStaticMarkup(React.createElement(SymbolLogo, { symbol: 'EURUSD', preferLocal: false }))
       expect(htmlEurUsd).toContain('data-testid="symbol-logo-dual"')
       expect(htmlEurUsd).toContain('flags/4x3/eu.svg')
       expect(htmlEurUsd).toContain('flags/4x3/us.svg')
@@ -565,7 +568,7 @@ describe('TradingView Layout & Chart helpers', () => {
 
       const html = renderToStaticMarkup(React.createElement(WatchlistPanel))
       expect(html).toContain('alt="BTCUSDT"')
-      expect(html).toContain('data-testid="symbol-logo-dual"')
+      expect(html).toContain('alt="EURUSD"')
       expect(html).toContain('width:18px')
     })
 
@@ -588,7 +591,7 @@ describe('TradingView Layout & Chart helpers', () => {
       useMarketStore.setState({ symbol: 'EURUSD', timeframe: '1h' })
       const html = renderToStaticMarkup(React.createElement(ChartLegend))
       expect(html).toContain('EURUSD')
-      expect(html).toContain('data-testid="symbol-logo-dual"')
+      expect(html).toContain('alt="EURUSD"')
       expect(html).toContain('width:16px')
       expect(html).toContain('height:16px')
     })
