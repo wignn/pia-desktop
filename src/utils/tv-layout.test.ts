@@ -1,7 +1,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { sanitizeIndicators, OVERLAY_INDICATORS } from '../stores/useChartStore'
+import { sanitizeIndicators, OVERLAY_INDICATORS, useChartStore } from '../stores/useChartStore'
 import {
   DrawingPropertyBar,
   mapOverlayStyles,
@@ -71,7 +71,6 @@ describe('TradingView Layout & Chart helpers', () => {
   })
 
   it('manages drawing tool selection and toggles properly', () => {
-    const { useChartStore } = require('../stores/useChartStore')
     const store = useChartStore.getState()
     
     expect(store.activeTool).toBe('cursor')
@@ -226,8 +225,6 @@ describe('TradingView Layout & Chart helpers', () => {
     })
 
     it('handles replay store actions and speed transitions', () => {
-      const { useChartStore } = require('../stores/useChartStore')
-
       useChartStore.setState({
         isReplaying: false,
         isReplayPlaying: false,
@@ -257,8 +254,6 @@ describe('TradingView Layout & Chart helpers', () => {
     })
 
     it('correctly toggles and opens right sidebar when clicking rail items', () => {
-      const { useWorkspaceStore } = require('../stores/useWorkspaceStore')
-      
       // Start open on watchlist
       useWorkspaceStore.setState({ activeTab: 'watchlist', isRightPanelOpen: true })
       expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
@@ -596,13 +591,13 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(html).toContain('height:16px')
     })
 
-    it('renders chart loading overlay when isLoadingCandles is true', () => {
+    it('renders chart loading overlay when isLoadingCandles is true', async () => {
       if (typeof globalThis.window === 'undefined') {
         ;(globalThis as any).window = { navigator: { userAgent: 'test' } }
       } else if (!globalThis.window.navigator) {
         ;(globalThis.window as any).navigator = { userAgent: 'test' }
       }
-      const { ChartContainer } = require('../components/chart/ChartContainer')
+      const { ChartContainer } = await import('../components/chart/ChartContainer')
       useMarketStore.setState({ symbol: 'XAUUSD', timeframe: '15m', isLoadingCandles: true })
       const html = renderToStaticMarkup(React.createElement(ChartContainer))
       expect(html).toContain('data-testid="chart-loading-overlay"')

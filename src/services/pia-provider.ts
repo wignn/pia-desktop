@@ -148,6 +148,8 @@ export class PiaProvider {
   private dayOpenPending = new Set<string>()
   private sessionBaselinePrices = new Map<string, number>()
   private latestQuotes = new Map<string, PriceQuote>()
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null
+  private lastActivityAt = 0
 
   constructor(credManager: CredentialManager) {
     this.credManager = credManager
@@ -163,6 +165,7 @@ export class PiaProvider {
     this.symbolsRefreshPromise = null
     this.symbolsRefreshedAt = 0
     this.loggedSymbolCount = null
+    this.stopWatchdog()
 
     if (this.client) {
       try {
@@ -189,6 +192,7 @@ export class PiaProvider {
       this.setupRealtimeListeners()
       this.lastLatencyCheck = Date.now()
       this.client.realtime.connect()
+      this.startWatchdog()
       this.setConnectionState({ status: 'connecting' })
       this.refreshSymbolsCatalog().catch((err) => {
         console.warn('Initial refreshSymbolsCatalog error:', err)
@@ -201,12 +205,79 @@ export class PiaProvider {
     }
   }
 
+  public reconnectRealtime(reason = 'manual'): void {
+    if (!this.client) return
+    console.info(`[PiaProvider] Reconnecting realtime connection (reason: ${reason})...`)
+    this.lastActivityAt = Date.now()
+    this.setConnectionState({ status: 'reconnecting' })
+    try {
+      this.client.realtime.disconnect()
+    } catch {
+      // ignore
+    }
+
+    setTimeout(() => {
+      if (this.client) {
+        this.lastLatencyCheck = Date.now()
+        this.client.realtime.connect()
+      }
+    }, 500)
+  }
+
+  private startWatchdog(): void {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer)
+    this.lastActivityAt = Date.now()
+    this.watchdogTimer = setInterval(() => {
+      this.checkWatchdogHealth()
+    }, 15000)
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer)
+      this.watchdogTimer = null
+    }
+  }
+
+  private checkWatchdogHealth(): void {
+    if (!this.client) return
+    const status = this.connectionState.status
+    if (status !== 'connected') return
+
+    const activeSymbols = Array.from(this.subscriptionCounts.entries())
+      .filter(([, count]) => count > 0)
+      .map(([sym]) => sym)
+
+    if (activeSymbols.length === 0) return
+
+    // If any active symbol is a 24/7 crypto symbol, ticks occur continuously.
+    // If over 45s without any inbound packet or tick, socket is a zombie / half-open.
+    const isAnyCryptoActive = activeSymbols.some((s) => {
+      const sym = s.toUpperCase()
+      return (
+        sym.endsWith('USDT') ||
+        (sym.endsWith('USD') && (sym.startsWith('BTC') || sym.startsWith('ETH') || sym.startsWith('SOL')))
+      )
+    })
+
+    const timeoutThresholdMs = isAnyCryptoActive ? 40000 : 90000
+    const elapsed = Date.now() - this.lastActivityAt
+
+    if (elapsed > timeoutThresholdMs) {
+      console.warn(
+        `[PiaProvider] Realtime watchdog: detected silent stall (${Math.round(elapsed / 1000)}s idle). Triggering recovery reconnect...`
+      )
+      this.reconnectRealtime('watchdog-timeout')
+    }
+  }
+
   private setupRealtimeListeners(): void {
     if (!this.client) return
 
     const rt = this.client.realtime
 
     rt.on('connect', () => {
+      this.lastActivityAt = Date.now()
       const latency = Date.now() - this.lastLatencyCheck
       this.setConnectionState({
         status: 'connected',
@@ -229,19 +300,31 @@ export class PiaProvider {
     })
 
     rt.on('authenticated', () => {
+      this.lastActivityAt = Date.now()
       const latency = Date.now() - this.lastLatencyCheck
       this.setConnectionState({
         status: 'connected',
         latencyMs: latency > 0 && latency < 5000 ? latency : 35,
         lastHeartbeat: Date.now()
       })
+
+      // Ensure all active subscriptions are registered after socket reaches authenticated state
+      const activeSymbols = Array.from(this.subscriptionCounts.entries())
+        .filter(([, count]) => count > 0)
+        .map(([sym]) => sym)
+
+      if (activeSymbols.length > 0) {
+        rt.subscribe(activeSymbols)
+      }
     })
 
     rt.on('disconnect', () => {
+      this.lastActivityAt = Date.now()
       this.setConnectionState({ status: 'disconnected' })
     })
 
     rt.on('raw', (payload: unknown) => {
+      this.lastActivityAt = Date.now()
       const candidate = this.extractRealtimeError(payload)
       if (candidate) this.realtimeErrorDetail = candidate
     })
@@ -263,6 +346,7 @@ export class PiaProvider {
     })
 
     rt.on('snapshot', (snapshot) => {
+      this.lastActivityAt = Date.now()
       if (this.connectionState.status !== 'connected') {
         this.setConnectionState({
           status: 'connected',
@@ -281,6 +365,7 @@ export class PiaProvider {
     })
 
     rt.on('tick', (tick: MarketPrice) => {
+      this.lastActivityAt = Date.now()
       if (this.connectionState.status !== 'connected') {
         this.setConnectionState({
           status: 'connected',
@@ -947,6 +1032,8 @@ export class PiaProvider {
         if (current === 0) {
           this.client.realtime.subscribe(clean)
         }
+      } else if (state === 'DISCONNECTED') {
+        this.client.realtime.connect()
       }
     }
 

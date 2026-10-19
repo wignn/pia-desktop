@@ -50,7 +50,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
-    currentVersion: '1.0.8'
+    currentVersion: '1.0.9'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {
@@ -74,6 +74,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
       getSpikes: () => piaProvider.getSpikes(),
       getAlerts: () => piaProvider.getAlerts(),
       getSmartAlerts: () => piaProvider.getSmartAlerts(),
+      reconnect: () => Promise.resolve(piaProvider.reconnectRealtime('user-bridge')),
       subscribePrice: (symbol: string) => Promise.resolve(piaProvider.subscribePrice(symbol)),
       unsubscribePrice: (symbol: string) =>
         Promise.resolve(piaProvider.unsubscribePrice(symbol)),

@@ -339,6 +339,7 @@ export interface TerminalAPI {
     getSpikes: () => Promise<MarketSpikeData[]>
     getAlerts: () => Promise<ProviderAlertData[]>
     getSmartAlerts: () => Promise<ProviderAlertData[]>
+    reconnect?: () => Promise<void>
     subscribePrice: (symbol: string) => Promise<boolean>
     unsubscribePrice: (symbol: string) => Promise<boolean>
     onPriceUpdate: (callback: (quote: PriceQuote) => void) => () => void

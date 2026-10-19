@@ -230,9 +230,24 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     })
 
     const handleVisibilityChange = (): void => {
-      if (!document.hidden) schedulePriceFlush()
+      if (!document.hidden) {
+        schedulePriceFlush()
+        const currentConn = get().connectionState.status
+        if (currentConn === 'disconnected' || currentConn === 'error') {
+          if (window.api?.market?.reconnect) {
+            void window.api.market.reconnect()
+          }
+        }
+      }
     }
+    const handleOnline = (): void => {
+      if (window.api?.market?.reconnect) {
+        void window.api.market.reconnect()
+      }
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
 
     // Subscribe only when the provider has supplied an active symbol and listeners are active.
     const activeSymbol = get().symbol
@@ -242,6 +257,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       cleanupPrices()
       cleanupConn()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
       if (frameId !== null) cancelAnimationFrame(frameId)
       frameId = null
       pendingPrices = {}
