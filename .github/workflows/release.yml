@@ -16,6 +16,13 @@ jobs:
   release:
     permissions:
       contents: write
+    env:
+      PIA_API_KEY: ${{ secrets.PIA_API_KEY }}
+      PIA_BASE_URL: ${{ secrets.PIA_BASE_URL }}
+      PIA_WS_URL: ${{ secrets.PIA_WS_URL }}
+      VITE_PIA_API_KEY: ${{ secrets.PIA_API_KEY }}
+      VITE_PIA_BASE_URL: ${{ secrets.PIA_BASE_URL }}
+      VITE_PIA_WS_URL: ${{ secrets.PIA_WS_URL }}
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +67,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          PIA_API_KEY: ${{ secrets.PIA_API_KEY }}
+          PIA_BASE_URL: ${{ secrets.PIA_BASE_URL }}
+          PIA_WS_URL: ${{ secrets.PIA_WS_URL }}
+          VITE_PIA_API_KEY: ${{ secrets.PIA_API_KEY }}
+          VITE_PIA_BASE_URL: ${{ secrets.PIA_BASE_URL }}
+          VITE_PIA_WS_URL: ${{ secrets.PIA_WS_URL }}
         with:
           tagName: v__VERSION__
           releaseName: 'PIA Terminal v__VERSION__'

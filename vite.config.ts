@@ -30,7 +30,10 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.PIA_API_KEY': JSON.stringify(apiKey),
       'process.env.PIA_BASE_URL': JSON.stringify(baseUrl),
-      'process.env.PIA_WS_URL': JSON.stringify(wsUrl)
+      'process.env.PIA_WS_URL': JSON.stringify(wsUrl),
+      'import.meta.env.VITE_PIA_API_KEY': JSON.stringify(apiKey),
+      'import.meta.env.VITE_PIA_BASE_URL': JSON.stringify(baseUrl),
+      'import.meta.env.VITE_PIA_WS_URL': JSON.stringify(wsUrl)
     },
     optimizeDeps: {
       exclude: ['maplibre-gl']

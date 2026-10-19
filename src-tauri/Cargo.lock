@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "pia"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "pia-sdk",
  "reqwest 0.12.28",

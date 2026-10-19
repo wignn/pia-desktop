@@ -52,11 +52,24 @@ export class CredentialManager {
       } catch {}
     }
 
-    if (!this.inMemoryCreds?.apiKey && process.env.PIA_API_KEY) {
+    const envApiKey =
+      (typeof process !== 'undefined' && process.env?.PIA_API_KEY) ||
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_API_KEY) ||
+      ''
+    const envBaseUrl =
+      (typeof process !== 'undefined' && process.env?.PIA_BASE_URL) ||
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_BASE_URL) ||
+      ''
+    const envWsUrl =
+      (typeof process !== 'undefined' && process.env?.PIA_WS_URL) ||
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_WS_URL) ||
+      ''
+
+    if (!this.inMemoryCreds?.apiKey && envApiKey) {
       this.inMemoryCreds = {
-        apiKey: process.env.PIA_API_KEY,
-        baseUrl: normalizeBaseUrl(process.env.PIA_BASE_URL),
-        wsUrl: normalizeWsUrl(process.env.PIA_WS_URL)
+        apiKey: envApiKey,
+        baseUrl: normalizeBaseUrl(envBaseUrl),
+        wsUrl: normalizeWsUrl(envWsUrl)
       }
     }
 
