@@ -53,6 +53,11 @@ const ControlPanelView = lazy(() =>
     default: module.ControlPanelView
   }))
 )
+const MarketHeatmapView = lazy(() =>
+  import('./components/heatmap/MarketHeatmapView').then((module) => ({
+    default: module.MarketHeatmapView
+  }))
+)
 
 const featureFallback = (
   <div
@@ -77,6 +82,7 @@ export function App(): React.JSX.Element {
   const isHubActive = activeTabItem?.type === 'hub'
   const isMacroMapsActive = activeTabItem?.type === 'macromaps'
   const isControlPanelActive = activeTabItem?.type === 'controlpanel'
+  const isHeatmapActive = activeTabItem?.type === 'heatmap'
   const activeTab = useWorkspaceStore((state) => state.activeTab)
   const isRightPanelOpen = useWorkspaceStore((state) => state.isRightPanelOpen)
   const setSymbolSearchOpen = useWorkspaceStore((state) => state.setSymbolSearchOpen)
@@ -225,6 +231,10 @@ export function App(): React.JSX.Element {
       ) : isControlPanelActive ? (
         <Suspense fallback={featureFallback}>
           <ControlPanelView />
+        </Suspense>
+      ) : isHeatmapActive ? (
+        <Suspense fallback={featureFallback}>
+          <MarketHeatmapView />
         </Suspense>
       ) : (
         <>

@@ -50,7 +50,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
-    currentVersion: '1.0.9'
+    currentVersion: '1.0.10'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {

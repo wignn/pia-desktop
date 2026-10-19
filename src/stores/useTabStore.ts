@@ -28,6 +28,8 @@ interface TabState {
   switchToMacroMaps: (metric?: MacroMetricType) => void
   openControlPanelInNewTab: () => string
   switchToControlPanel: () => void
+  openHeatmapInNewTab: () => string
+  switchToHeatmap: () => void
 }
 
 const getInitialTabs = (): TerminalTabItem[] => {
@@ -357,6 +359,40 @@ export const useTabStore = create<TabState>((set, get) => ({
               type: 'controlpanel',
               title: 'Control Panel',
               customName: 'War Room'
+            }
+          : t
+      )
+    })
+  },
+
+  openHeatmapInNewTab: () => {
+    const id = `heatmap_${Date.now()}`
+    const newTab: TerminalTabItem = {
+      id,
+      title: 'Market Heatmap',
+      type: 'heatmap',
+      symbol: 'XAUUSD',
+      timeframe: '15m',
+      customName: 'Heatmap'
+    }
+
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      activeTabId: id
+    }))
+    return id
+  },
+
+  switchToHeatmap: () => {
+    const { activeTabId, tabs } = get()
+    set({
+      tabs: tabs.map((t) =>
+        t.id === activeTabId
+          ? {
+              ...t,
+              type: 'heatmap',
+              title: 'Market Heatmap',
+              customName: 'Heatmap'
             }
           : t
       )

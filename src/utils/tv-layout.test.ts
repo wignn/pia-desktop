@@ -25,6 +25,7 @@ import { SymbolSearchModal } from '../components/modals/SymbolSearchModal'
 import { ChartLegend } from '../components/chart/ChartLegend'
 import { useMarketStore } from '../stores/useMarketStore'
 import { useWatchlistStore } from '../stores/useWatchlistStore'
+import { useTabStore } from '../stores/useTabStore'
 
 describe('TradingView Layout & Chart helpers', () => {
   it('correctly maps overlay indicators to candle_pane', () => {
@@ -277,6 +278,14 @@ describe('TradingView Layout & Chart helpers', () => {
       useWorkspaceStore.getState().setActiveTab('news')
       expect(useWorkspaceStore.getState().activeTab).toBe('news')
       expect(useWorkspaceStore.getState().isRightPanelOpen).toBe(true)
+    })
+
+    it('correctly creates and switches to market heatmap tab in useTabStore', () => {
+      const tabId = useTabStore.getState().openHeatmapInNewTab()
+      expect(useTabStore.getState().activeTabId).toBe(tabId)
+      const currentTab = useTabStore.getState().tabs.find((t) => t.id === tabId)
+      expect(currentTab?.type).toBe('heatmap')
+      expect(currentTab?.title).toBe('Market Heatmap')
     })
 
     it('correctly maps news article imageUrl and formats news layout', () => {
