@@ -966,8 +966,10 @@ export class PiaProvider {
       }
       return bars
     } catch (err) {
-      console.warn('getCandles unavailable:', this.formatProviderError(err))
-      return []
+      // Do not swallow failures as empty data: CandleEngine retries on thrown
+      // errors, and an empty array would be misread as "symbol has no history".
+      console.warn(`getCandles failed for ${params.symbol} [${params.timeframe}]:`, this.formatProviderError(err))
+      throw err instanceof Error ? err : new Error(String(err))
     }
   }
 

@@ -138,4 +138,49 @@ describe('CandleEngine', () => {
 
     unregisterBitcoin()
   })
+
+  it('retries once with backoff after an empty response and succeeds on the next call', async () => {
+    vi.useFakeTimers()
+    try {
+      const mock = vi.fn().mockResolvedValueOnce([]).mockResolvedValue(history)
+      vi.stubGlobal('window', { api: { market: { getCandles: mock } } })
+      const engine = new CandleEngine()
+      const onHistoryLoaded = vi.fn()
+      engine.addListener({ onHistoryLoaded, onBarUpdate: vi.fn() })
+
+      let bars: Awaited<ReturnType<typeof engine.setSymbolAndTimeframe>> | null = null
+      const pending = engine.setSymbolAndTimeframe('USOIL', '15m').then((r) => {
+        bars = r
+      })
+      await vi.advanceTimersByTimeAsync(2000)
+      await pending
+
+      expect(mock).toHaveBeenCalledTimes(2)
+      expect(bars).toHaveLength(2)
+      expect(onHistoryLoaded).toHaveBeenCalledWith(engine.getGenerationId(), bars)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('retries once with backoff when the candle request throws, then succeeds', async () => {
+    vi.useFakeTimers()
+    try {
+      const mock = vi.fn().mockRejectedValueOnce(new Error('network down')).mockResolvedValue(history)
+      vi.stubGlobal('window', { api: { market: { getCandles: mock } } })
+      const engine = new CandleEngine()
+
+      let bars: Awaited<ReturnType<typeof engine.setSymbolAndTimeframe>> | null = null
+      const pending = engine.setSymbolAndTimeframe('USOIL', '15m').then((r) => {
+        bars = r
+      })
+      await vi.advanceTimersByTimeAsync(2000)
+      await pending
+
+      expect(mock).toHaveBeenCalledTimes(2)
+      expect(bars).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

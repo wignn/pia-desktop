@@ -92,8 +92,12 @@ export class CandleEngine {
       let normalizedBars: KLineData[] = []
       let lastError: unknown
 
-      // A transient empty response is not a valid chart state. Retry once before
-      // notifying KLineChart, while keeping the same generation active.
+      const RETRY_BACKOFF_MS = 1200
+      const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+      // A transient failure or empty response is not a valid chart state.
+      // Retry once with a short backoff before reporting empty to KLineChart,
+      // while keeping the same generation active.
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const rawBars = await window.api.market.getCandles({
@@ -106,10 +110,20 @@ export class CandleEngine {
           if (this.generationId !== activeGen) return []
 
           normalizedBars = this.normalizeAndSortBars(rawBars)
-          break // Successful response: do not retry even if 0 bars returned
+          if (normalizedBars.length === 0 && attempt === 0) {
+            console.warn(
+              `[CandleEngine] Empty candle response for ${symbol} [${timeframe}], retrying once...`
+            )
+            await sleep(RETRY_BACKOFF_MS)
+            if (this.generationId !== activeGen) return []
+            continue
+          }
+          break
         } catch (err) {
           lastError = err
           if (attempt === 1) break
+          await sleep(RETRY_BACKOFF_MS)
+          if (this.generationId !== activeGen) return []
         }
       }
 
