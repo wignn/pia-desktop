@@ -49,6 +49,11 @@ function extractDomainPoints(points: Array<Partial<Point>>, dataList: KLineData[
     })
 }
 
+function isSamePeriod(a?: Period | null, b?: Period | null): boolean {
+  if (!a || !b) return false
+  return a.type === b.type && a.span === b.span
+}
+
 export const ChartContainer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<Chart | null>(null)
@@ -233,18 +238,13 @@ export const ChartContainer: React.FC = () => {
     chart.setDataLoader({
       getBars: async (params): Promise<void> => {
         const { type, timestamp, symbol: sym, callback } = params
-        if (type === 'init') {
-          setHasHistoricalBars(false)
-          // The mount path calls chart.setSymbol directly (not store.setSymbol),
-          // so isLoadingCandles is still false here. Mark loading explicitly to
-          // prevent the "No historical candle data" message from flashing
-          // while the initial fetch is in flight.
-          if (sym.ticker) setIsLoadingCandles(true)
-        }
+        const currentActiveSymbol = useMarketStore.getState().symbol
+        const currentActiveTf = useMarketStore.getState().timeframe
+        const period = (params as { period?: Period }).period
+        const tf = period ? periodToTimeframe(period) : currentActiveTf
 
-        // The initial chart is intentionally symbol-less until PIA returns its catalog.
-        // Do not cross the IPC boundary with an empty symbol.
-        if (type === 'init' && !sym.ticker) {
+        // Guard against initial empty symbol or superseded/mismatched requests
+        if (type === 'init' && (!sym.ticker || sym.ticker !== currentActiveSymbol || tf !== currentActiveTf)) {
           callback([], false)
           return
         }
@@ -271,9 +271,18 @@ export const ChartContainer: React.FC = () => {
           return
         }
 
-        const period = (params as { period?: Period }).period
-        const tf = period ? periodToTimeframe(period) : useMarketStore.getState().timeframe
+        setIsLoadingCandles(true)
+
         const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
+
+        // Verify request was not superseded while in flight
+        const latestSymbol = useMarketStore.getState().symbol
+        const latestTf = useMarketStore.getState().timeframe
+        if (sym.ticker !== latestSymbol || tf !== latestTf) {
+          callback([], false)
+          return
+        }
+
         setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
         if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
@@ -299,7 +308,12 @@ export const ChartContainer: React.FC = () => {
     // Listen to CandleEngine updates for live tick forwarding & replay bar simulation
     const unsubEngine = candleEngine.addListener({
       onHistoryLoaded: (_genId, bars): void => {
+        const curSym = useMarketStore.getState().symbol
+        if (candleEngine.getSymbol() && curSym && candleEngine.getSymbol() !== curSym) {
+          return
+        }
         setLatestBar(bars.at(-1) ?? null)
+        setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
         if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
           useMarketStore.setState({
@@ -391,8 +405,13 @@ export const ChartContainer: React.FC = () => {
     const chart = chartRef.current
     if (!chart) return
 
-    // Ensure period is updated first so DataLoader receives the correct timeframe
-    chart.setPeriod(timeframeToPeriod(timeframe))
+    setHasHistoricalBars(true)
+
+    const targetPeriod = timeframeToPeriod(timeframe)
+    const currentPeriod = chart.getPeriod()
+    if (!isSamePeriod(currentPeriod, targetPeriod)) {
+      chart.setPeriod(targetPeriod)
+    }
 
     const activeSymbol = symbol ?? ''
     const symInfo = useMarketStore.getState().symbols.find((s) => s.symbol === activeSymbol)
