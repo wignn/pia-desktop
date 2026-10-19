@@ -3,6 +3,7 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { usePiaScriptStore } from '../../stores/usePiaScriptStore'
+import { PiaScriptEditor } from './PiaScriptEditor'
 import { SymbolLogo } from '../common/SymbolLogo'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { THEME_TOKENS } from '../../theme/tokens'
@@ -514,38 +515,7 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                 </div>
               )}
 
-              <textarea
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Tab') {
-                    e.preventDefault()
-                    const target = e.currentTarget
-                    const start = target.selectionStart
-                    const end = target.selectionEnd
-                    const val = target.value
-                    const updated = val.substring(0, start) + '    ' + val.substring(end)
-                    setScript(updated)
-                    setTimeout(() => {
-                      target.selectionStart = target.selectionEnd = start + 4
-                    }, 0)
-                  }
-                }}
-                spellCheck={false}
-                style={{
-                  flex: 1,
-                  width: '100%',
-                  padding: '10px 14px',
-                  fontFamily: 'Consolas, "Fira Code", monospace',
-                  fontSize: 12,
-                  color: '#9cdcfe',
-                  backgroundColor: '#12141a',
-                  border: 'none',
-                  outline: 'none',
-                  resize: 'none',
-                  lineHeight: 1.6
-                }}
-              />
+              <PiaScriptEditor value={script} onChange={setScript} />
             </div>
           )}
 
