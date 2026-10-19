@@ -28,6 +28,10 @@ pia_credentials.json
 *.sqlite3
 EBWebView/
 
+# Internal docs & superpower scratchpads
+.superpowers/
+docs/
+
 # Rust & Tauri artifacts
 src-tauri/target/
 target/
