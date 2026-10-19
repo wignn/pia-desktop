@@ -233,7 +233,14 @@ export const ChartContainer: React.FC = () => {
     chart.setDataLoader({
       getBars: async (params): Promise<void> => {
         const { type, timestamp, symbol: sym, callback } = params
-        if (type === 'init') setHasHistoricalBars(false)
+        if (type === 'init') {
+          setHasHistoricalBars(false)
+          // The mount path calls chart.setSymbol directly (not store.setSymbol),
+          // so isLoadingCandles is still false here. Mark loading explicitly to
+          // prevent the "No historical candle data" message from flashing
+          // while the initial fetch is in flight.
+          if (sym.ticker) setIsLoadingCandles(true)
+        }
 
         // The initial chart is intentionally symbol-less until PIA returns its catalog.
         // Do not cross the IPC boundary with an empty symbol.
