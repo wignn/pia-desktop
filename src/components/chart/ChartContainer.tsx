@@ -15,6 +15,8 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { useChartStore, isOverlayIndicator } from '../../stores/useChartStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS, getChartThemeStyles } from '../../theme/tokens'
+import { Loader2 } from 'lucide-react'
+import { SymbolLogo } from '../common/SymbolLogo'
 import { ChartLegend } from './ChartLegend'
 import { DrawingPropertyBar } from './DrawingPropertyBar'
 import { ReplayControlBar } from './ReplayControlBar'
@@ -73,6 +75,7 @@ export const ChartContainer: React.FC = () => {
   const setCustomEntryDraft = usePaperTradingStore((state) => state.setCustomEntryDraft)
   const setSelectedBar = useMarketStore((state) => state.setSelectedBar)
   const setLatestBar = useMarketStore((state) => state.setLatestBar)
+  const isLoadingCandles = useMarketStore((state) => state.isLoadingCandles)
   const setIsLoadingCandles = useMarketStore((state) => state.setIsLoadingCandles)
   const positionOverlayIdsRef = useRef<Set<string>>(new Set())
   const {
@@ -728,7 +731,59 @@ export const ChartContainer: React.FC = () => {
         onDelete={handleDeleteSelectedOverlay}
       />
       {isReplaying && <ReplayControlBar />}
-      {!hasHistoricalBars && !useMarketStore.getState().isLoadingCandles && (
+
+      {/* Institutional Loading Overlay when switching symbols or timeframes */}
+      {isLoadingCandles && (
+        <div
+          data-testid="chart-loading-overlay"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            backgroundColor: 'rgba(11, 14, 20, 0.45)',
+            backdropFilter: 'blur(3px)',
+            WebkitBackdropFilter: 'blur(3px)',
+            zIndex: 15,
+            pointerEvents: 'none',
+            transition: 'opacity 0.15s ease'
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 18px',
+              backgroundColor: 'rgba(24, 28, 39, 0.88)',
+              borderRadius: 24,
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)'
+            }}
+          >
+            {symbol && <SymbolLogo symbol={symbol} size={22} />}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#ffffff', letterSpacing: '0.02em' }}>
+                  {symbol || 'Chart'}
+                </span>
+                <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>
+                  {timeframe}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#38bdf8' }}>
+                <Loader2 size={12} className="tv-spin" />
+                <span>Loading chart data...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!hasHistoricalBars && !isLoadingCandles && (
         <div
           style={{
             position: 'absolute',

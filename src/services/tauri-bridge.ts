@@ -34,6 +34,11 @@ import type {
   UpdaterStatus
 } from '@shared/types'
 
+import {
+  checkForAppUpdates,
+  installDownloadedUpdate
+} from './auto-updater'
+
 export async function createTauriApi(): Promise<TerminalAPI> {
   const credManager = new CredentialManager()
   await credManager.initialize()
@@ -42,6 +47,21 @@ export async function createTauriApi(): Promise<TerminalAPI> {
   await dbService.initialize()
 
   const piaProvider = new PiaProvider(credManager)
+
+  let currentUpdaterStatus: UpdaterStatus = {
+    state: 'idle',
+    currentVersion: '1.0.8'
+  }
+  const updaterListeners = new Set<(status: UpdaterStatus) => void>()
+  const notifyUpdaterListeners = (s: UpdaterStatus): void => {
+    updaterListeners.forEach((fn) => {
+      try {
+        fn(s)
+      } catch (e) {
+        console.error('[tauri-bridge] updater listener error:', e)
+      }
+    })
+  }
 
   const api: TerminalAPI = {
     market: {
@@ -207,11 +227,69 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     },
 
     updater: {
-      check: () => Promise.resolve({ state: 'idle', currentVersion: '1.0.0' } as UpdaterStatus),
-      getStatus: () =>
-        Promise.resolve({ state: 'idle', currentVersion: '1.0.0' } as UpdaterStatus),
-      install: () => Promise.resolve(false),
-      onStatus: () => () => {}
+      check: async () => {
+        currentUpdaterStatus = { ...currentUpdaterStatus, state: 'checking' }
+        notifyUpdaterListeners(currentUpdaterStatus)
+        const res = await checkForAppUpdates()
+        if (res.state === 'available') {
+          currentUpdaterStatus = {
+            state: 'available',
+            currentVersion: res.currentVersion || '1.0.8',
+            availableVersion: res.availableVersion,
+            progressPercent: 0
+          }
+        } else if (res.state === 'up-to-date') {
+          currentUpdaterStatus = {
+            state: 'not-available',
+            currentVersion: res.currentVersion || '1.0.8'
+          }
+        } else {
+          currentUpdaterStatus = {
+            state: 'error',
+            currentVersion: '1.0.8',
+            error: res.error
+          }
+        }
+        notifyUpdaterListeners(currentUpdaterStatus)
+        return currentUpdaterStatus
+      },
+      getStatus: () => Promise.resolve(currentUpdaterStatus),
+      install: async () => {
+        currentUpdaterStatus = { ...currentUpdaterStatus, state: 'downloading', progressPercent: 0 }
+        notifyUpdaterListeners(currentUpdaterStatus)
+        const ok = await installDownloadedUpdate((percent) => {
+          currentUpdaterStatus = {
+            ...currentUpdaterStatus,
+            state: 'downloading',
+            progressPercent: percent
+          }
+          notifyUpdaterListeners(currentUpdaterStatus)
+        })
+        if (ok) {
+          currentUpdaterStatus = {
+            ...currentUpdaterStatus,
+            state: 'downloaded',
+            progressPercent: 100
+          }
+          notifyUpdaterListeners(currentUpdaterStatus)
+          return true
+        } else {
+          currentUpdaterStatus = {
+            ...currentUpdaterStatus,
+            state: 'error',
+            error: 'Failed to install update'
+          }
+          notifyUpdaterListeners(currentUpdaterStatus)
+          return false
+        }
+      },
+      onStatus: (callback) => {
+        updaterListeners.add(callback)
+        callback(currentUpdaterStatus)
+        return () => {
+          updaterListeners.delete(callback)
+        }
+      }
     }
   }
 

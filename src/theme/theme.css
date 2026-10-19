@@ -215,6 +215,19 @@ button:focus {
   animation: live-pulse 2s infinite ease-in-out;
 }
 
+@keyframes tv-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tv-spin {
+  animation: tv-spin 0.9s linear infinite;
+}
+
 /* Frosted glass utility */
 .glass-panel {
   background-color: rgba(17, 21, 31, 0.82) !important;

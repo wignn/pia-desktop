@@ -595,6 +595,21 @@ describe('TradingView Layout & Chart helpers', () => {
       expect(html).toContain('width:16px')
       expect(html).toContain('height:16px')
     })
+
+    it('renders chart loading overlay when isLoadingCandles is true', () => {
+      if (typeof globalThis.window === 'undefined') {
+        ;(globalThis as any).window = { navigator: { userAgent: 'test' } }
+      } else if (!globalThis.window.navigator) {
+        ;(globalThis.window as any).navigator = { userAgent: 'test' }
+      }
+      const { ChartContainer } = require('../components/chart/ChartContainer')
+      useMarketStore.setState({ symbol: 'XAUUSD', timeframe: '15m', isLoadingCandles: true })
+      const html = renderToStaticMarkup(React.createElement(ChartContainer))
+      expect(html).toContain('data-testid="chart-loading-overlay"')
+      expect(html).toContain('XAUUSD')
+      expect(html).toContain('15m')
+      expect(html).toContain('Loading chart data...')
+    })
     it('renders live non-zero percentage badge in WatchlistPanel when change24hPercent is provided', () => {
       useWatchlistStore.setState({
         watchlists: [

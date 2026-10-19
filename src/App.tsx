@@ -144,7 +144,7 @@ export function App(): React.JSX.Element {
     fetchSymbols()
     loadCredentials()
     loadPaperAccount()
-    void checkForAppUpdates({ silent: true })
+    void useUpdaterStore.getState().checkForUpdates()
     const unsubscribe = subscribeToMarketEvents()
     return () => {
       unsubscribe()
