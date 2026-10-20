@@ -655,6 +655,8 @@ export interface PiaScriptSignal {
   action: 'BUY' | 'SELL' | 'CLOSE'
   price: number
   comment?: string
+  stop_loss?: number | null
+  take_profit?: number | null
 }
 
 export interface PiaScriptTrade {
@@ -665,6 +667,7 @@ export interface PiaScriptTrade {
   exit_price: number
   pnl: number
   pnl_percent: number
+  exit_reason?: string | null
 }
 
 export interface PiaScriptBacktest {

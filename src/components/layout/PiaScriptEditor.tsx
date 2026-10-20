@@ -14,7 +14,14 @@ export interface CompletionItem {
 }
 
 export const PIASCRIPT_COMPLETIONS: CompletionItem[] = [
-  // Builtin Functions
+  // Builtin Indicators & EA Math
+  { label: 'atr', insertText: 'atr(14)', detail: 'atr(period)', kind: 'function', doc: 'Average True Range volatility indicator for dynamic SL/TP' },
+  { label: 'macd', insertText: 'macd(close, 12, 26)', detail: 'macd(src, fast, slow)', kind: 'function', doc: 'MACD Line (Fast EMA minus Slow EMA)' },
+  { label: 'macd_signal', insertText: 'macd_signal(close, 12, 26, 9)', detail: 'macd_signal(src, fast, slow, signal)', kind: 'function', doc: 'MACD Signal Line (EMA of MACD Line)' },
+  { label: 'macd_hist', insertText: 'macd_hist(close, 12, 26, 9)', detail: 'macd_hist(src, fast, slow, signal)', kind: 'function', doc: 'MACD Histogram (MACD Line minus Signal Line)' },
+  { label: 'bb_upper', insertText: 'bb_upper(close, 20, 2.0)', detail: 'bb_upper(src, period, mult)', kind: 'function', doc: 'Bollinger Bands Upper Band (SMA + mult * StDev)' },
+  { label: 'bb_lower', insertText: 'bb_lower(close, 20, 2.0)', detail: 'bb_lower(src, period, mult)', kind: 'function', doc: 'Bollinger Bands Lower Band (SMA - mult * StDev)' },
+  { label: 'bb_basis', insertText: 'bb_basis(close, 20)', detail: 'bb_basis(src, period)', kind: 'function', doc: 'Bollinger Bands Middle Basis (SMA)' },
   { label: 'ema', insertText: 'ema(close, 9)', detail: 'ema(src, period)', kind: 'function', doc: 'Exponential Moving Average' },
   { label: 'sma', insertText: 'sma(close, 20)', detail: 'sma(src, period)', kind: 'function', doc: 'Simple Moving Average' },
   { label: 'rsi', insertText: 'rsi(close, 14)', detail: 'rsi(src, period)', kind: 'function', doc: 'Relative Strength Index (0-100 oscillator)' },
@@ -22,11 +29,13 @@ export const PIASCRIPT_COMPLETIONS: CompletionItem[] = [
   { label: 'crossunder', insertText: 'crossunder(fast, slow)', detail: 'crossunder(a, b)', kind: 'function', doc: 'Returns true when a crosses below b' },
   { label: 'highest', insertText: 'highest(high, 20)', detail: 'highest(src, period)', kind: 'function', doc: 'Highest value over past period bars' },
   { label: 'lowest', insertText: 'lowest(low, 20)', detail: 'lowest(src, period)', kind: 'function', doc: 'Lowest value over past period bars' },
+  { label: 'input', insertText: 'input(14)', detail: 'input(default)', kind: 'function', doc: 'Defines an adjustable parameter input for the Expert Advisor' },
+  { label: 'abs', insertText: 'abs(src)', detail: 'abs(src)', kind: 'function', doc: 'Absolute value' },
   { label: 'plot', insertText: 'plot(val, color="#00bcd4", title="")', detail: 'plot(series, color, title)', kind: 'function', doc: 'Plots an indicator series onto the chart canvas' },
 
-  // Actions
-  { label: 'buy', insertText: 'buy(1)', detail: 'buy(size)', kind: 'action', doc: 'Enter or reverse into a LONG position' },
-  { label: 'sell', insertText: 'sell(1)', detail: 'sell(size)', kind: 'action', doc: 'Enter or reverse into a SHORT position' },
+  // Actions (EA Execution)
+  { label: 'buy', insertText: 'buy(1, sl=low - atr(14), tp=close + 2 * atr(14))', detail: 'buy(size, sl, tp)', kind: 'action', doc: 'Enter LONG with optional Stop Loss and Take Profit brackets' },
+  { label: 'sell', insertText: 'sell(1, sl=high + atr(14), tp=close - 2 * atr(14))', detail: 'sell(size, sl, tp)', kind: 'action', doc: 'Enter SHORT with optional Stop Loss and Take Profit brackets' },
   { label: 'close', insertText: 'close()', detail: 'close()', kind: 'action', doc: 'Close any currently open trade position' },
 
   // Candle Data Series

@@ -28,6 +28,10 @@ pub struct PiaSignal {
     pub action: String,
     pub price: f64,
     pub comment: Option<String>,
+    #[serde(default)]
+    pub stop_loss: Option<f64>,
+    #[serde(default)]
+    pub take_profit: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +43,8 @@ pub struct PiaTrade {
     pub exit_price: f64,
     pub pnl: f64,
     pub pnl_percent: f64,
+    #[serde(default)]
+    pub exit_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,14 +290,48 @@ impl<'a> PiaScriptEngine<'a> {
             return Err(format!("Unknown action in condition: {}", clean));
         };
 
+        let mut sl_series: Option<Vec<f64>> = None;
+        let mut tp_series: Option<Vec<f64>> = None;
+
+        if (action == "BUY" || action == "SELL") && clean.contains('(') && clean.ends_with(')') {
+            if let Some(open_paren) = clean.find('(') {
+                let inner = clean[open_paren + 1..clean.len() - 1].trim();
+                let args = split_arguments(inner);
+                for (arg_idx, arg) in args.iter().enumerate() {
+                    if let Some((k, v)) = arg.split_once('=') {
+                        let key = k.trim().to_lowercase();
+                        let val = v.trim();
+                        match key.as_str() {
+                            "sl" | "stop_loss" => {
+                                sl_series = Some(self.eval_num_series(val)?);
+                            }
+                            "tp" | "take_profit" => {
+                                tp_series = Some(self.eval_num_series(val)?);
+                            }
+                            _ => {}
+                        }
+                    } else if arg_idx == 1 {
+                        sl_series = Some(self.eval_num_series(arg)?);
+                    } else if arg_idx == 2 {
+                        tp_series = Some(self.eval_num_series(arg)?);
+                    }
+                }
+            }
+        }
+
         for (idx, &is_triggered) in cond.iter().enumerate() {
             if is_triggered && idx < self.candles.len() {
+                let stop_loss = sl_series.as_ref().and_then(|s| s.get(idx).copied()).filter(|v| !v.is_nan() && *v > 0.0);
+                let take_profit = tp_series.as_ref().and_then(|s| s.get(idx).copied()).filter(|v| !v.is_nan() && *v > 0.0);
+
                 self.signals.push(PiaSignal {
                     index: idx,
                     timestamp: self.candles[idx].timestamp,
                     action: action.to_string(),
                     price: self.candles[idx].close,
                     comment: Some(format!("Signal at Bar {}", idx)),
+                    stop_loss,
+                    take_profit,
                 });
             }
         }
@@ -427,6 +467,76 @@ impl<'a> PiaScriptEngine<'a> {
                     let period = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(14);
                     return Ok(SeriesValue::NumSeries(calc_lowest(&src, period)));
                 }
+                "atr" | "ta.atr" => {
+                    let period = args.get(0).and_then(|p| p.parse::<usize>().ok()).unwrap_or(14);
+                    return Ok(SeriesValue::NumSeries(calc_atr(self.candles, period)));
+                }
+                "macd" | "ta.macd" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("macd() requires source")?)?;
+                    let fast = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(12);
+                    let slow = args.get(2).and_then(|p| p.parse::<usize>().ok()).unwrap_or(26);
+                    let signal = args.get(3).and_then(|p| p.parse::<usize>().ok()).unwrap_or(9);
+                    let (line, _, _) = calc_macd(&src, fast, slow, signal);
+                    return Ok(SeriesValue::NumSeries(line));
+                }
+                "macd_signal" | "ta.macd_signal" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("macd_signal() requires source")?)?;
+                    let fast = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(12);
+                    let slow = args.get(2).and_then(|p| p.parse::<usize>().ok()).unwrap_or(26);
+                    let signal = args.get(3).and_then(|p| p.parse::<usize>().ok()).unwrap_or(9);
+                    let (_, sig, _) = calc_macd(&src, fast, slow, signal);
+                    return Ok(SeriesValue::NumSeries(sig));
+                }
+                "macd_hist" | "ta.macd_hist" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("macd_hist() requires source")?)?;
+                    let fast = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(12);
+                    let slow = args.get(2).and_then(|p| p.parse::<usize>().ok()).unwrap_or(26);
+                    let signal = args.get(3).and_then(|p| p.parse::<usize>().ok()).unwrap_or(9);
+                    let (_, _, hist) = calc_macd(&src, fast, slow, signal);
+                    return Ok(SeriesValue::NumSeries(hist));
+                }
+                "bb_upper" | "ta.bb_upper" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("bb_upper() requires source")?)?;
+                    let period = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(20);
+                    let mult = args.get(2).and_then(|p| p.parse::<f64>().ok()).unwrap_or(2.0);
+                    let (_, upper, _) = calc_bb(&src, period, mult);
+                    return Ok(SeriesValue::NumSeries(upper));
+                }
+                "bb_lower" | "ta.bb_lower" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("bb_lower() requires source")?)?;
+                    let period = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(20);
+                    let mult = args.get(2).and_then(|p| p.parse::<f64>().ok()).unwrap_or(2.0);
+                    let (_, _, lower) = calc_bb(&src, period, mult);
+                    return Ok(SeriesValue::NumSeries(lower));
+                }
+                "bb_basis" | "ta.bb_basis" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("bb_basis() requires source")?)?;
+                    let period = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(20);
+                    return Ok(SeriesValue::NumSeries(calc_sma(&src, period)));
+                }
+                "stdev" | "ta.stdev" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("stdev() requires source")?)?;
+                    let period = args.get(1).and_then(|p| p.parse::<usize>().ok()).unwrap_or(20);
+                    return Ok(SeriesValue::NumSeries(calc_stdev(&src, period)));
+                }
+                "input" => {
+                    let default_expr = args.get(0).ok_or("input() requires a default value")?;
+                    return self.eval_expr(default_expr);
+                }
+                "abs" => {
+                    let src = self.eval_num_series(args.get(0).ok_or("abs() requires source")?)?;
+                    return Ok(SeriesValue::NumSeries(src.into_iter().map(|v| v.abs()).collect()));
+                }
+                "max" => {
+                    let a = self.eval_num_series(args.get(0).ok_or("max() requires 2 arguments")?)?;
+                    let b = self.eval_num_series(args.get(1).ok_or("max() requires 2 arguments")?)?;
+                    return Ok(SeriesValue::NumSeries(a.into_iter().zip(b).map(|(x, y)| x.max(y)).collect()));
+                }
+                "min" => {
+                    let a = self.eval_num_series(args.get(0).ok_or("min() requires 2 arguments")?)?;
+                    let b = self.eval_num_series(args.get(1).ok_or("min() requires 2 arguments")?)?;
+                    return Ok(SeriesValue::NumSeries(a.into_iter().zip(b).map(|(x, y)| x.min(y)).collect()));
+                }
                 _ => return Err(format!("Unknown function: {}", func)),
             }
         }
@@ -493,6 +603,9 @@ impl<'a> PiaScriptEngine<'a> {
             action: String,
             entry_price: f64,
             entry_time: i64,
+            entry_bar: usize,
+            stop_loss: Option<f64>,
+            take_profit: Option<f64>,
         }
 
         let mut current_pos: Option<OpenPos> = None;
@@ -510,6 +623,106 @@ impl<'a> PiaScriptEngine<'a> {
         for bar_idx in 0..n {
             let candle = &self.candles[bar_idx];
 
+            // 1. Intra-bar SL / TP evaluation for positions opened on earlier bars
+            if let Some(pos) = current_pos.take() {
+                let mut closed = false;
+
+                if bar_idx > pos.entry_bar {
+                    if pos.action == "BUY" {
+                        // Check Stop Loss first (conservative risk modeling)
+                        if let Some(sl) = pos.stop_loss {
+                            if candle.low <= sl {
+                                let exit_price = sl.min(candle.open);
+                                let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                equity += pnl;
+                                if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
+                                trades.push(PiaTrade {
+                                    entry_time: pos.entry_time,
+                                    exit_time: candle.timestamp,
+                                    action: pos.action.clone(),
+                                    entry_price: pos.entry_price,
+                                    exit_price,
+                                    pnl,
+                                    pnl_percent: pnl_pct,
+                                    exit_reason: Some("Stop Loss Hit".to_string()),
+                                });
+                                closed = true;
+                            }
+                        }
+
+                        if !closed {
+                            if let Some(tp) = pos.take_profit {
+                                if candle.high >= tp {
+                                    let exit_price = tp.max(candle.open);
+                                    let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                    equity += pnl;
+                                    if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
+                                    trades.push(PiaTrade {
+                                        entry_time: pos.entry_time,
+                                        exit_time: candle.timestamp,
+                                        action: pos.action.clone(),
+                                        entry_price: pos.entry_price,
+                                        exit_price,
+                                        pnl,
+                                        pnl_percent: pnl_pct,
+                                        exit_reason: Some("Take Profit Hit".to_string()),
+                                    });
+                                    closed = true;
+                                }
+                            }
+                        }
+                    } else if pos.action == "SELL" {
+                        // Check Stop Loss first (candle high reaches or exceeds SL)
+                        if let Some(sl) = pos.stop_loss {
+                            if candle.high >= sl {
+                                let exit_price = sl.max(candle.open);
+                                let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                equity += pnl;
+                                if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
+                                trades.push(PiaTrade {
+                                    entry_time: pos.entry_time,
+                                    exit_time: candle.timestamp,
+                                    action: pos.action.clone(),
+                                    entry_price: pos.entry_price,
+                                    exit_price,
+                                    pnl,
+                                    pnl_percent: pnl_pct,
+                                    exit_reason: Some("Stop Loss Hit".to_string()),
+                                });
+                                closed = true;
+                            }
+                        }
+
+                        if !closed {
+                            if let Some(tp) = pos.take_profit {
+                                if candle.low <= tp {
+                                    let exit_price = tp.min(candle.open);
+                                    let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                    equity += pnl;
+                                    if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
+                                    trades.push(PiaTrade {
+                                        entry_time: pos.entry_time,
+                                        exit_time: candle.timestamp,
+                                        action: pos.action.clone(),
+                                        entry_price: pos.entry_price,
+                                        exit_price,
+                                        pnl,
+                                        pnl_percent: pnl_pct,
+                                        exit_reason: Some("Take Profit Hit".to_string()),
+                                    });
+                                    closed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !closed {
+                    current_pos = Some(pos);
+                }
+            }
+
+            // 2. Incoming signal execution at this bar
             while sig_idx < signals.len() && signals[sig_idx].index == bar_idx {
                 let sig = &signals[sig_idx];
                 sig_idx += 1;
@@ -527,6 +740,7 @@ impl<'a> PiaScriptEngine<'a> {
                             exit_price: candle.close,
                             pnl,
                             pnl_percent: pnl_pct,
+                            exit_reason: Some("Close Signal".to_string()),
                         });
                     }
                 } else if sig.action == "BUY" {
@@ -544,6 +758,7 @@ impl<'a> PiaScriptEngine<'a> {
                                 exit_price: candle.close,
                                 pnl,
                                 pnl_percent: pnl_pct,
+                                exit_reason: Some("Reverse to Buy".to_string()),
                             });
                         } else {
                             current_pos = Some(pos); // keep existing long
@@ -554,6 +769,9 @@ impl<'a> PiaScriptEngine<'a> {
                             action: "BUY".to_string(),
                             entry_price: candle.close,
                             entry_time: candle.timestamp,
+                            entry_bar: bar_idx,
+                            stop_loss: sig.stop_loss,
+                            take_profit: sig.take_profit,
                         });
                     }
                 } else if sig.action == "SELL" {
@@ -571,6 +789,7 @@ impl<'a> PiaScriptEngine<'a> {
                                 exit_price: candle.close,
                                 pnl,
                                 pnl_percent: pnl_pct,
+                                exit_reason: Some("Reverse to Sell".to_string()),
                             });
                         } else {
                             current_pos = Some(pos);
@@ -581,6 +800,9 @@ impl<'a> PiaScriptEngine<'a> {
                             action: "SELL".to_string(),
                             entry_price: candle.close,
                             entry_time: candle.timestamp,
+                            entry_bar: bar_idx,
+                            stop_loss: sig.stop_loss,
+                            take_profit: sig.take_profit,
                         });
                     }
                 }
@@ -752,6 +974,90 @@ fn calc_lowest(src: &[f64], period: usize) -> Vec<f64> {
         out[i] = m;
     }
     out
+}
+
+fn calc_atr(candles: &[PiaCandle], period: usize) -> Vec<f64> {
+    let n = candles.len();
+    let mut out = vec![f64::NAN; n];
+    if period == 0 || n == 0 {
+        return out;
+    }
+    let p = period.max(1);
+    let mut tr = Vec::with_capacity(n);
+    tr.push(candles[0].high - candles[0].low);
+    for i in 1..n {
+        let hl = candles[i].high - candles[i].low;
+        let hc = (candles[i].high - candles[i - 1].close).abs();
+        let lc = (candles[i].low - candles[i - 1].close).abs();
+        tr.push(hl.max(hc).max(lc));
+    }
+    if n < p {
+        return tr;
+    }
+    let first_sum: f64 = tr[..p].iter().sum();
+    let mut prev = first_sum / p as f64;
+    out[p - 1] = prev;
+    let alpha = 1.0 / p as f64;
+    for i in p..n {
+        prev = tr[i] * alpha + prev * (1.0 - alpha);
+        out[i] = prev;
+    }
+    out
+}
+
+fn calc_stdev(src: &[f64], period: usize) -> Vec<f64> {
+    let n = src.len();
+    let mut out = vec![f64::NAN; n];
+    if period == 0 || n < period {
+        return out;
+    }
+    let sma = calc_sma(src, period);
+    for i in (period - 1)..n {
+        let mean = sma[i];
+        if mean.is_nan() { continue; }
+        let mut sum_sq = 0.0;
+        for k in 0..period {
+            let diff = src[i - k] - mean;
+            sum_sq += diff * diff;
+        }
+        out[i] = (sum_sq / period as f64).sqrt();
+    }
+    out
+}
+
+fn calc_bb(src: &[f64], period: usize, mult: f64) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let sma = calc_sma(src, period);
+    let dev = calc_stdev(src, period);
+    let n = src.len();
+    let mut upper = vec![f64::NAN; n];
+    let mut lower = vec![f64::NAN; n];
+    for i in 0..n {
+        if !sma[i].is_nan() && !dev[i].is_nan() {
+            upper[i] = sma[i] + mult * dev[i];
+            lower[i] = sma[i] - mult * dev[i];
+        }
+    }
+    (sma, upper, lower)
+}
+
+fn calc_macd(src: &[f64], fast: usize, slow: usize, signal: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let fast_ema = calc_ema(src, fast);
+    let slow_ema = calc_ema(src, slow);
+    let n = src.len();
+    let mut macd_line = vec![f64::NAN; n];
+    for i in 0..n {
+        if !fast_ema[i].is_nan() && !slow_ema[i].is_nan() {
+            macd_line[i] = fast_ema[i] - slow_ema[i];
+        }
+    }
+    let signal_line = calc_ema(&macd_line, signal);
+    let mut hist = vec![f64::NAN; n];
+    for i in 0..n {
+        if !macd_line[i].is_nan() && !signal_line[i].is_nan() {
+            hist[i] = macd_line[i] - signal_line[i];
+        }
+    }
+    (macd_line, signal_line, hist)
 }
 
 // Parsing Helpers
@@ -942,5 +1248,50 @@ mod tests {
         let bt = res.backtest.unwrap();
         assert_eq!(bt.initial_capital, 10_000.0);
         assert!(!bt.equity_curve.is_empty());
+    }
+
+    #[test]
+    fn test_piascript_expert_advisor_brackets() {
+        let mut candles = Vec::new();
+        // Generate 40 candles: start at 100, rise to 120, then drop to 80
+        for i in 0..40 {
+            let price = if i < 20 { 100.0 + i as f64 } else { 120.0 - (i - 20) as f64 * 2.0 };
+            candles.push(PiaCandle {
+                timestamp: 1_700_000_000 + (i * 900),
+                open: price,
+                high: price + 1.5,
+                low: price - 1.5,
+                close: price,
+                volume: Some(100.0),
+            });
+        }
+
+        let script = r##"
+            my_atr = atr(14)
+            upper = bb_upper(close, 20, 2.0)
+            macd_line = macd(close, 12, 26)
+
+            plot(my_atr, color="#2962ff", title="ATR")
+            plot(upper, color="#e91e63", title="BB Upper")
+
+            // Enter long with fixed stop loss and take profit brackets
+            if crossover(close, 105):
+                buy(1, sl=102.0, tp=115.0)
+        "##;
+
+        let mut engine = PiaScriptEngine::new(&candles);
+        let res = engine.execute(script, Some(10_000.0));
+
+        assert!(res.success, "EA Execution failed: {:?}", res.error);
+        assert_eq!(res.plots.len(), 2);
+        assert!(res.backtest.is_some());
+
+        let bt = res.backtest.unwrap();
+        assert!(!bt.trades.is_empty(), "Expected EA trades generated");
+        // Check that at least one trade was closed by TP or SL
+        let has_bracket_exit = bt.trades.iter().any(|t| {
+            t.exit_reason == Some("Take Profit Hit".to_string()) || t.exit_reason == Some("Stop Loss Hit".to_string())
+        });
+        assert!(has_bracket_exit, "Expected trade to be closed via TP or SL bracket");
     }
 }

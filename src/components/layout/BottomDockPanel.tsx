@@ -630,6 +630,7 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                           <thead>
                             <tr style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
                               <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Action</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Reason</th>
                               <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Entry Time</th>
                               <th style={{ padding: '6px 8px', textAlign: 'left', color: THEME_TOKENS.colors.textMuted }}>Exit Time</th>
                               <th style={{ padding: '6px 8px', textAlign: 'right', color: THEME_TOKENS.colors.textMuted }}>Entry Price</th>
@@ -643,6 +644,30 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                               <tr key={idx} style={{ borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
                                 <td style={{ padding: '6px 8px', fontWeight: 600, color: t.action === 'BUY' ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish }}>
                                   {t.action}
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      padding: '2px 5px',
+                                      borderRadius: 3,
+                                      backgroundColor:
+                                        t.exit_reason === 'Stop Loss Hit'
+                                          ? 'rgba(239, 83, 80, 0.15)'
+                                          : t.exit_reason === 'Take Profit Hit'
+                                            ? 'rgba(38, 166, 154, 0.15)'
+                                            : 'rgba(255, 255, 255, 0.05)',
+                                      color:
+                                        t.exit_reason === 'Stop Loss Hit'
+                                          ? THEME_TOKENS.colors.bearish
+                                          : t.exit_reason === 'Take Profit Hit'
+                                            ? THEME_TOKENS.colors.bullish
+                                            : THEME_TOKENS.colors.textSecondary,
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    {t.exit_reason || 'Signal'}
+                                  </span>
                                 </td>
                                 <td style={{ padding: '6px 8px', color: THEME_TOKENS.colors.textSecondary }}>
                                   {new Date(t.entry_time).toLocaleString()}

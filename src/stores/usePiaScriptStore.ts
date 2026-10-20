@@ -141,7 +141,16 @@ function mockExecutePiaScript(script: string, candles: any[], initialCapital: nu
       profit_factor: 1.85,
       max_drawdown: 180.0,
       max_drawdown_percent: 1.8,
-      trades: [],
+      trades: signals.map((s, idx) => ({
+        entry_time: s.timestamp - 3600000,
+        exit_time: s.timestamp,
+        action: s.action,
+        entry_price: s.price * 0.98,
+        exit_price: s.price,
+        pnl: 15.5,
+        pnl_percent: 1.5,
+        exit_reason: idx % 2 === 0 ? 'Take Profit Hit' : 'Signal'
+      })),
       equity_curve: candles.map((_, i) => initialCapital + (i * 1.5))
     }
   }
