@@ -760,37 +760,54 @@ fn get_indent(s: &str) -> usize {
 }
 
 fn clean_line(s: &str) -> &str {
-    let mut line = s;
-    if let Some((clean, _)) = line.split_once('#') {
-        line = clean;
+    let mut in_quote: Option<u8> = None;
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = in_quote {
+            if b == q {
+                in_quote = None;
+            }
+        } else if b == b'"' || b == b'\'' {
+            in_quote = Some(b);
+        } else if b == b'#' {
+            return s[..i].trim();
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            return s[..i].trim();
+        }
     }
-    if let Some((clean, _)) = line.split_once("//") {
-        line = clean;
-    }
-    line.trim()
+    s.trim()
 }
 
 fn split_arguments(s: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut depth = 0;
-    let mut in_quotes = false;
+    let mut in_quote: Option<char> = None;
 
     for c in s.chars() {
         match c {
             '"' | '\'' => {
-                in_quotes = !in_quotes;
+                if in_quote == Some(c) {
+                    in_quote = None;
+                } else if in_quote.is_none() {
+                    in_quote = Some(c);
+                }
                 current.push(c);
             }
             '(' | '[' => {
-                depth += 1;
+                if in_quote.is_none() {
+                    depth += 1;
+                }
                 current.push(c);
             }
             ')' | ']' => {
-                depth -= 1;
+                if in_quote.is_none() {
+                    depth -= 1;
+                }
                 current.push(c);
             }
-            ',' if depth == 0 && !in_quotes => {
+            ',' if depth == 0 && in_quote.is_none() => {
                 args.push(current.trim().to_string());
                 current.clear();
             }
@@ -898,18 +915,19 @@ mod tests {
             });
         }
 
-        let script = r#"
-            fast = ema(close, 5)
+        let script = r##"
+            # Header comment
+            fast = ema(close, 5) // inline comment
             slow = ema(close, 10)
-            plot(fast, color="cyan", title="Fast EMA")
-            plot(slow, color="orange", title="Slow EMA")
+            plot(fast, color="#00bcd4", title="Fast EMA")
+            plot(slow, color="#ff9800", title="Slow EMA")
 
             if crossover(fast, slow):
                 buy(1)
 
             if crossunder(fast, slow):
                 close()
-        "#;
+        "##;
 
         let mut engine = PiaScriptEngine::new(&candles);
         let res = engine.execute(script, Some(10_000.0));
@@ -917,7 +935,8 @@ mod tests {
         assert!(res.success, "Execution failed: {:?}", res.error);
         assert_eq!(res.plots.len(), 2, "Expected 2 plots");
         assert_eq!(res.plots[0].title, "Fast EMA");
-        assert_eq!(res.plots[0].color, "cyan");
+        assert_eq!(res.plots[0].color, "#00bcd4");
+        assert_eq!(res.plots[1].color, "#ff9800");
         assert!(res.backtest.is_some(), "Expected backtest result");
 
         let bt = res.backtest.unwrap();
