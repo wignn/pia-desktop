@@ -6,6 +6,51 @@ import { invoke } from '@tauri-apps/api/core'
 import { candleEngine } from '../services/candle-engine'
 import type { PiaScriptResult } from '@shared/types'
 
+export const PIASCRIPT_TEMPLATES: Record<string, { label: string; script: string }> = {
+  advancedEA: {
+    label: 'Advanced EA (BB + ATR + MACD)',
+    script: `# Expert Advisor: Volatility Breakout & Dynamic Bracket Risk Management
+atr_val = atr(14)
+upper_band = bb_upper(close, 20, 2.0)
+lower_band = bb_lower(close, 20, 2.0)
+trend_filter = ema(close, 50)
+macd_val = macd(close, 12, 26)
+macd_sig = macd_signal(close, 12, 26, 9)
+
+plot(upper_band, color="#e91e63", title="BB Upper")
+plot(lower_band, color="#00bcd4", title="BB Lower")
+plot(trend_filter, color="#ffeb3b", title="EMA Trend")
+
+# Long Entry: Breakout band atas dikonfirmasi trend bullish
+if crossover(close, upper_band) and close > trend_filter:
+    buy(1, sl=close - 2.0 * atr_val, tp=close + 3.0 * atr_val)
+
+# Short Entry: Breakdown band bawah dikonfirmasi trend bearish
+if crossunder(close, lower_band) and close < trend_filter:
+    sell(1, sl=close + 2.0 * atr_val, tp=close - 3.0 * atr_val)
+
+# Emergency Exit: Tutup posisi ketika momentum berbalik
+if crossunder(macd_val, macd_sig):
+    close()
+`
+  },
+  emaCross: {
+    label: 'Basic EMA Cross',
+    script: `fast = ema(close, 9)
+slow = ema(close, 21)
+
+plot(fast, color="#00bcd4", title="Fast EMA")
+plot(slow, color="#ff9800", title="Slow EMA")
+
+if crossover(fast, slow):
+    buy(1)
+
+if crossunder(fast, slow):
+    close()
+`
+  }
+}
+
 const DEFAULT_SCRIPT = `fast = ema(close, 9)
 slow = ema(close, 21)
 

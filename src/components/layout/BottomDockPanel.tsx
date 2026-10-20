@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
-import { usePiaScriptStore } from '../../stores/usePiaScriptStore'
+import { usePiaScriptStore, PIASCRIPT_TEMPLATES } from '../../stores/usePiaScriptStore'
 import { PiaScriptEditor } from './PiaScriptEditor'
 import { SymbolLogo } from '../common/SymbolLogo'
 import { getSymbolPrecision } from '@shared/market-utils'
@@ -453,6 +453,35 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <select
+                    className="tv-btn"
+                    style={{
+                      height: 22,
+                      fontSize: 11,
+                      padding: '0 4px',
+                      backgroundColor: THEME_TOKENS.colors.bgSurface,
+                      color: THEME_TOKENS.colors.textPrimary,
+                      border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                      borderRadius: 3,
+                      cursor: 'pointer'
+                    }}
+                    value=""
+                    onChange={(e) => {
+                      const tpl = PIASCRIPT_TEMPLATES[e.target.value]
+                      if (tpl) {
+                        setScript(tpl.script)
+                        setSaveStatus(`Loaded: ${tpl.label}`)
+                        setTimeout(() => setSaveStatus(null), 2000)
+                      }
+                    }}
+                  >
+                    <option value="" disabled>Templates...</option>
+                    {Object.entries(PIASCRIPT_TEMPLATES).map(([key, item]) => (
+                      <option key={key} value={key} style={{ backgroundColor: THEME_TOKENS.colors.bgSurface }}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className="tv-btn"

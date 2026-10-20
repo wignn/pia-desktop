@@ -1294,4 +1294,55 @@ mod tests {
         });
         assert!(has_bracket_exit, "Expected trade to be closed via TP or SL bracket");
     }
+
+    #[test]
+    fn test_piascript_advanced_multi_indicator_ea() {
+        let mut candles = Vec::new();
+        for i in 0..60 {
+            let price = 100.0 + (i as f64 * 0.8).sin() * 15.0 + i as f64 * 0.5;
+            candles.push(PiaCandle {
+                timestamp: 1_700_000_000 + (i * 900),
+                open: price - 0.5,
+                high: price + 2.0,
+                low: price - 2.0,
+                close: price,
+                volume: Some(150.0),
+            });
+        }
+
+        let script = r##"
+            # Volatility Breakout & Trend Confirmation EA
+            atr_val = atr(14)
+            upper_band = bb_upper(close, 20, 2.0)
+            lower_band = bb_lower(close, 20, 2.0)
+            trend_filter = ema(close, 10)
+            macd_val = macd(close, 12, 26)
+            macd_sig = macd_signal(close, 12, 26, 9)
+
+            plot(upper_band, color="#e91e63", title="BB Upper")
+            plot(lower_band, color="#00bcd4", title="BB Lower")
+            plot(trend_filter, color="#ffeb3b", title="EMA Trend")
+
+            # Dynamic Volatility Long Entry with 2x ATR Stop Loss & 3x ATR Take Profit
+            if crossover(close, upper_band) and close > trend_filter:
+                buy(1, sl=close - 2.0 * atr_val, tp=close + 3.0 * atr_val)
+
+            # Dynamic Volatility Short Entry
+            if crossunder(close, lower_band) and close < trend_filter:
+                sell(1, sl=close + 2.0 * atr_val, tp=close - 3.0 * atr_val)
+
+            # Signal exit when momentum reverses
+            if crossunder(macd_val, macd_sig):
+                close()
+        "##;
+
+        let mut engine = PiaScriptEngine::new(&candles);
+        let res = engine.execute(script, Some(25_000.0));
+
+        assert!(res.success, "Advanced EA failed: {:?}", res.error);
+        assert_eq!(res.plots.len(), 3);
+        assert!(res.backtest.is_some());
+        let bt = res.backtest.unwrap();
+        assert_eq!(bt.initial_capital, 25_000.0);
+    }
 }
