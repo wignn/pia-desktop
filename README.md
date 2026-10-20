@@ -5,30 +5,46 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-1e222d)](https://github.com/wignn/pia-desktop/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%20v2%20%2B%20Rust-e06c75)](https://tauri.app)
 
+<p align="center">
+  <img src="pia.png" alt="PIA Terminal Preview" width="100%" />
+</p>
+
 PIA Terminal is a high-performance desktop charting and algorithmic trading workstation built on **Tauri v2**, **Rust**, and **React 19**. It provides low-latency financial visualization, native strategy backtesting via **PiaScript**, simulated paper execution, and real-time global macroeconomic intelligence.
 
 ---
 
 ## Key Features
 
-### 1. PiaScript Algorithmic Engine
+### 1. PiaScript Algorithmic & Expert Advisor (EA) Engine
 A lightweight, Python-like domain-specific language designed specifically for technical analysis and backtesting. The interpreter runs directly inside native Rust, eliminating JS engine overhead during heavy vector calculations.
-* **Built-in Indicators**: `ema()`, `sma()`, `rsi()`, `highest()`, `lowest()`, `crossover()`, `crossunder()`.
+* **Built-in Indicators**: `atr()`, `macd()`, `macd_signal()`, `macd_hist()`, `bb_upper()`, `bb_lower()`, `bb_basis()`, `ema()`, `sma()`, `rsi()`, `highest()`, `lowest()`, `crossover()`, `crossunder()`.
+* **Expert Advisor (EA) Execution**: Bracket orders (`buy(1, sl=..., tp=...)`, `sell(1, sl=..., tp=...)`) with high/low intra-bar hit evaluation and trade reason logging (`Stop Loss Hit`, `Take Profit Hit`, `Close Signal`, `Reverse`).
 * **Integrated Backtester**: Simulates position tracking, fill execution, slippage, and equity curves with performance metrics (Win Rate, Profit Factor, Max Drawdown).
-* **Editor IntelliSense**: Zero-dependency embedded editor featuring syntax completions, parameter tooltips, line numbering gutters, and direct chart overlay bindings.
+* **Editor IntelliSense**: Zero-dependency embedded editor featuring syntax completions, parameter tooltips, line numbering gutters, preset templates, and direct chart overlay bindings.
 
 ```python
-# Example: EMA Trend-Following Strategy
-fast = ema(close, 9)
-slow = ema(close, 21)
+# Example: Advanced Volatility Breakout & Dynamic Risk Management EA
+atr_val = atr(14)
+upper_band = bb_upper(close, 20, 2.0)
+lower_band = bb_lower(close, 20, 2.0)
+trend_filter = ema(close, 50)
+macd_val = macd(close, 12, 26)
+macd_sig = macd_signal(close, 12, 26, 9)
 
-plot(fast, color="#00bcd4", title="Fast EMA")
-plot(slow, color="#ff9800", title="Slow EMA")
+plot(upper_band, color="#e91e63", title="BB Upper")
+plot(lower_band, color="#00bcd4", title="BB Lower")
+plot(trend_filter, color="#ffeb3b", title="EMA Trend")
 
-if crossover(fast, slow):
-    buy(1)
+# Long Entry with dynamic ATR-based Stop Loss & Take Profit
+if crossover(close, upper_band) and close > trend_filter:
+    buy(1, sl=close - 2.0 * atr_val, tp=close + 3.0 * atr_val)
 
-if crossunder(fast, slow):
+# Short Entry
+if crossunder(close, lower_band) and close < trend_filter:
+    sell(1, sl=close + 2.0 * atr_val, tp=close - 3.0 * atr_val)
+
+# Exit on momentum reversal
+if crossunder(macd_val, macd_sig):
     close()
 ```
 
