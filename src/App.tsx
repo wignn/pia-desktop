@@ -27,6 +27,7 @@ import { IndicatorModal } from './components/modals/IndicatorModal'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { SnapshotModal } from './components/modals/SnapshotModal'
 import { ImportPositionsModal } from './components/modals/ImportPositionsModal'
+import { UpdateNotificationBanner } from './components/layout/UpdateNotificationBanner'
 
 import { useMarketStore } from './stores/useMarketStore'
 import { useWorkspaceStore } from './stores/useWorkspaceStore'
@@ -414,6 +415,7 @@ export function App(): React.JSX.Element {
       <BottomStatusBar />
 
       {/* Modal Dialogues */}
+      <UpdateNotificationBanner />
       <SymbolSearchModal />
       <IndicatorModal />
       <SettingsModal />

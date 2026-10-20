@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   checkForAppUpdates,
   formatUpdateMessage,
+  downloadUpdatePackage,
+  applyDownloadedUpdate,
   type AppUpdateStatus
 } from './auto-updater'
 
@@ -72,5 +74,37 @@ describe('auto-updater service', () => {
 
     expect(status.state).toBe('up-to-date')
     expect(status.availableVersion).toBeUndefined()
+  })
+
+  it('downloads update package with progress events and applies installation', async () => {
+    let progressCalls: number[] = []
+    const mockDownload = vi.fn(async (onEvent: any) => {
+      onEvent({ event: 'Started', data: { contentLength: 1000 } })
+      onEvent({ event: 'Progress', data: { chunkLength: 500 } })
+      onEvent({ event: 'Progress', data: { chunkLength: 500 } })
+      onEvent({ event: 'Finished' })
+    })
+    const mockInstall = vi.fn(async () => {})
+
+    const mockCheck = vi.fn(async () => ({
+      available: true,
+      version: '2.0.1',
+      currentVersion: '2.0.0',
+      download: mockDownload,
+      install: mockInstall
+    }))
+
+    await checkForAppUpdates({ checker: mockCheck as any })
+    const downloadOk = await downloadUpdatePackage((percent) => {
+      progressCalls.push(percent)
+    })
+
+    expect(downloadOk).toBe(true)
+    expect(mockDownload).toHaveBeenCalled()
+    expect(progressCalls).toContain(100)
+
+    const applyOk = await applyDownloadedUpdate()
+    expect(applyOk).toBe(true)
+    expect(mockInstall).toHaveBeenCalledWith({ restartAfterInstall: true })
   })
 })

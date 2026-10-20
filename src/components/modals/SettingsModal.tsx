@@ -157,18 +157,41 @@ const SettingsModalContent: React.FC = () => {
                 color: THEME_TOKENS.colors.textSecondary
               }}
             >
-              <span style={{ maxWidth: '65%' }}>
-                {updaterStatus.state === 'idle' && 'Automatic background updates enabled'}
-                {updaterStatus.state === 'checking' && 'Checking for updates...'}
-                {updaterStatus.state === 'available' &&
-                  `New release v${updaterStatus.availableVersion || ''} found. Downloading...`}
-                {updaterStatus.state === 'downloading' &&
-                  `Downloading update (${updaterStatus.progressPercent ?? 0}%)...`}
-                {updaterStatus.state === 'downloaded' &&
-                  `v${updaterStatus.availableVersion || ''} ready to apply.`}
-                {updaterStatus.state === 'not-available' && 'Application is up to date.'}
-                {updaterStatus.state === 'error' && (updaterStatus.error || 'Check failed')}
-              </span>
+              <div style={{ maxWidth: '65%' }}>
+                <span>
+                  {updaterStatus.state === 'idle' && 'Automatic background updates enabled'}
+                  {updaterStatus.state === 'checking' && 'Checking for updates...'}
+                  {updaterStatus.state === 'available' &&
+                    `New release v${updaterStatus.availableVersion || ''} found. Starting download...`}
+                  {updaterStatus.state === 'downloading' &&
+                    `Downloading update (${updaterStatus.progressPercent ?? 0}%)...`}
+                  {updaterStatus.state === 'downloaded' &&
+                    `v${updaterStatus.availableVersion || ''} ready to apply.`}
+                  {updaterStatus.state === 'not-available' && 'Application is up to date.'}
+                  {updaterStatus.state === 'error' && (updaterStatus.error || 'Check failed')}
+                </span>
+                {updaterStatus.state === 'downloading' && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      width: '100%',
+                      height: 4,
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: 2,
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${updaterStatus.progressPercent ?? 0}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #2962ff, #00bcd4)',
+                        transition: 'width 0.25s ease'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
 
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 {updaterStatus.state === 'downloaded' ? (

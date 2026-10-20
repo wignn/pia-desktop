@@ -36,6 +36,8 @@ import type {
 
 import {
   checkForAppUpdates,
+  downloadUpdatePackage,
+  applyDownloadedUpdate,
   installDownloadedUpdate
 } from './auto-updater'
 
@@ -50,7 +52,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
-    currentVersion: '2.0.0'
+    currentVersion: '2.0.1'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {
@@ -235,19 +237,53 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         if (res.state === 'available') {
           currentUpdaterStatus = {
             state: 'available',
-            currentVersion: res.currentVersion || '2.0.0',
+            currentVersion: res.currentVersion || '2.0.1',
             availableVersion: res.availableVersion,
             progressPercent: 0
           }
+          notifyUpdaterListeners(currentUpdaterStatus)
+
+          // Auto-start download in background with live progress updates
+          currentUpdaterStatus = {
+            ...currentUpdaterStatus,
+            state: 'downloading',
+            progressPercent: 1
+          }
+          notifyUpdaterListeners(currentUpdaterStatus)
+
+          void downloadUpdatePackage((percent) => {
+            currentUpdaterStatus = {
+              ...currentUpdaterStatus,
+              state: 'downloading',
+              progressPercent: percent
+            }
+            notifyUpdaterListeners(currentUpdaterStatus)
+          }).then((ok) => {
+            if (ok) {
+              currentUpdaterStatus = {
+                ...currentUpdaterStatus,
+                state: 'downloaded',
+                progressPercent: 100
+              }
+              notifyUpdaterListeners(currentUpdaterStatus)
+            } else {
+              currentUpdaterStatus = {
+                ...currentUpdaterStatus,
+                state: 'error',
+                error: 'Update download failed or timed out. Please retry.'
+              }
+              notifyUpdaterListeners(currentUpdaterStatus)
+            }
+          })
         } else if (res.state === 'up-to-date') {
           currentUpdaterStatus = {
             state: 'not-available',
-            currentVersion: res.currentVersion || '2.0.0'
+            currentVersion: res.currentVersion || '2.0.1'
           }
         } else {
           currentUpdaterStatus = {
             state: 'error',
-            currentVersion: '2.0.0',
+            currentVersion: '2.0.1',
             error: res.error
           }
         }
@@ -256,6 +292,20 @@ export async function createTauriApi(): Promise<TerminalAPI> {
       },
       getStatus: () => Promise.resolve(currentUpdaterStatus),
       install: async () => {
+        if (currentUpdaterStatus.state === 'downloaded') {
+          const applied = await applyDownloadedUpdate()
+          if (!applied) {
+            currentUpdaterStatus = {
+              ...currentUpdaterStatus,
+              state: 'error',
+              error: 'Failed to apply update installer'
+            }
+            notifyUpdaterListeners(currentUpdaterStatus)
+            return false
+          }
+          return true
+        }
+
         currentUpdaterStatus = { ...currentUpdaterStatus, state: 'downloading', progressPercent: 0 }
         notifyUpdaterListeners(currentUpdaterStatus)
         const ok = await installDownloadedUpdate((percent) => {

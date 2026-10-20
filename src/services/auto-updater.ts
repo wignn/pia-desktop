@@ -80,7 +80,7 @@ export async function checkForAppUpdates(options: UpdaterCheckOptions = {}): Pro
     activeUpdateHandle = null
     return {
       state: 'up-to-date',
-      currentVersion: update?.currentVersion
+      currentVersion: update?.currentVersion || '2.0.1'
     }
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err)
@@ -92,39 +92,76 @@ export async function checkForAppUpdates(options: UpdaterCheckOptions = {}): Pro
   }
 }
 
-export async function installDownloadedUpdate(
+export async function downloadUpdatePackage(
   onProgress?: (percent: number) => void
 ): Promise<boolean> {
-  if (!activeUpdateHandle || typeof activeUpdateHandle.downloadAndInstall !== 'function') {
-    console.warn('[AutoUpdater] No active update available to install.')
+  if (!activeUpdateHandle) {
+    console.warn('[AutoUpdater] No active update available to download.')
     return false
   }
 
   try {
     let downloaded = 0
     let contentLength = 0
+    // Windows updater msi is typically ~8.8MB
+    const ESTIMATED_SIZE = 8_800_000
 
-    await activeUpdateHandle.downloadAndInstall((event: any) => {
+    const handleDownloadEvent = (event: any): void => {
       switch (event.event) {
         case 'Started':
-          contentLength = event.data.contentLength || 0
+          contentLength = event.data?.contentLength || 0
+          if (onProgress) onProgress(1)
           break
-        case 'Progress':
-          downloaded += event.data.chunkLength || 0
-          if (contentLength > 0 && onProgress) {
-            const percent = Math.min(100, Math.round((downloaded / contentLength) * 100))
-            onProgress(percent)
-          }
+        case 'Progress': {
+          downloaded += event.data?.chunkLength || 0
+          const total = contentLength > 0 ? contentLength : ESTIMATED_SIZE
+          const percent = Math.min(99, Math.max(1, Math.round((downloaded / total) * 100)))
+          if (onProgress) onProgress(percent)
           break
+        }
         case 'Finished':
           if (onProgress) onProgress(100)
           break
       }
-    })
+    }
 
-    return true
+    if (typeof activeUpdateHandle.download === 'function') {
+      await activeUpdateHandle.download(handleDownloadEvent, { timeout: 60000 })
+      return true
+    } else if (typeof activeUpdateHandle.downloadAndInstall === 'function') {
+      await activeUpdateHandle.downloadAndInstall(handleDownloadEvent, { timeout: 60000 })
+      return true
+    }
+
+    return false
   } catch (err: unknown) {
-    console.error('[AutoUpdater] Installation failed:', err)
+    console.error('[AutoUpdater] Download failed:', err)
     return false
   }
+}
+
+export async function applyDownloadedUpdate(): Promise<boolean> {
+  if (!activeUpdateHandle) {
+    console.warn('[AutoUpdater] No active update available to apply.')
+    return false
+  }
+
+  try {
+    if (typeof activeUpdateHandle.install === 'function') {
+      await activeUpdateHandle.install({ restartAfterInstall: true })
+      return true
+    }
+    return false
+  } catch (err: unknown) {
+    console.error('[AutoUpdater] Install failed:', err)
+    return false
+  }
+}
+
+export async function installDownloadedUpdate(
+  onProgress?: (percent: number) => void
+): Promise<boolean> {
+  const ok = await downloadUpdatePackage(onProgress)
+  if (!ok) return false
+  return await applyDownloadedUpdate()
 }

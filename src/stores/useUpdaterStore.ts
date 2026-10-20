@@ -9,22 +9,27 @@ import type { UpdaterStatus } from '@shared/types'
 interface UpdaterState {
   status: UpdaterStatus
   isChecking: boolean
+  isBannerDismissed: boolean
 
   initUpdaterListener: () => () => void
   checkForUpdates: () => Promise<void>
   installUpdate: () => Promise<boolean>
+  dismissBanner: () => void
 }
 
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   status: {
     state: 'idle',
-    currentVersion: '1.0.0'
+    currentVersion: '2.0.1'
   },
   isChecking: false,
+  isBannerDismissed: false,
+
+  dismissBanner: () => set({ isBannerDismissed: true }),
 
   initUpdaterListener: () => {
     // Fetch initial status
-    window.api.updater.getStatus().then((initialStatus) => {
+    window.api?.updater?.getStatus?.().then((initialStatus) => {
       if (initialStatus) {
         set({ status: initialStatus })
       }
@@ -33,18 +38,26 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     })
 
     // Listen for push events from main process
-    const unsubscribe = window.api.updater.onStatus((status) => {
-      set({ status, isChecking: status.state === 'checking' })
+    const unsubscribe = window.api?.updater?.onStatus?.((status) => {
+      set({
+        status,
+        isChecking: status.state === 'checking',
+        isBannerDismissed: status.state === 'idle' || status.state === 'not-available' ? true : get().isBannerDismissed
+      })
     })
 
-    return unsubscribe
+    return unsubscribe || (() => {})
   },
 
   checkForUpdates: async () => {
     set({ isChecking: true })
     try {
       const status = await window.api.updater.check()
-      set({ status, isChecking: false })
+      set({
+        status,
+        isChecking: false,
+        isBannerDismissed: status.state === 'available' || status.state === 'downloading' || status.state === 'downloaded' ? false : get().isBannerDismissed
+      })
     } catch (err) {
       set({
         isChecking: false,
