@@ -31,6 +31,37 @@ export interface TreemapRect {
   height: number
 }
 
+export const HIGHCHARTS_HEATMAP_COLOR_STOPS: Array<[number, string]> = [
+  [-4, '#990000'],
+  [-3, '#b30000'],
+  [-2, '#ff0000'],
+  [-1, '#ff1a1a'],
+  [0, '#2a2e39'],
+  [1, '#47d147'],
+  [2, '#33cc33'],
+  [3, '#29a329'],
+  [4, '#29a329']
+]
+
+/**
+ * Returns color mapping inspired by Marketcalls Highcharts Heatmap
+ * [-4% to +4%] scale with vibrant crimson-to-emerald gradient stops.
+ */
+export function getHighchartsHeatmapColor(changePercent: number): {
+  bg: string
+  text: string
+  border: string
+} {
+  if (changePercent <= -3.5) return { bg: '#990000', text: '#ffffff', border: '#121212' }
+  if (changePercent <= -2.5) return { bg: '#b30000', text: '#ffffff', border: '#121212' }
+  if (changePercent <= -1.5) return { bg: '#ff0000', text: '#ffffff', border: '#121212' }
+  if (changePercent <= -0.5) return { bg: '#ff1a1a', text: '#ffffff', border: '#121212' }
+  if (changePercent < 0.5) return { bg: '#2a2e39', text: '#d1d4dc', border: '#121212' }
+  if (changePercent < 1.5) return { bg: '#47d147', text: '#ffffff', border: '#121212' }
+  if (changePercent < 2.5) return { bg: '#33cc33', text: '#ffffff', border: '#121212' }
+  return { bg: '#29a329', text: '#ffffff', border: '#121212' }
+}
+
 /**
  * Returns TradingView-authentic color based on 24h percentage change.
  * Deep crimson/burgundy for bloodbath days, emerald/mint for bullish, dark slate for neutral.
@@ -241,4 +272,130 @@ function tileGrid(items: HeatmapItem[], rect: TreemapRect, depth: number): Treem
   }
 
   return result
+}
+
+/**
+ * Computes a standard Squarified Treemap layout (Bruls, Huizing, van Wijk algorithm).
+ * Replicates Highcharts treemap squarified layout where aspect ratios are kept as close to 1 as possible.
+ */
+export function computeSquarifiedTreemap(
+  items: HeatmapItem[],
+  containerWidth: number,
+  containerHeight: number
+): TreemapNode[] {
+  if (!items || items.length === 0 || containerWidth <= 0 || containerHeight <= 0) {
+    return []
+  }
+
+  const validItems = items.filter((it) => (it.value || 0) > 0)
+  if (validItems.length === 0) return []
+
+  const sorted = [...validItems].sort((a, b) => (b.value || 0) - (a.value || 0))
+  const totalValue = sorted.reduce((sum, it) => sum + (it.value || 1), 0)
+  const totalArea = containerWidth * containerHeight
+
+  // Map each item to its scaled area
+  const scaledItems = sorted.map((it) => ({
+    item: it,
+    area: ((it.value || 1) / totalValue) * totalArea
+  }))
+
+  const nodes: TreemapNode[] = []
+  let remainingRect: TreemapRect = {
+    x: 0,
+    y: 0,
+    width: containerWidth,
+    height: containerHeight
+  }
+
+  const worstRatio = (row: typeof scaledItems, length: number): number => {
+    if (row.length === 0 || length <= 0) return Infinity
+    const s = row.reduce((sum, r) => sum + r.area, 0)
+    if (s <= 0) return Infinity
+    let worst = 0
+    const lSq = length * length
+    const sSq = s * s
+    for (const r of row) {
+      const area = Math.max(0.0001, r.area)
+      const ratio = Math.max((lSq * area) / sSq, sSq / (lSq * area))
+      if (ratio > worst) worst = ratio
+    }
+    return worst
+  }
+
+  const layoutRow = (row: typeof scaledItems, rect: TreemapRect): TreemapRect => {
+    if (row.length === 0) return rect
+    const isHorizontal = rect.width <= rect.height
+    const s = row.reduce((sum, r) => sum + r.area, 0)
+    const length = isHorizontal ? rect.width : rect.height
+    const thickness = length > 0 ? s / length : 0
+
+    if (isHorizontal) {
+      let curX = rect.x
+      for (let i = 0; i < row.length; i++) {
+        const isLast = i === row.length - 1
+        const w = isLast ? rect.x + rect.width - curX : row[i].area / thickness
+        nodes.push({
+          ...row[i].item,
+          x: Math.round(curX),
+          y: Math.round(rect.y),
+          width: Math.max(1, Math.round(w)),
+          height: Math.max(1, Math.round(thickness)),
+          depth: 0
+        })
+        curX += w
+      }
+      return {
+        x: rect.x,
+        y: rect.y + thickness,
+        width: rect.width,
+        height: Math.max(0, rect.height - thickness)
+      }
+    } else {
+      let curY = rect.y
+      for (let i = 0; i < row.length; i++) {
+        const isLast = i === row.length - 1
+        const h = isLast ? rect.y + rect.height - curY : row[i].area / thickness
+        nodes.push({
+          ...row[i].item,
+          x: Math.round(rect.x),
+          y: Math.round(curY),
+          width: Math.max(1, Math.round(thickness)),
+          height: Math.max(1, Math.round(h)),
+          depth: 0
+        })
+        curY += h
+      }
+      return {
+        x: rect.x + thickness,
+        y: rect.y,
+        width: Math.max(0, rect.width - thickness),
+        height: rect.height
+      }
+    }
+  }
+
+  let currentRow: typeof scaledItems = []
+
+  for (const item of scaledItems) {
+    const side = Math.min(remainingRect.width, remainingRect.height)
+    if (currentRow.length === 0) {
+      currentRow.push(item)
+    } else {
+      const currentWorst = worstRatio(currentRow, side)
+      const nextWorst = worstRatio([...currentRow, item], side)
+      if (nextWorst <= currentWorst) {
+        currentRow.push(item)
+      } else {
+        remainingRect = layoutRow(currentRow, remainingRect)
+        currentRow = [item]
+      }
+    }
+  }
+
+  if (currentRow.length > 0) {
+    layoutRow(currentRow, remainingRect)
+  }
+
+  return nodes
 }

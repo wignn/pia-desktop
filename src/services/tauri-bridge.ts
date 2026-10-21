@@ -200,7 +200,35 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     },
 
     settings: {
-      getCredentials: () => Promise.resolve(credManager.getStatus()),
+      getCredentials: async () => {
+        const status = credManager.getStatus()
+        const profile = dbService.getUserProfile()
+        if (profile) {
+          status.name = profile.name
+          status.email = profile.email
+          status.avatarUrl = profile.avatarUrl
+        }
+        const key = credManager.getApiKey()
+        if (status.isLoggedIn && key && (!profile?.name || !profile?.email)) {
+          const baseUrl = credManager.getBaseUrl()
+          fetch(`${baseUrl}/api/v1/auth/me`, {
+            headers: { 'x-api-key': key }
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.user) {
+                dbService.saveUserProfile({
+                  id: data.user.id,
+                  email: data.user.email,
+                  name: data.user.name,
+                  avatarUrl: data.user.avatar_url
+                })
+              }
+            })
+            .catch(() => {})
+        }
+        return status
+      },
       loginWithGoogle: async () => {
         const nonceBytes = crypto.getRandomValues(new Uint8Array(32))
         const nonce = Array.from(nonceBytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -254,16 +282,28 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           })
         })
         if (!finishResponse.ok) throw new Error(`Google login failed (${finishResponse.status})`)
-        const finish = (await finishResponse.json()) as { desktop_credential?: string }
+        const finish = (await finishResponse.json()) as {
+          desktop_credential?: string
+          user?: { id?: string; email?: string; name?: string; avatar_url?: string }
+        }
         if (!finish.desktop_credential) throw new Error('Google login did not return a credential')
         if (!(await credManager.saveDesktopCredential(finish.desktop_credential))) {
           throw new Error('Could not securely save desktop login')
+        }
+        if (finish.user) {
+          dbService.saveUserProfile({
+            id: finish.user.id,
+            email: finish.user.email,
+            name: finish.user.name,
+            avatarUrl: finish.user.avatar_url
+          })
         }
         piaProvider.initializeClient()
         return true
       },
       logout: async () => {
         const ok = await credManager.clearCredentials()
+        dbService.clearUserProfile()
         piaProvider.initializeClient()
         return ok
       },
@@ -274,6 +314,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
       },
       clearApiKey: async () => {
         const ok = await credManager.clearCredentials()
+        dbService.clearUserProfile()
         piaProvider.initializeClient()
         return ok
       }

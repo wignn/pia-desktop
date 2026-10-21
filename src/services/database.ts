@@ -13,7 +13,8 @@ import type {
   PaperAccount,
   ChartLayoutData,
   Timeframe,
-  ChartType
+  ChartType,
+  UserProfile
 } from '@shared/types'
 
 export class DatabaseService {
@@ -192,6 +193,22 @@ export class DatabaseService {
           ]
         )
       }
+
+      this.scheduleDiskWrite(0)
+    }
+
+    if (currentVersion < 3) {
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS user_profile (
+          id TEXT PRIMARY KEY,
+          email TEXT,
+          name TEXT,
+          avatar_url TEXT,
+          updated_at INTEGER NOT NULL
+        );
+
+        INSERT OR REPLACE INTO schema_version (version) VALUES (3);
+      `)
 
       this.scheduleDiskWrite(0)
     }
@@ -605,6 +622,63 @@ export class DatabaseService {
       return true
     } catch (err) {
       console.error('Error deleting chart layout:', err)
+      return false
+    }
+  }
+
+  // --- User Profile API (SQLite Local Cache) ---
+
+  public getUserProfile(): UserProfile | null {
+    if (!this.db) return null
+    try {
+      const res = this.db.exec(
+        'SELECT id, email, name, avatar_url, updated_at FROM user_profile LIMIT 1'
+      )
+      if (res.length === 0 || res[0].values.length === 0) return null
+      const row = res[0].values[0]
+      return {
+        id: (row[0] as string) || undefined,
+        email: (row[1] as string) || undefined,
+        name: (row[2] as string) || undefined,
+        avatarUrl: (row[3] as string) || undefined,
+        updatedAt: Number(row[4]) || Date.now()
+      }
+    } catch (err) {
+      console.error('Error fetching user profile from SQLite:', err)
+      return null
+    }
+  }
+
+  public saveUserProfile(profile: { id?: string; email?: string; name?: string; avatarUrl?: string }): boolean {
+    if (!this.db) return false
+    try {
+      const id = profile.id || 'default_user'
+      const email = profile.email || null
+      const name = profile.name || null
+      const avatarUrl = profile.avatarUrl || null
+      const updatedAt = Date.now()
+
+      this.db.run(
+        `INSERT OR REPLACE INTO user_profile (id, email, name, avatar_url, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, email, name, avatarUrl, updatedAt]
+      )
+      this.scheduleDiskWrite(0)
+      return true
+    } catch (err) {
+      console.error('Error saving user profile to SQLite:', err)
+      return false
+    }
+  }
+
+  public clearUserProfile(): boolean {
+    if (!this.db) return false
+    try {
+      this.db.run('DELETE FROM user_profile')
+      this.scheduleDiskWrite(0)
+      return true
+    } catch (err) {
+      console.error('Error clearing user profile from SQLite:', err)
       return false
     }
   }

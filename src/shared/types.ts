@@ -215,12 +215,23 @@ export interface PaperAccount {
   accountType?: 'standard' | 'cent'
 }
 
+export interface UserProfile {
+  id?: string
+  name?: string
+  email?: string
+  avatarUrl?: string
+  updatedAt?: number
+}
+
 export interface CredentialStatus {
   hasApiKey: boolean
   isLoggedIn: boolean
   isSecureStorage: boolean
   baseUrl: string
   wsUrl: string
+  name?: string
+  email?: string
+  avatarUrl?: string
 }
 
 export interface OrderBookLevel {

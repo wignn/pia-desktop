@@ -733,7 +733,7 @@ export const TopToolbar: React.FC = () => {
         onClick={() => openHeatmapInNewTab()}
         className="tv-btn"
         style={{ width: 28, height: 28, padding: 0 }}
-        title="Market Heatmap (Spiral Treemap)"
+        title="Market Heatmap"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -814,13 +814,69 @@ export const TopToolbar: React.FC = () => {
             setIsAccountMenuOpen(next)
           }}
           className={`tv-btn ${isAccountMenuOpen ? 'active' : ''}`}
-          style={{ width: 28, height: 28, padding: 0 }}
-          title="Account & Settings"
+          style={{
+            height: 28,
+            padding: credentials?.name ? '0 8px 0 4px' : 0,
+            width: credentials?.name ? 'auto' : 28,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
+          title={credentials?.name || credentials?.email || 'Account & Settings'}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
+          {credentials?.avatarUrl ? (
+            <img
+              src={credentials.avatarUrl}
+              alt=""
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                objectFit: 'cover'
+              }}
+              onError={(e) => {
+                ;(e.target as HTMLElement).style.display = 'none'
+              }}
+            />
+          ) : credentials?.name ? (
+            <div
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                backgroundColor: THEME_TOKENS.colors.accent,
+                color: '#ffffff',
+                fontSize: 10,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textTransform: 'uppercase'
+              }}
+            >
+              {credentials.name.charAt(0)}
+            </div>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          )}
+          {credentials?.name && (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: THEME_TOKENS.colors.textBright,
+                maxWidth: 100,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {credentials.name}
+            </span>
+          )}
         </button>
 
         {isAccountMenuOpen && (
@@ -830,7 +886,7 @@ export const TopToolbar: React.FC = () => {
               top: '100%',
               right: 0,
               marginTop: 4,
-              width: 190,
+              width: 220,
               backgroundColor: THEME_TOKENS.colors.bgSurface,
               border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
               borderRadius: 4,
@@ -842,32 +898,73 @@ export const TopToolbar: React.FC = () => {
           >
             <div
               style={{
-                padding: '6px 12px 7px',
-                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
+                padding: '8px 12px',
+                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
               }}
             >
-              <div style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright, fontSize: 12 }}>
-                {credentials?.isLoggedIn ? 'Google Account' : 'PIA Terminal'}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: THEME_TOKENS.colors.textSecondary,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  marginTop: 2
-                }}
-              >
-                <span
+              {credentials?.avatarUrl ? (
+                <img
+                  src={credentials.avatarUrl}
+                  alt=""
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 32,
+                    height: 32,
                     borderRadius: '50%',
-                    backgroundColor: THEME_TOKENS.colors.bullish
+                    objectFit: 'cover',
+                    flexShrink: 0
+                  }}
+                  onError={(e) => {
+                    ;(e.target as HTMLElement).style.display = 'none'
                   }}
                 />
-                <span>{credentials?.isLoggedIn ? 'Terhubung' : credentials?.hasApiKey ? 'API Key' : 'Aktif'}</span>
+              ) : (
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    backgroundColor: THEME_TOKENS.colors.accent,
+                    color: '#ffffff',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {(credentials?.name || credentials?.email || 'P').charAt(0)}
+                </div>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: THEME_TOKENS.colors.textBright,
+                    fontSize: 12,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {credentials?.name || (credentials?.isLoggedIn ? 'Google Account' : 'PIA Terminal')}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: THEME_TOKENS.colors.textSecondary,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    marginTop: 1
+                  }}
+                >
+                  {credentials?.email || (credentials?.isLoggedIn ? 'Terhubung' : credentials?.hasApiKey ? 'API Key' : 'Aktif')}
+                </div>
               </div>
             </div>
 

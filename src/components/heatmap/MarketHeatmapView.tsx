@@ -1,7 +1,9 @@
 /**
- * PIA Terminal - Market Heatmap View (TradingView Replica)
- * Implements a recursive inward spiral treemap for global assets and IDX stocks.
- * ponytail: DOM tile rendering with CSS transitions; upgrade to WebGL if symbol count > 10,000.
+ * PIA Terminal - Market Heatmap View
+ * Inspired by Marketcalls Highcharts Treemap Heatmap and TradingView institutional terminals.
+ * Uses standard Squarified Treemap layout with circular asset icons, centered price/change labels,
+ * and high-contrast performance legend scale.
+ * ponytail: DOM tile rendering with CSS transforms; upgrade to Canvas/WebGL if node count exceeds 5,000.
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react'
@@ -10,11 +12,8 @@ import {
   Minus,
   Maximize2,
   Search,
-  RotateCcw,
-  SlidersHorizontal,
   Flame,
-  ArrowUpRight,
-  ArrowDownRight
+  LayoutGrid
 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useWatchlistStore } from '../../stores/useWatchlistStore'
@@ -22,8 +21,10 @@ import { useTabStore } from '../../stores/useTabStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { SymbolLogo } from '../common/SymbolLogo'
 import {
+  computeSquarifiedTreemap,
   computeSpiralTreemap,
-  getHeatmapColor,
+  getHighchartsHeatmapColor,
+  HIGHCHARTS_HEATMAP_COLOR_STOPS,
   type HeatmapItem,
   type TreemapNode
 } from '../../utils/spiral-treemap'
@@ -36,12 +37,36 @@ import {
 
 type MarketFilter = 'idx' | 'crypto' | 'forex' | 'us' | 'all' | 'watchlist'
 type SizingMetric = 'marketCap' | 'volume24h'
+type LayoutMode = 'squarified' | 'spiral'
+
+function formatPrice(price?: number, category?: string): string {
+  if (price === undefined || price === null || isNaN(price)) return '-'
+  if (category === 'stocks_idx') {
+    return price.toLocaleString('id-ID', { maximumFractionDigits: 0 })
+  }
+  if (price >= 1000) {
+    return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  if (price >= 1) {
+    return price.toFixed(2)
+  }
+  return price.toFixed(4)
+}
+
+function formatLargeNumber(val?: number): string {
+  if (!val || isNaN(val)) return '-'
+  if (val >= 1e12) return `${(val / 1e12).toFixed(2)}T`
+  if (val >= 1e9) return `${(val / 1e9).toFixed(2)}B`
+  if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`
+  return val.toLocaleString()
+}
 
 export const MarketHeatmapView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 1200, height: 750 })
   const [activeFilter, setActiveFilter] = useState<MarketFilter>('idx')
   const [sizingMetric, setSizingMetric] = useState<SizingMetric>('marketCap')
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('squarified')
   const [searchQuery, setSearchQuery] = useState('')
   const [zoomLevel, setZoomLevel] = useState(1)
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
@@ -148,10 +173,13 @@ export const MarketHeatmapView: React.FC = () => {
     )
   }, [processedItems, searchQuery])
 
-  // Compute spiral treemap layout
+  // Compute treemap layout (Squarified Highcharts style or Spiral TradingView style)
   const treemapNodes = useMemo((): TreemapNode[] => {
+    if (layoutMode === 'squarified') {
+      return computeSquarifiedTreemap(filteredItems, dimensions.width, dimensions.height)
+    }
     return computeSpiralTreemap(filteredItems, dimensions.width, dimensions.height)
-  }, [filteredItems, dimensions.width, dimensions.height])
+  }, [filteredItems, dimensions.width, dimensions.height, layoutMode])
 
   // Handle tile click: switch active symbol and return to chart view
   const handleSelectSymbol = (symbol: string): void => {
@@ -177,8 +205,8 @@ export const MarketHeatmapView: React.FC = () => {
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#0a0d14',
-        color: '#d1d4dc',
+        backgroundColor: '#121212',
+        color: '#ffffff',
         overflow: 'hidden',
         position: 'relative',
         userSelect: 'none'
@@ -195,7 +223,7 @@ export const MarketHeatmapView: React.FC = () => {
           justifyContent: 'space-between',
           padding: '8px 16px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          backgroundColor: '#0e121b',
+          backgroundColor: '#161922',
           gap: 12,
           flexWrap: 'wrap',
           zIndex: 10
@@ -205,7 +233,7 @@ export const MarketHeatmapView: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
             <Flame size={16} color={THEME_TOKENS.colors.accent} />
-            <span style={{ fontWeight: 700, fontSize: 13, color: '#ffffff', letterSpacing: '0.3px' }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: '#ffffff', letterSpacing: '0.4px' }}>
               MARKET HEATMAP
             </span>
           </div>
@@ -256,8 +284,29 @@ export const MarketHeatmapView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Sizing Metric & Search Bar */}
+        {/* Right: Layout Toggle, Sizing Metric & Search Bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: '#848e9c' }}>Layout:</span>
+            <select
+              value={layoutMode}
+              onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                color: '#d1d4dc',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 4,
+                padding: '4px 8px',
+                fontSize: 11,
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="squarified">Squarified (Highcharts)</option>
+              <option value="spiral">Spiral (TradingView)</option>
+            </select>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: '#848e9c' }}>Ukuran:</span>
             <select
@@ -309,7 +358,45 @@ export const MarketHeatmapView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Heatmap Canvas / Tiles Area */}
+      {/* 2. Highcharts Style Heatmap Legend Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          padding: '6px 16px',
+          backgroundColor: '#121212',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+          flexWrap: 'wrap'
+        }}
+      >
+        <span style={{ fontSize: 10, color: '#848e9c', marginRight: 4, fontWeight: 500 }}>
+          Performa 24 Jam:
+        </span>
+        {HIGHCHARTS_HEATMAP_COLOR_STOPS.map(([val, col], idx) => (
+          <span
+            key={idx}
+            style={{
+              backgroundColor: col,
+              color: val === 0 ? '#d1d4dc' : '#ffffff',
+              fontWeight: 700,
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: 38,
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+            }}
+          >
+            {val > 0 ? `+${val}%` : `${val}%`}
+          </span>
+        ))}
+      </div>
+
+      {/* 3. Heatmap Canvas / Tiles Area */}
       <div
         ref={containerRef}
         style={{
@@ -318,7 +405,7 @@ export const MarketHeatmapView: React.FC = () => {
           height: '100%',
           position: 'relative',
           overflow: 'hidden',
-          backgroundColor: '#0a0d14'
+          backgroundColor: '#121212'
         }}
       >
         <div
@@ -334,11 +421,16 @@ export const MarketHeatmapView: React.FC = () => {
           }}
         >
           {treemapNodes.map((node) => {
-            const { bg, text } = getHeatmapColor(node.change24hPercent)
+            const { bg, text } = getHighchartsHeatmapColor(node.change24hPercent)
             const isHovered = hoveredNode?.symbol === node.symbol
-            const isTiny = node.width < 45 || node.height < 36
-            const isMedium = !isTiny && (node.width < 85 || node.height < 70)
-            const isLarge = !isTiny && !isMedium
+            const minDimension = Math.min(node.width, node.height)
+            const imgSize = Math.min(48, Math.max(16, Math.floor(minDimension * 0.38)))
+            const fontSize = Math.max(9, Math.min(14, Math.floor(minDimension / 7)))
+            const priceFormatted = formatPrice(node.price, node.category)
+            const changeFormatted =
+              node.change24hPercent > 0
+                ? `+${node.change24hPercent.toFixed(2)}%`
+                : `${node.change24hPercent.toFixed(2)}%`
 
             return (
               <div
@@ -353,96 +445,154 @@ export const MarketHeatmapView: React.FC = () => {
                   width: node.width,
                   height: node.height,
                   backgroundColor: bg,
-                  border: '1px solid #131722',
+                  border: '1px solid #121212',
                   boxSizing: 'border-box',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: isTiny ? 2 : 6,
+                  padding: minDimension < 40 ? 1 : 4,
                   overflow: 'hidden',
                   zIndex: isHovered ? 5 : 1,
-                  boxShadow: isHovered ? '0 0 10px rgba(255, 255, 255, 0.35)' : 'none',
+                  boxShadow: isHovered ? '0 0 12px rgba(255, 255, 255, 0.4)' : 'none',
                   filter: isHovered ? 'brightness(1.15)' : 'none',
                   transition: 'filter 0.12s ease'
                 }}
               >
-                {/* Large tile: Full Logo + Ticker + Percentage */}
-                {isLarge && (
-                  <>
-                    <div style={{ marginBottom: 6 }}>
-                      <SymbolLogo symbol={node.symbol} size={32} />
+                {/* Highcharts style circular icon + symbol + price + change% */}
+                {minDimension >= 52 ? (
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      overflow: 'hidden',
+                      padding: 2,
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: '50%',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                        marginBottom: 3
+                      }}
+                    >
+                      <SymbolLogo symbol={node.symbol} size={imgSize} />
                     </div>
-                    <span
+                    <div
                       style={{
                         fontWeight: 700,
-                        fontSize: Math.min(16, Math.max(12, Math.floor(node.width / 6))),
+                        fontSize,
                         color: text,
-                        letterSpacing: '0.4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: '100%',
+                        textAlign: 'center',
                         lineHeight: 1.2
                       }}
                     >
                       {node.symbol}
-                    </span>
-                    <span
+                    </div>
+                    <div
                       style={{
-                        fontWeight: 600,
-                        fontSize: Math.min(14, Math.max(11, Math.floor(node.width / 7))),
+                        fontSize: Math.max(8, Math.floor(fontSize * 0.88)),
                         color: text,
-                        marginTop: 2
+                        opacity: 0.95,
+                        textAlign: 'center',
+                        lineHeight: 1.2
                       }}
                     >
-                      {node.change24hPercent > 0 ? `+${node.change24hPercent.toFixed(2)}%` : `${node.change24hPercent.toFixed(2)}%`}
-                    </span>
-                  </>
-                )}
-
-                {/* Medium tile: Logo + Ticker + Compact % */}
-                {isMedium && (
-                  <>
-                    {node.height > 50 && (
-                      <div style={{ marginBottom: 4 }}>
-                        <SymbolLogo symbol={node.symbol} size={20} />
-                      </div>
-                    )}
-                    <span
+                      {priceFormatted}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: Math.max(8, Math.floor(fontSize * 0.88)),
+                        fontWeight: 700,
+                        color: text,
+                        textAlign: 'center',
+                        lineHeight: 1.2
+                      }}
+                    >
+                      {changeFormatted}
+                    </div>
+                  </div>
+                ) : minDimension >= 36 ? (
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      overflow: 'hidden',
+                      padding: 1
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: '50%',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: 1
+                      }}
+                    >
+                      <SymbolLogo symbol={node.symbol} size={Math.min(20, minDimension - 14)} />
+                    </div>
+                    <div
                       style={{
                         fontWeight: 700,
-                        fontSize: 12,
+                        fontSize: 10,
                         color: text,
+                        textAlign: 'center',
                         lineHeight: 1.1
                       }}
                     >
                       {node.symbol}
-                    </span>
-                    <span
+                    </div>
+                    <div
                       style={{
+                        fontSize: 9,
                         fontWeight: 600,
-                        fontSize: 10,
                         color: text,
-                        marginTop: 1
+                        textAlign: 'center',
+                        lineHeight: 1.1
                       }}
                     >
-                      {node.change24hPercent > 0 ? `+${node.change24hPercent.toFixed(1)}%` : `${node.change24hPercent.toFixed(1)}%`}
-                    </span>
-                  </>
-                )}
-
-                {/* Small / Micro tile: Just Logo or % */}
-                {isTiny && (
-                  <>
-                    {node.width >= 24 && node.height >= 24 ? (
-                      <SymbolLogo symbol={node.symbol} size={Math.min(18, Math.max(12, node.width - 6))} />
-                    ) : null}
-                  </>
-                )}
+                      {changeFormatted}
+                    </div>
+                  </div>
+                ) : minDimension >= 20 ? (
+                  <div
+                    style={{
+                      borderRadius: '50%',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <SymbolLogo symbol={node.symbol} size={Math.min(16, minDimension - 4)} />
+                  </div>
+                ) : null}
               </div>
             )
           })}
         </div>
 
-        {/* 3. Floating Zoom Controls on the Right (TradingView Exact Replica) */}
+        {/* 4. Floating Zoom Controls */}
         <div
           style={{
             position: 'absolute',
@@ -514,7 +664,7 @@ export const MarketHeatmapView: React.FC = () => {
           </button>
         </div>
 
-        {/* 4. Bottom-Left TradingView Style Terminal Logo */}
+        {/* 5. Bottom-Left Terminal Indicator */}
         <div
           style={{
             position: 'absolute',
@@ -545,13 +695,13 @@ export const MarketHeatmapView: React.FC = () => {
               color: '#ffffff'
             }}
           >
-            TV
+            HC
           </div>
-          <span>PIA TERMINAL HEATMAP</span>
+          <span>HIGHCHARTS HEATMAP</span>
         </div>
       </div>
 
-      {/* 5. Rich Hover Tooltip (TradingView Style Card) */}
+      {/* 6. Rich Highcharts Style Tooltip */}
       {hoveredNode && (
         <div
           style={{
@@ -561,8 +711,8 @@ export const MarketHeatmapView: React.FC = () => {
             backgroundColor: 'rgba(20, 24, 35, 0.96)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.16)',
-            borderRadius: 8,
-            padding: '12px 14px',
+            borderRadius: 6,
+            padding: '10px 14px',
             boxShadow: '0 8px 28px rgba(0, 0, 0, 0.65)',
             zIndex: 9999,
             pointerEvents: 'none',
@@ -570,7 +720,17 @@ export const MarketHeatmapView: React.FC = () => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <SymbolLogo symbol={hoveredNode.symbol} size={28} />
+            <div
+              style={{
+                borderRadius: '50%',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <SymbolLogo symbol={hoveredNode.symbol} size={28} />
+            </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#ffffff' }}>
                 {hoveredNode.symbol}
@@ -593,30 +753,38 @@ export const MarketHeatmapView: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
             {hoveredNode.price !== undefined && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#848e9c' }}>Harga Terakhir:</span>
+                <span style={{ color: '#848e9c' }}>Price:</span>
                 <span style={{ fontWeight: 600, color: '#ffffff' }}>
-                  {hoveredNode.price >= 100 ? hoveredNode.price.toLocaleString() : hoveredNode.price}
+                  {formatPrice(hoveredNode.price, hoveredNode.category)}
                 </span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#848e9c' }}>Perubahan 24 Jam:</span>
+              <span style={{ color: '#848e9c' }}>Change:</span>
               <span
                 style={{
                   fontWeight: 600,
-                  color: hoveredNode.change24hPercent >= 0 ? '#10b981' : '#f43f5e'
+                  color: hoveredNode.change24hPercent >= 0 ? '#47d147' : '#ff1a1a'
                 }}
               >
-                {hoveredNode.change24hPercent > 0 ? `+${hoveredNode.change24hPercent.toFixed(2)}%` : `${hoveredNode.change24hPercent.toFixed(2)}%`}
+                {hoveredNode.change24hPercent > 0
+                  ? `+${hoveredNode.change24hPercent.toFixed(2)}%`
+                  : `${hoveredNode.change24hPercent.toFixed(2)}%`}
               </span>
             </div>
+            {hoveredNode.marketCap !== undefined && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#848e9c' }}>Market Cap:</span>
+                <span style={{ color: '#d1d4dc' }}>
+                  {formatLargeNumber(hoveredNode.marketCap)}
+                </span>
+              </div>
+            )}
             {hoveredNode.volume24h !== undefined && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#848e9c' }}>Volume 24 Jam:</span>
+                <span style={{ color: '#848e9c' }}>Volume 24h:</span>
                 <span style={{ color: '#d1d4dc' }}>
-                  {hoveredNode.volume24h > 1000000000
-                    ? `${(hoveredNode.volume24h / 1000000000).toFixed(2)}B`
-                    : `${(hoveredNode.volume24h / 1000000).toFixed(2)}M`}
+                  {formatLargeNumber(hoveredNode.volume24h)}
                 </span>
               </div>
             )}
@@ -631,7 +799,7 @@ export const MarketHeatmapView: React.FC = () => {
                 fontWeight: 600
               }}
             >
-              Klik untuk buka chart ↗
+              Klik untuk buka chart live
             </div>
           </div>
         </div>
