@@ -131,7 +131,9 @@ export const TopToolbar: React.FC = () => {
         gap: 3,
         zIndex: 30,
         position: 'relative',
-        userSelect: 'none'
+        userSelect: 'none',
+        overflowX: 'auto',
+        scrollbarWidth: 'none'
       }}
     >
       {/* 1. Hamburger / Profile Menu Button (Exact TradingView 3-bar icon) */}
@@ -229,6 +231,17 @@ export const TopToolbar: React.FC = () => {
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
               <span>Settings & API Keys</span>
+            </div>
+
+            <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '4px 0' }} />
+
+            <div
+              onClick={() => { handleLogout(); setIsMainMenuOpen(false) }}
+              className="tv-btn"
+              style={{ width: '100%', justifyContent: 'flex-start', padding: '8px 14px', borderRadius: 0, height: 'auto', gap: 10, color: THEME_TOKENS.colors.bearish }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+              <span>{isSaving ? 'Signing out...' : 'Sign Out'}</span>
             </div>
           </div>
         )}
@@ -610,7 +623,7 @@ export const TopToolbar: React.FC = () => {
       <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
 
       {/* 11. Cloud Layout Save Pill (TradingView Cloud Icon + Save) */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <button
           type="button"
           onClick={handleSave}
@@ -760,300 +773,136 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      {/* 16. Institutional Live Telemetry Badge */}
-      <div
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '2px 8px',
-          borderRadius: 12,
-          backgroundColor: 'rgba(16, 185, 129, 0.08)',
-          border: '1px solid rgba(16, 185, 129, 0.22)',
-          fontSize: 10,
-          fontWeight: 700,
-          color: THEME_TOKENS.colors.bullish,
-          letterSpacing: '0.04em',
-          marginLeft: 4
-        }}
-        title="Institutional Live Market Feed Connected"
-      >
-        <span className="live-beacon" />
-        <span>LIVE</span>
-      </div>
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
 
-      {/* 17. Publish / Action Button (TradingView signature blue pill button) */}
-      <button
-        type="button"
-        onClick={handleSave}
-        style={{
-          height: 26,
-          background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
-          color: '#ffffff',
-          border: '1px solid rgba(255, 255, 255, 0.16)',
-          borderRadius: 4,
-          padding: '0 12px',
-          fontWeight: 600,
-          fontSize: 12,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          marginLeft: 6,
-          boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-          transition: 'all 0.15s ease'
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)' }}
-        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
-        title="Save & Share Chart"
-      >
-        <span>Publish</span>
-      </button>
-
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 4px' }} />
-
-      {/* 18. Account Profile Button & Dropdown Menu */}
+      {/* 16. Account Profile Button & Dropdown Menu */}
       <div style={{ position: 'relative' }}>
         <button
           type="button"
           onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
           className={`tv-btn ${isAccountMenuOpen ? 'active' : ''}`}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            padding: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: isAccountMenuOpen ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-            border: isAccountMenuOpen ? '1px solid #D4AF37' : `1px solid ${THEME_TOKENS.colors.borderMedium}`,
-            cursor: 'pointer',
-            position: 'relative',
-            color: isAccountMenuOpen ? '#F4F6FC' : THEME_TOKENS.colors.textSecondary
-          }}
-          title="Akun & Pengaturan"
+          style={{ width: 28, height: 28, padding: 0 }}
+          title="Account & Settings"
         >
-          {/* User Profile Avatar Icon */}
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
             <circle cx="12" cy="7" r="4" />
           </svg>
-          {/* Active online pulse dot */}
-          <span
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              right: 0,
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              backgroundColor: '#10B981',
-              border: `1.5px solid ${THEME_TOKENS.colors.bgApp}`
-            }}
-          />
         </button>
 
         {isAccountMenuOpen && (
           <div
             style={{
               position: 'absolute',
-              top: 'calc(100% + 6px)',
+              top: '100%',
               right: 0,
-              width: 260,
+              marginTop: 4,
+              width: 190,
               backgroundColor: THEME_TOKENS.colors.bgSurface,
               border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
-              borderRadius: 8,
-              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+              borderRadius: 4,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
               zIndex: 100,
-              overflow: 'hidden',
-              fontSize: 12,
-              animation: 'fadeIn 0.15s ease-out'
+              padding: '4px 0',
+              fontSize: 12
             }}
           >
-            {/* Account Card Header */}
             <div
               style={{
-                padding: '12px 14px',
-                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10
+                padding: '6px 12px 7px',
+                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`
               }}
             >
+              <div style={{ fontWeight: 600, color: THEME_TOKENS.colors.textBright, fontSize: 12 }}>
+                {credentials?.isLoggedIn ? 'Google Account' : 'PIA Terminal'}
+              </div>
               <div
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(212, 175, 55, 0.12)',
-                  border: '1px solid rgba(212, 175, 55, 0.3)',
+                  fontSize: 11,
+                  color: THEME_TOKENS.colors.textSecondary,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#D4AF37',
-                  fontWeight: 800,
-                  fontSize: 13,
-                  fontFamily: THEME_TOKENS.typography.fontMono
+                  gap: 5,
+                  marginTop: 2
                 }}
               >
-                ◈
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
+                <span
                   style={{
-                    fontWeight: 700,
-                    color: THEME_TOKENS.colors.textBright,
-                    fontSize: 12,
-                    letterSpacing: '0.02em',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    backgroundColor: THEME_TOKENS.colors.bullish
                   }}
-                >
-                  PIA Institutional
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: THEME_TOKENS.colors.textSecondary,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    marginTop: 2
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      backgroundColor: '#10B981'
-                    }}
-                  />
-                  <span>
-                    {credentials?.isLoggedIn ? 'Google Account' : credentials?.hasApiKey ? 'API Key Mode' : 'Connected'}
-                  </span>
-                </div>
+                />
+                <span>{credentials?.isLoggedIn ? 'Terhubung' : credentials?.hasApiKey ? 'API Key' : 'Aktif'}</span>
               </div>
             </div>
 
-            {/* Menu List */}
-            <div style={{ padding: '4px 0' }}>
-              {/* Settings Action */}
-              <div
-                onClick={handleOpenSettings}
-                className="tv-btn"
-                style={{
-                  width: '100%',
-                  justifyContent: 'flex-start',
-                  padding: '9px 14px',
-                  borderRadius: 0,
-                  height: 'auto',
-                  gap: 10,
-                  fontSize: 12
-                }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <div
+              onClick={handleOpenSettings}
+              className="tv-btn"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '7px 12px',
+                borderRadius: 0,
+                height: 'auto',
+                fontSize: 12
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
-                <span>Pengaturan Terminal</span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10,
-                    color: THEME_TOKENS.colors.textSecondary,
-                    fontFamily: THEME_TOKENS.typography.fontMono
-                  }}
-                >
-                  Alt+S
-                </span>
-              </div>
+                <span>Pengaturan</span>
+              </span>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>Alt+S</span>
+            </div>
 
-              {/* Updates Action */}
-              <div
-                onClick={handleCheckUpdates}
-                className="tv-btn"
-                style={{
-                  width: '100%',
-                  justifyContent: 'flex-start',
-                  padding: '9px 14px',
-                  borderRadius: 0,
-                  height: 'auto',
-                  gap: 10,
-                  fontSize: 12
-                }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <div
+              onClick={handleCheckUpdates}
+              className="tv-btn"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '7px 12px',
+                borderRadius: 0,
+                height: 'auto',
+                fontSize: 12
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
                 </svg>
-                <span>Pembaruan Sistem</span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10,
-                    padding: '1px 6px',
-                    borderRadius: 3,
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    color: THEME_TOKENS.colors.textSecondary,
-                    fontFamily: THEME_TOKENS.typography.fontMono
-                  }}
-                >
-                  v{updaterStatus.currentVersion}
-                </span>
-              </div>
+                <span>Pembaruan</span>
+              </span>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>v{updaterStatus.currentVersion}</span>
+            </div>
 
-              {/* Security Storage Telemetry Note */}
-              <div
-                style={{
-                  padding: '6px 14px',
-                  fontSize: 10,
-                  color: THEME_TOKENS.colors.textMuted,
-                  fontFamily: THEME_TOKENS.typography.fontMono,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                <span>🔒</span>
-                <span>OS Keyring Active</span>
-              </div>
+            <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '3px 0' }} />
 
-              {/* Subtle Menu Divider */}
-              <div
-                style={{
-                  height: 1,
-                  backgroundColor: THEME_TOKENS.colors.borderSubtle,
-                  margin: '4px 0'
-                }}
-              />
-
-              {/* Logout Action */}
-              <div
-                onClick={handleLogout}
-                className="tv-btn"
-                style={{
-                  width: '100%',
-                  justifyContent: 'flex-start',
-                  padding: '9px 14px',
-                  borderRadius: 0,
-                  height: 'auto',
-                  gap: 10,
-                  fontSize: 12,
-                  color: THEME_TOKENS.colors.bearish,
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  opacity: isSaving ? 0.6 : 1
-                }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                <span style={{ fontWeight: 600 }}>{isSaving ? 'Memproses...' : 'Keluar (Sign Out)'}</span>
-              </div>
+            <div
+              onClick={handleLogout}
+              className="tv-btn"
+              style={{
+                width: '100%',
+                justifyContent: 'flex-start',
+                padding: '7px 12px',
+                borderRadius: 0,
+                height: 'auto',
+                gap: 8,
+                fontSize: 12,
+                color: THEME_TOKENS.colors.bearish
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>{isSaving ? 'Keluar...' : 'Keluar'}</span>
             </div>
           </div>
         )}
