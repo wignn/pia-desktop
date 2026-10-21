@@ -207,6 +207,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           status.name = profile.name
           status.email = profile.email
           status.avatarUrl = profile.avatarUrl
+          status.plan = profile.plan || 'enterprise'
         }
         const key = credManager.getApiKey()
         if (status.isLoggedIn && key && (!profile?.name || !profile?.email)) {
@@ -221,7 +222,8 @@ export async function createTauriApi(): Promise<TerminalAPI> {
                   id: data.user.id,
                   email: data.user.email,
                   name: data.user.name,
-                  avatarUrl: data.user.avatar_url
+                  avatarUrl: data.user.avatar_url,
+                  plan: data.user.plan || 'enterprise'
                 })
               }
             })
@@ -284,7 +286,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         if (!finishResponse.ok) throw new Error(`Google login failed (${finishResponse.status})`)
         const finish = (await finishResponse.json()) as {
           desktop_credential?: string
-          user?: { id?: string; email?: string; name?: string; avatar_url?: string }
+          user?: { id?: string; email?: string; name?: string; avatar_url?: string; plan?: string }
         }
         if (!finish.desktop_credential) throw new Error('Google login did not return a credential')
         if (!(await credManager.saveDesktopCredential(finish.desktop_credential))) {
@@ -295,7 +297,8 @@ export async function createTauriApi(): Promise<TerminalAPI> {
             id: finish.user.id,
             email: finish.user.email,
             name: finish.user.name,
-            avatarUrl: finish.user.avatar_url
+            avatarUrl: finish.user.avatar_url,
+            plan: finish.user.plan || 'enterprise'
           })
         }
         piaProvider.initializeClient()

@@ -204,12 +204,21 @@ export class DatabaseService {
           email TEXT,
           name TEXT,
           avatar_url TEXT,
+          plan TEXT DEFAULT 'enterprise',
           updated_at INTEGER NOT NULL
         );
 
         INSERT OR REPLACE INTO schema_version (version) VALUES (3);
       `)
 
+      this.scheduleDiskWrite(0)
+    }
+
+    if (currentVersion < 4) {
+      try {
+        this.db.run(`ALTER TABLE user_profile ADD COLUMN plan TEXT DEFAULT 'enterprise';`)
+      } catch {}
+      this.db.run(`INSERT OR REPLACE INTO schema_version (version) VALUES (4);`)
       this.scheduleDiskWrite(0)
     }
   }
@@ -632,7 +641,7 @@ export class DatabaseService {
     if (!this.db) return null
     try {
       const res = this.db.exec(
-        'SELECT id, email, name, avatar_url, updated_at FROM user_profile LIMIT 1'
+        'SELECT id, email, name, avatar_url, updated_at, plan FROM user_profile LIMIT 1'
       )
       if (res.length === 0 || res[0].values.length === 0) return null
       const row = res[0].values[0]
@@ -641,7 +650,8 @@ export class DatabaseService {
         email: (row[1] as string) || undefined,
         name: (row[2] as string) || undefined,
         avatarUrl: (row[3] as string) || undefined,
-        updatedAt: Number(row[4]) || Date.now()
+        updatedAt: Number(row[4]) || Date.now(),
+        plan: (row[5] as string) || 'enterprise'
       }
     } catch (err) {
       console.error('Error fetching user profile from SQLite:', err)
@@ -649,19 +659,20 @@ export class DatabaseService {
     }
   }
 
-  public saveUserProfile(profile: { id?: string; email?: string; name?: string; avatarUrl?: string }): boolean {
+  public saveUserProfile(profile: { id?: string; email?: string; name?: string; avatarUrl?: string; plan?: string }): boolean {
     if (!this.db) return false
     try {
       const id = profile.id || 'default_user'
       const email = profile.email || null
       const name = profile.name || null
       const avatarUrl = profile.avatarUrl || null
+      const plan = profile.plan || 'enterprise'
       const updatedAt = Date.now()
 
       this.db.run(
-        `INSERT OR REPLACE INTO user_profile (id, email, name, avatar_url, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [id, email, name, avatarUrl, updatedAt]
+        `INSERT OR REPLACE INTO user_profile (id, email, name, avatar_url, plan, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, email, name, avatarUrl, plan, updatedAt]
       )
       this.scheduleDiskWrite(0)
       return true

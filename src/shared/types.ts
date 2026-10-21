@@ -220,6 +220,7 @@ export interface UserProfile {
   name?: string
   email?: string
   avatarUrl?: string
+  plan?: string
   updatedAt?: number
 }
 
@@ -232,6 +233,7 @@ export interface CredentialStatus {
   name?: string
   email?: string
   avatarUrl?: string
+  plan?: string
 }
 
 export interface OrderBookLevel {
