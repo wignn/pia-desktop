@@ -92,7 +92,7 @@ export class CandleEngine {
       let normalizedBars: KLineData[] = []
       let lastError: unknown
 
-      const RETRY_BACKOFF_MS = 1200
+      const RETRY_BACKOFF_MS = 250
       const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
       // A transient failure or empty response is not a valid chart state.

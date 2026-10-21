@@ -202,32 +202,67 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     settings: {
       getCredentials: async () => {
         const status = credManager.getStatus()
-        const profile = dbService.getUserProfile()
+        let profile = dbService.getUserProfile()
+
+        // Fallback 1: Restore from localStorage if SQLite is empty
+        if ((!profile?.name || !profile?.avatarUrl) && typeof localStorage !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('pia_user_profile')
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              if (parsed?.name || parsed?.avatarUrl) {
+                profile = { ...profile, ...parsed }
+                dbService.saveUserProfile(parsed)
+              }
+            }
+          } catch {}
+        }
+
         if (profile) {
-          status.name = profile.name
-          status.email = profile.email
-          status.avatarUrl = profile.avatarUrl
+          status.name = profile.name || status.name
+          status.email = profile.email || status.email
+          status.avatarUrl = profile.avatarUrl || status.avatarUrl
           status.plan = profile.plan || 'enterprise'
         }
+
+        // Fallback 2: Sync live profile from backend if missing name or avatar
         const key = credManager.getApiKey()
-        if (status.isLoggedIn && key && (!profile?.name || !profile?.email)) {
+        if (status.isLoggedIn && key && (!status.name || !status.avatarUrl)) {
           const baseUrl = credManager.getBaseUrl()
-          fetch(`${baseUrl}/api/v1/auth/me`, {
-            headers: { 'x-api-key': key }
-          })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => {
-              if (data?.user) {
-                dbService.saveUserProfile({
-                  id: data.user.id,
-                  email: data.user.email,
-                  name: data.user.name,
-                  avatarUrl: data.user.avatar_url,
-                  plan: data.user.plan || 'enterprise'
-                })
-              }
+          try {
+            const controller = new AbortController()
+            const timer = setTimeout(() => controller.abort(), 3500)
+            const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+              headers: { 'x-api-key': key },
+              signal: controller.signal
             })
-            .catch(() => {})
+            clearTimeout(timer)
+            if (res.ok) {
+              const data = await res.json()
+              if (data?.user) {
+                const u = data.user
+                status.name = u.name || status.name
+                status.email = u.email || status.email
+                status.avatarUrl = u.avatar_url || status.avatarUrl
+                status.plan = u.plan || 'enterprise'
+
+                const toSave = {
+                  id: u.id,
+                  email: status.email,
+                  name: status.name,
+                  avatarUrl: status.avatarUrl,
+                  plan: status.plan
+                }
+                dbService.saveUserProfile(toSave)
+                void credManager.saveUserMetadata(toSave)
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.setItem('pia_user_profile', JSON.stringify(toSave))
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[tauri-bridge] Failed to sync profile from /api/v1/auth/me:', e)
+          }
         }
         return status
       },
@@ -289,17 +324,24 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           user?: { id?: string; email?: string; name?: string; avatar_url?: string; plan?: string }
         }
         if (!finish.desktop_credential) throw new Error('Google login did not return a credential')
-        if (!(await credManager.saveDesktopCredential(finish.desktop_credential))) {
+        const userMeta = finish.user
+          ? {
+              id: finish.user.id,
+              email: finish.user.email,
+              name: finish.user.name,
+              avatarUrl: finish.user.avatar_url,
+              plan: finish.user.plan || 'enterprise'
+            }
+          : undefined
+
+        if (!(await credManager.saveDesktopCredential(finish.desktop_credential, userMeta))) {
           throw new Error('Could not securely save desktop login')
         }
-        if (finish.user) {
-          dbService.saveUserProfile({
-            id: finish.user.id,
-            email: finish.user.email,
-            name: finish.user.name,
-            avatarUrl: finish.user.avatar_url,
-            plan: finish.user.plan || 'enterprise'
-          })
+        if (userMeta) {
+          dbService.saveUserProfile(userMeta)
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('pia_user_profile', JSON.stringify(userMeta))
+          }
         }
         piaProvider.initializeClient()
         return true
@@ -307,6 +349,9 @@ export async function createTauriApi(): Promise<TerminalAPI> {
       logout: async () => {
         const ok = await credManager.clearCredentials()
         dbService.clearUserProfile()
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('pia_user_profile')
+        }
         piaProvider.initializeClient()
         return ok
       },
@@ -318,6 +363,9 @@ export async function createTauriApi(): Promise<TerminalAPI> {
       clearApiKey: async () => {
         const ok = await credManager.clearCredentials()
         dbService.clearUserProfile()
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('pia_user_profile')
+        }
         piaProvider.initializeClient()
         return ok
       }

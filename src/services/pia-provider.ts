@@ -159,7 +159,12 @@ export class PiaProvider {
   public initializeClient(): void {
     const apiKey = this.credManager.getApiKey()
     const baseUrl = this.credManager.getBaseUrl()
-    const wsUrl = this.credManager.getWsUrl()
+    let wsUrl = this.credManager.getWsUrl()
+
+    if (apiKey && !wsUrl.includes('api_key=')) {
+      const sep = wsUrl.includes('?') ? '&' : '?'
+      wsUrl = `${wsUrl}${sep}api_key=${encodeURIComponent(apiKey)}`
+    }
 
     this.discoveredSymbols.clear()
     this.symbolsRefreshPromise = null
@@ -197,7 +202,6 @@ export class PiaProvider {
       this.refreshSymbolsCatalog().catch((err) => {
         console.warn('Initial refreshSymbolsCatalog error:', err)
       })
-      this.preloadMajorDayOpens()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('Failed to initialize PiaClient:', msg)

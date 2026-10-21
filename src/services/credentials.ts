@@ -33,6 +33,10 @@ interface StoredCredentials {
   desktopCredential?: string
   baseUrl?: string
   wsUrl?: string
+  name?: string
+  email?: string
+  avatarUrl?: string
+  plan?: string
 }
 
 export class CredentialManager {
@@ -94,7 +98,11 @@ export class CredentialManager {
       isLoggedIn: Boolean(this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey),
       isSecureStorage: true,
       baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
-      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl)
+      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl),
+      name: this.inMemoryCreds?.name,
+      email: this.inMemoryCreds?.email,
+      avatarUrl: this.inMemoryCreds?.avatarUrl,
+      plan: this.inMemoryCreds?.plan || 'enterprise'
     }
   }
 
@@ -111,7 +119,8 @@ export class CredentialManager {
   }
 
   public async saveCredentials(apiKey: string, baseUrl?: string, wsUrl?: string): Promise<boolean> {
-    const next = {
+    const next: StoredCredentials = {
+      ...this.inMemoryCreds,
       apiKey,
       baseUrl: normalizeBaseUrl(baseUrl),
       wsUrl: normalizeWsUrl(wsUrl)
@@ -121,12 +130,38 @@ export class CredentialManager {
     return true
   }
 
-  public async saveDesktopCredential(desktopCredential: string): Promise<boolean> {
-    const next = {
+  public async saveDesktopCredential(
+    desktopCredential: string,
+    user?: { name?: string; email?: string; avatarUrl?: string; plan?: string }
+  ): Promise<boolean> {
+    const next: StoredCredentials = {
       apiKey: '',
       desktopCredential,
       baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
-      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl)
+      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl),
+      name: user?.name || this.inMemoryCreds?.name,
+      email: user?.email || this.inMemoryCreds?.email,
+      avatarUrl: user?.avatarUrl || this.inMemoryCreds?.avatarUrl,
+      plan: user?.plan || this.inMemoryCreds?.plan || 'enterprise'
+    }
+    if (!(await this.persist(JSON.stringify(next)))) return false
+    this.inMemoryCreds = next
+    return true
+  }
+
+  public async saveUserMetadata(user: {
+    name?: string
+    email?: string
+    avatarUrl?: string
+    plan?: string
+  }): Promise<boolean> {
+    if (!this.inMemoryCreds) return false
+    const next: StoredCredentials = {
+      ...this.inMemoryCreds,
+      name: user.name || this.inMemoryCreds.name,
+      email: user.email || this.inMemoryCreds.email,
+      avatarUrl: user.avatarUrl || this.inMemoryCreds.avatarUrl,
+      plan: user.plan || this.inMemoryCreds.plan || 'enterprise'
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
