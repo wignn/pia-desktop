@@ -210,8 +210,21 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ nonce })
         })
-        if (!startResponse.ok) throw new Error(`Google login initialization failed (${startResponse.status})`)
-        const start = (await startResponse.json()) as { url?: string; state?: string }
+        const startPayload = (await startResponse.json().catch(() => ({}))) as {
+          url?: string
+          state?: string
+          error?: string
+          message?: string
+        }
+        if (!startResponse.ok) {
+          const detail = startPayload.message || startPayload.error
+          throw new Error(
+            startResponse.status === 401 || startResponse.status === 403
+              ? 'Google login is not enabled on the API server (HTTP 401/403). Check deployment and public-route authentication.'
+              : `Google login initialization failed (${startResponse.status})${detail ? `: ${detail}` : ''}`
+          )
+        }
+        const start = startPayload
         if (!start.url || !start.state) throw new Error('Google login initialization returned invalid data')
         const authUrl = new URL(start.url)
         if (
