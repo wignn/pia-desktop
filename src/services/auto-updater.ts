@@ -80,7 +80,7 @@ export async function checkForAppUpdates(options: UpdaterCheckOptions = {}): Pro
     activeUpdateHandle = null
     return {
       state: 'up-to-date',
-      currentVersion: update?.currentVersion || '3.0.1'
+      currentVersion: update?.currentVersion || '3.0.2'
     }
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err)

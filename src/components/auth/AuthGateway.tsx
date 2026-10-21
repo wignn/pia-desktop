@@ -433,7 +433,7 @@ export function AuthGateway(): React.JSX.Element {
                     textTransform: 'uppercase'
                   }}
                 >
-                  Sorotan Pembaruan v3.0.1:
+                  Update Highlights v3.0.2:
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <div
@@ -445,7 +445,7 @@ export function AuthGateway(): React.JSX.Element {
                     }}
                   >
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#D4AF37' }}>
-                      ⚡ NATS High-Speed Memory
+                      NATS High-Speed Memory
                     </div>
                     <div style={{ fontSize: 11, color: '#838896', marginTop: 3 }}>
                       Kuotasi harga real-time tanpa overhead database.
@@ -461,7 +461,7 @@ export function AuthGateway(): React.JSX.Element {
                     }}
                   >
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#10B981' }}>
-                      🛡️ SafeStorage Native OAuth
+                      SafeStorage Native OAuth
                     </div>
                     <div style={{ fontSize: 11, color: '#838896', marginTop: 3 }}>
                       Loopback port terenkripsi &amp; hardware keyring OS.
