@@ -20,7 +20,7 @@ interface UpdaterState {
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   status: {
     state: 'idle',
-    currentVersion: '2.0.3'
+    currentVersion: '3.0.0'
   },
   isChecking: false,
   isBannerDismissed: false,
