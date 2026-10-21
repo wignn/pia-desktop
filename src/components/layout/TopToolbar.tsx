@@ -7,6 +7,8 @@ import { useTabStore } from '../../stores/useTabStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { TIMEFRAMES, type Timeframe } from '@shared/types'
 import { SymbolLogo } from '../common/SymbolLogo'
+import { useSettingsStore } from '../../stores/useSettingsStore'
+import { useUpdaterStore } from '../../stores/useUpdaterStore'
 
 export const TopToolbar: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -33,11 +35,16 @@ export const TopToolbar: React.FC = () => {
   const { activeLayout, layouts, saveCurrentLayout, loadLayoutById } = useLayoutStore()
   const { openHubInNewTab, openMacroMapsInNewTab, openControlPanelInNewTab, openHeatmapInNewTab } = useTabStore()
 
+  const { credentials, logout, isSaving } = useSettingsStore()
+  const updaterStatus = useUpdaterStore((state) => state.status)
+  const checkForUpdates = useUpdaterStore((state) => state.checkForUpdates)
+
   // Dropdown states
   const [isMainMenuOpen, setIsMainMenuOpen] = useState(false)
   const [isChartTypeMenuOpen, setIsChartTypeMenuOpen] = useState(false)
   const [isTimeframeMenuOpen, setIsTimeframeMenuOpen] = useState(false)
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false)
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [saveToast, setSaveToast] = useState(false)
 
   const menuRef = useRef<HTMLDivElement>(null)
@@ -50,6 +57,7 @@ export const TopToolbar: React.FC = () => {
         setIsChartTypeMenuOpen(false)
         setIsTimeframeMenuOpen(false)
         setIsLayoutMenuOpen(false)
+        setIsAccountMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -85,6 +93,22 @@ export const TopToolbar: React.FC = () => {
     } else {
       document.exitFullscreen().catch(() => {})
     }
+  }
+
+  const handleOpenSettings = (): void => {
+    setIsAccountMenuOpen(false)
+    setSettingsModalOpen(true)
+  }
+
+  const handleCheckUpdates = async (): Promise<void> => {
+    setIsAccountMenuOpen(false)
+    await checkForUpdates()
+    setSettingsModalOpen(true)
+  }
+
+  const handleLogout = async (): Promise<void> => {
+    setIsAccountMenuOpen(false)
+    await logout()
   }
 
   // Common quick timeframes shown directly on the toolbar
@@ -785,6 +809,255 @@ export const TopToolbar: React.FC = () => {
       >
         <span>Publish</span>
       </button>
+
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 4px' }} />
+
+      {/* 18. Account Profile Button & Dropdown Menu */}
+      <div style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+          className={`tv-btn ${isAccountMenuOpen ? 'active' : ''}`}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isAccountMenuOpen ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+            border: isAccountMenuOpen ? '1px solid #D4AF37' : `1px solid ${THEME_TOKENS.colors.borderMedium}`,
+            cursor: 'pointer',
+            position: 'relative',
+            color: isAccountMenuOpen ? '#F4F6FC' : THEME_TOKENS.colors.textSecondary
+          }}
+          title="Akun & Pengaturan"
+        >
+          {/* User Profile Avatar Icon */}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          {/* Active online pulse dot */}
+          <span
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              backgroundColor: '#10B981',
+              border: `1.5px solid ${THEME_TOKENS.colors.bgApp}`
+            }}
+          />
+        </button>
+
+        {isAccountMenuOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              right: 0,
+              width: 260,
+              backgroundColor: THEME_TOKENS.colors.bgSurface,
+              border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
+              borderRadius: 8,
+              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+              zIndex: 100,
+              overflow: 'hidden',
+              fontSize: 12,
+              animation: 'fadeIn 0.15s ease-out'
+            }}
+          >
+            {/* Account Card Header */}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(212, 175, 55, 0.12)',
+                  border: '1px solid rgba(212, 175, 55, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#D4AF37',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  fontFamily: THEME_TOKENS.typography.fontMono
+                }}
+              >
+                ◈
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: THEME_TOKENS.colors.textBright,
+                    fontSize: 12,
+                    letterSpacing: '0.02em',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  PIA Institutional
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: THEME_TOKENS.colors.textSecondary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    marginTop: 2
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      backgroundColor: '#10B981'
+                    }}
+                  />
+                  <span>
+                    {credentials?.isLoggedIn ? 'Google Account' : credentials?.hasApiKey ? 'API Key Mode' : 'Connected'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Menu List */}
+            <div style={{ padding: '4px 0' }}>
+              {/* Settings Action */}
+              <div
+                onClick={handleOpenSettings}
+                className="tv-btn"
+                style={{
+                  width: '100%',
+                  justifyContent: 'flex-start',
+                  padding: '9px 14px',
+                  borderRadius: 0,
+                  height: 'auto',
+                  gap: 10,
+                  fontSize: 12
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                <span>Pengaturan Terminal</span>
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    fontSize: 10,
+                    color: THEME_TOKENS.colors.textSecondary,
+                    fontFamily: THEME_TOKENS.typography.fontMono
+                  }}
+                >
+                  Alt+S
+                </span>
+              </div>
+
+              {/* Updates Action */}
+              <div
+                onClick={handleCheckUpdates}
+                className="tv-btn"
+                style={{
+                  width: '100%',
+                  justifyContent: 'flex-start',
+                  padding: '9px 14px',
+                  borderRadius: 0,
+                  height: 'auto',
+                  gap: 10,
+                  fontSize: 12
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                </svg>
+                <span>Pembaruan Sistem</span>
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    fontSize: 10,
+                    padding: '1px 6px',
+                    borderRadius: 3,
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: THEME_TOKENS.colors.textSecondary,
+                    fontFamily: THEME_TOKENS.typography.fontMono
+                  }}
+                >
+                  v{updaterStatus.currentVersion}
+                </span>
+              </div>
+
+              {/* Security Storage Telemetry Note */}
+              <div
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 10,
+                  color: THEME_TOKENS.colors.textMuted,
+                  fontFamily: THEME_TOKENS.typography.fontMono,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span>🔒</span>
+                <span>OS Keyring Active</span>
+              </div>
+
+              {/* Subtle Menu Divider */}
+              <div
+                style={{
+                  height: 1,
+                  backgroundColor: THEME_TOKENS.colors.borderSubtle,
+                  margin: '4px 0'
+                }}
+              />
+
+              {/* Logout Action */}
+              <div
+                onClick={handleLogout}
+                className="tv-btn"
+                style={{
+                  width: '100%',
+                  justifyContent: 'flex-start',
+                  padding: '9px 14px',
+                  borderRadius: 0,
+                  height: 'auto',
+                  gap: 10,
+                  fontSize: 12,
+                  color: THEME_TOKENS.colors.bearish,
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  opacity: isSaving ? 0.6 : 1
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span style={{ fontWeight: 600 }}>{isSaving ? 'Memproses...' : 'Keluar (Sign Out)'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
