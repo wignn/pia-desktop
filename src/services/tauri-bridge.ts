@@ -4,6 +4,7 @@
  * and native Tauri plugins, implementing the full TerminalAPI contract.
  */
 
+import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { CredentialManager } from './credentials'
 import { DatabaseService } from './database'
