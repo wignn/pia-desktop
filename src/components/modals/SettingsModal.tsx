@@ -6,7 +6,7 @@ import { THEME_TOKENS } from '../../theme/tokens'
 
 const SettingsModalContent: React.FC = () => {
   const { setSettingsModalOpen } = useWorkspaceStore()
-  const { credentials, loadCredentials, loginWithGoogle, logout, isSaving, errorMessage } = useSettingsStore()
+  const { credentials, loginWithGoogle, logout, isSaving, errorMessage } = useSettingsStore()
 
   const {
     status: updaterStatus,
@@ -14,10 +14,6 @@ const SettingsModalContent: React.FC = () => {
     checkForUpdates,
     installUpdate
   } = useUpdaterStore()
-
-  useEffect(() => {
-    loadCredentials()
-  }, [loadCredentials])
 
   return (
     <div

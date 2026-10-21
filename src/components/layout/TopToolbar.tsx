@@ -19,24 +19,34 @@ export const TopToolbar: React.FC = () => {
     state.symbol ? state.symbols.find((s) => s.symbol === state.symbol) : undefined
   )
 
-  const {
-    chartType,
-    setChartType,
-    activeIndicators,
-    clearAllDrawings,
-    isReplaying,
-    setReplaying,
-    triggerSnapshot,
-    snapshotToast
-  } = useChartStore()
+  const chartType = useChartStore((state) => state.chartType)
+  const setChartType = useChartStore((state) => state.setChartType)
+  const activeIndicatorsCount = useChartStore((state) => state.activeIndicators.length)
+  const clearAllDrawings = useChartStore((state) => state.clearAllDrawings)
+  const isReplaying = useChartStore((state) => state.isReplaying)
+  const setReplaying = useChartStore((state) => state.setReplaying)
+  const triggerSnapshot = useChartStore((state) => state.triggerSnapshot)
+  const snapshotToast = useChartStore((state) => state.snapshotToast)
 
-  const { theme, toggleTheme, setSymbolSearchOpen, setIndicatorModalOpen, setSettingsModalOpen } =
-    useWorkspaceStore()
-  const { activeLayout, layouts, saveCurrentLayout, loadLayoutById } = useLayoutStore()
-  const { openHubInNewTab, openMacroMapsInNewTab, openControlPanelInNewTab, openHeatmapInNewTab } = useTabStore()
+  const theme = useWorkspaceStore((state) => state.theme)
+  const toggleTheme = useWorkspaceStore((state) => state.toggleTheme)
+  const setSymbolSearchOpen = useWorkspaceStore((state) => state.setSymbolSearchOpen)
+  const setIndicatorModalOpen = useWorkspaceStore((state) => state.setIndicatorModalOpen)
+  const setSettingsModalOpen = useWorkspaceStore((state) => state.setSettingsModalOpen)
 
-  const { credentials, logout, isSaving } = useSettingsStore()
-  const updaterStatus = useUpdaterStore((state) => state.status)
+  const activeLayout = useLayoutStore((state) => state.activeLayout)
+  const saveCurrentLayout = useLayoutStore((state) => state.saveCurrentLayout)
+
+  const openHubInNewTab = useTabStore((state) => state.openHubInNewTab)
+  const openMacroMapsInNewTab = useTabStore((state) => state.openMacroMapsInNewTab)
+  const openControlPanelInNewTab = useTabStore((state) => state.openControlPanelInNewTab)
+  const openHeatmapInNewTab = useTabStore((state) => state.openHeatmapInNewTab)
+
+  const credentials = useSettingsStore((state) => state.credentials)
+  const logout = useSettingsStore((state) => state.logout)
+  const isSaving = useSettingsStore((state) => state.isSaving)
+
+  const currentVersion = useUpdaterStore((state) => state.status.currentVersion)
   const checkForUpdates = useUpdaterStore((state) => state.checkForUpdates)
 
   // Dropdown states
@@ -49,15 +59,19 @@ export const TopToolbar: React.FC = () => {
 
   const menuRef = useRef<HTMLDivElement>(null)
 
+  const closeAllMenus = (): void => {
+    setIsMainMenuOpen(false)
+    setIsChartTypeMenuOpen(false)
+    setIsTimeframeMenuOpen(false)
+    setIsLayoutMenuOpen(false)
+    setIsAccountMenuOpen(false)
+  }
+
   // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent): void => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsMainMenuOpen(false)
-        setIsChartTypeMenuOpen(false)
-        setIsTimeframeMenuOpen(false)
-        setIsLayoutMenuOpen(false)
-        setIsAccountMenuOpen(false)
+        closeAllMenus()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -132,15 +146,18 @@ export const TopToolbar: React.FC = () => {
         zIndex: 30,
         position: 'relative',
         userSelect: 'none',
-        overflowX: 'auto',
-        scrollbarWidth: 'none'
+        overflow: 'visible'
       }}
     >
       {/* 1. Hamburger / Profile Menu Button (Exact TradingView 3-bar icon) */}
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          onClick={() => setIsMainMenuOpen(!isMainMenuOpen)}
+          onClick={() => {
+            const next = !isMainMenuOpen
+            closeAllMenus()
+            setIsMainMenuOpen(next)
+          }}
           className={`tv-btn ${isMainMenuOpen ? 'active' : ''}`}
           style={{ width: 28, height: 28, padding: 0 }}
           title="Main Menu"
@@ -363,7 +380,11 @@ export const TopToolbar: React.FC = () => {
         <div style={{ position: 'relative' }}>
           <button
             type="button"
-            onClick={() => setIsTimeframeMenuOpen(!isTimeframeMenuOpen)}
+            onClick={() => {
+              const next = !isTimeframeMenuOpen
+              closeAllMenus()
+              setIsTimeframeMenuOpen(next)
+            }}
             className={`tv-btn ${isTimeframeMenuOpen ? 'active' : ''}`}
             style={{ width: 20, height: 28, padding: 0 }}
             title="More Intervals"
@@ -425,7 +446,11 @@ export const TopToolbar: React.FC = () => {
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          onClick={() => setIsChartTypeMenuOpen(!isChartTypeMenuOpen)}
+          onClick={() => {
+            const next = !isChartTypeMenuOpen
+            closeAllMenus()
+            setIsChartTypeMenuOpen(next)
+          }}
           className={`tv-btn ${isChartTypeMenuOpen ? 'active' : ''}`}
           style={{ height: 28, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3 }}
           title="Chart Type"
@@ -518,7 +543,7 @@ export const TopToolbar: React.FC = () => {
           fx
         </span>
         <span>Indicators</span>
-        {activeIndicators.length > 0 && (
+        {activeIndicatorsCount > 0 && (
           <span
             style={{
               backgroundColor: 'rgba(41, 98, 255, 0.15)',
@@ -529,7 +554,7 @@ export const TopToolbar: React.FC = () => {
               borderRadius: 8
             }}
           >
-            {activeIndicators.length}
+            {activeIndicatorsCount}
           </span>
         )}
       </button>
@@ -657,7 +682,11 @@ export const TopToolbar: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
+          onClick={() => {
+            const next = !isLayoutMenuOpen
+            closeAllMenus()
+            setIsLayoutMenuOpen(next)
+          }}
           className={`tv-btn ${isLayoutMenuOpen ? 'active' : ''}`}
           style={{ width: 16, height: 28, padding: 0 }}
           title="Layout Options"
@@ -779,7 +808,11 @@ export const TopToolbar: React.FC = () => {
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+          onClick={() => {
+            const next = !isAccountMenuOpen
+            closeAllMenus()
+            setIsAccountMenuOpen(next)
+          }}
           className={`tv-btn ${isAccountMenuOpen ? 'active' : ''}`}
           style={{ width: 28, height: 28, padding: 0 }}
           title="Account & Settings"
@@ -878,7 +911,7 @@ export const TopToolbar: React.FC = () => {
                 </svg>
                 <span>Pembaruan</span>
               </span>
-              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>v{updaterStatus.currentVersion}</span>
+              <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>v{currentVersion}</span>
             </div>
 
             <div style={{ height: 1, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '3px 0' }} />

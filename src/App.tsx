@@ -6,19 +6,20 @@ import { useUpdaterStore } from './stores/useUpdaterStore'
 import { THEME_TOKENS } from './theme/tokens'
 
 export function App(): React.JSX.Element {
-  const { credentials, loadCredentials, isLoading } = useSettingsStore()
+  const credentials = useSettingsStore((state) => state.credentials)
+  const loadCredentials = useSettingsStore((state) => state.loadCredentials)
   const initUpdaterListener = useUpdaterStore((state) => state.initUpdaterListener)
 
   // Initialize background update listener and load local credentials
   useEffect(() => {
-    loadCredentials()
+    void loadCredentials()
     const unsub = initUpdaterListener()
     void useUpdaterStore.getState().checkForUpdates()
     return unsub
   }, [loadCredentials, initUpdaterListener])
 
-  // Initializing runtime indicator before credentials check finishes
-  if (isLoading || credentials === null) {
+  // Initializing runtime indicator strictly on cold boot before initial credentials return
+  if (credentials === null) {
     return (
       <div
         style={{

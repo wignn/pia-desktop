@@ -26,7 +26,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   errorMessage: null,
 
   loadCredentials: async () => {
-    set({ isLoading: true, errorMessage: null })
+    // Only set isLoading: true on cold initial boot to prevent unmounting the active workspace
+    if (get().credentials === null) {
+      set({ isLoading: true, errorMessage: null })
+    }
     try {
       const creds = await window.api.settings.getCredentials()
       set({ credentials: creds, isLoading: false })
