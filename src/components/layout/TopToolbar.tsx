@@ -960,33 +960,10 @@ export const TopToolbar: React.FC = () => {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    marginTop: 2,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
+                    marginTop: 1
                   }}
                 >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {credentials?.email || (credentials?.isLoggedIn ? 'Connected' : credentials?.hasApiKey ? 'API Key' : 'Active')}
-                  </span>
-                  {credentials?.isLoggedIn && (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 700,
-                        letterSpacing: '0.4px',
-                        padding: '1px 5px',
-                        borderRadius: 3,
-                        backgroundColor: 'rgba(8, 153, 129, 0.2)',
-                        color: THEME_TOKENS.colors.bullish,
-                        border: '1px solid rgba(8, 153, 129, 0.35)',
-                        textTransform: 'uppercase',
-                        flexShrink: 0
-                      }}
-                    >
-                      {credentials?.plan || 'Enterprise'}
-                    </span>
-                  )}
+                  {credentials?.email || (credentials?.isLoggedIn ? 'Connected' : credentials?.hasApiKey ? 'API Key' : 'Active')}
                 </div>
               </div>
             </div>
