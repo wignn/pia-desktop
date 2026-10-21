@@ -4,7 +4,6 @@ use piascript::{PiaCandle, PiaScriptEngine, PiaScriptResult};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 use tauri::Manager;
@@ -89,24 +88,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
     }
     let listener = TcpListener::bind("127.0.0.1:43827").map_err(|e| e.to_string())?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let mut opener = Command::new(if cfg!(target_os = "windows") {
-        "cmd"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    });
-    if cfg!(target_os = "windows") {
-        opener.args(["/C", "start", "", &url]);
-    } else {
-        opener.arg(&url);
-    }
-    opener
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())?;
 
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
