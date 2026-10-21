@@ -46,18 +46,18 @@ export function App(): React.JSX.Element {
           ◈ PIA TERMINAL
         </div>
         <div style={{ fontSize: 11, color: '#64748B', letterSpacing: '0.06em' }}>
-          MEMERIKSA STATUS LISENSI &amp; KEYRING...
+          INITIALIZING TERMINAL...
         </div>
       </div>
     )
   }
 
-  // Step 3 (Main Workspace): Render full terminal workspace when authenticated
+  // Render full terminal workspace when authenticated
   if (credentials.isLoggedIn || credentials.hasApiKey) {
     return <TerminalWorkspace />
   }
 
-  // Steps 1 & 2: Render lightweight release radar & focused login gateway when not authenticated
+  // Render clean login gateway when not authenticated
   return <AuthGateway />
 }
 
