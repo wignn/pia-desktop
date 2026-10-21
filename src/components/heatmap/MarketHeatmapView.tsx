@@ -249,11 +249,11 @@ export const MarketHeatmapView: React.FC = () => {
             }}
           >
             {[
-              { id: 'idx', label: 'Saham IDX' },
+              { id: 'idx', label: 'IDX Stocks' },
               { id: 'crypto', label: 'Crypto' },
-              { id: 'forex', label: 'Forex & Emas' },
-              { id: 'us', label: 'Saham US' },
-              { id: 'all', label: 'Semua Pasar' },
+              { id: 'forex', label: 'Forex & Metals' },
+              { id: 'us', label: 'US Stocks' },
+              { id: 'all', label: 'All Markets' },
               { id: 'watchlist', label: 'Watchlist' }
             ].map((f) => {
               const active = activeFilter === f.id
@@ -308,7 +308,7 @@ export const MarketHeatmapView: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, color: '#848e9c' }}>Ukuran:</span>
+            <span style={{ fontSize: 11, color: '#848e9c' }}>Size:</span>
             <select
               value={sizingMetric}
               onChange={(e) => setSizingMetric(e.target.value as SizingMetric)}
@@ -324,7 +324,7 @@ export const MarketHeatmapView: React.FC = () => {
               }}
             >
               <option value="marketCap">Market Cap</option>
-              <option value="volume24h">Volume 24 Jam</option>
+              <option value="volume24h">24h Volume</option>
             </select>
           </div>
 
@@ -342,7 +342,7 @@ export const MarketHeatmapView: React.FC = () => {
             <Search size={13} color="#848e9c" />
             <input
               type="text"
-              placeholder="Cari emiten..."
+              placeholder="Search symbol..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -372,7 +372,7 @@ export const MarketHeatmapView: React.FC = () => {
         }}
       >
         <span style={{ fontSize: 10, color: '#848e9c', marginRight: 4, fontWeight: 500 }}>
-          Performa 24 Jam:
+          24h Change:
         </span>
         {HIGHCHARTS_HEATMAP_COLOR_STOPS.map(([val, col], idx) => (
           <span
@@ -611,7 +611,7 @@ export const MarketHeatmapView: React.FC = () => {
         >
           <button
             type="button"
-            title="Perbesar (Zoom In)"
+            title="Zoom In"
             onClick={handleZoomIn}
             style={{
               backgroundColor: 'transparent',
@@ -629,7 +629,7 @@ export const MarketHeatmapView: React.FC = () => {
           </button>
           <button
             type="button"
-            title="Perkecil (Zoom Out)"
+            title="Zoom Out"
             onClick={handleZoomOut}
             style={{
               backgroundColor: 'transparent',
@@ -647,7 +647,7 @@ export const MarketHeatmapView: React.FC = () => {
           </button>
           <button
             type="button"
-            title="Reset Tampilan"
+            title="Reset View"
             onClick={handleResetZoom}
             style={{
               backgroundColor: 'transparent',
@@ -799,7 +799,7 @@ export const MarketHeatmapView: React.FC = () => {
                 fontWeight: 600
               }}
             >
-              Klik untuk buka chart live
+              Click to open live chart
             </div>
           </div>
         </div>

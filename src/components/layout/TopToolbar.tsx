@@ -963,7 +963,7 @@ export const TopToolbar: React.FC = () => {
                     marginTop: 1
                   }}
                 >
-                  {credentials?.email || (credentials?.isLoggedIn ? 'Terhubung' : credentials?.hasApiKey ? 'API Key' : 'Aktif')}
+                  {credentials?.email || (credentials?.isLoggedIn ? 'Connected' : credentials?.hasApiKey ? 'API Key' : 'Active')}
                 </div>
               </div>
             </div>
@@ -985,7 +985,7 @@ export const TopToolbar: React.FC = () => {
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
-                <span>Pengaturan</span>
+                <span>Settings</span>
               </span>
               <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>Alt+S</span>
             </div>
@@ -1006,7 +1006,7 @@ export const TopToolbar: React.FC = () => {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
                 </svg>
-                <span>Pembaruan</span>
+                <span>Check for Updates</span>
               </span>
               <span style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>v{currentVersion}</span>
             </div>
@@ -1032,7 +1032,7 @@ export const TopToolbar: React.FC = () => {
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              <span>{isSaving ? 'Keluar...' : 'Keluar'}</span>
+              <span>{isSaving ? 'Logging out...' : 'Log Out'}</span>
             </div>
           </div>
         )}
