@@ -437,6 +437,8 @@ export interface TerminalAPI {
   }
   settings: {
     getCredentials: () => Promise<CredentialStatus>
+    loginWithGoogle: () => Promise<boolean>
+    logout: () => Promise<boolean>
     saveApiKey: (input: SaveApiKeyInput) => Promise<boolean>
     clearApiKey: () => Promise<boolean>
   }
