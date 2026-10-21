@@ -5,6 +5,7 @@
  */
 
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { invoke } from '@tauri-apps/api/core'
 import { CredentialManager } from './credentials'
 import { DatabaseService } from './database'
 import { PiaProvider } from './pia-provider'
