@@ -200,6 +200,59 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
     settings: {
       getCredentials: () => Promise.resolve(credManager.getStatus()),
+      loginWithGoogle: async () => {
+        const nonceBytes = crypto.getRandomValues(new Uint8Array(32))
+        const nonce = Array.from(nonceBytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+        const baseUrl = credManager.getBaseUrl()
+        const startResponse = await fetch(`${baseUrl}/api/v1/auth/oauth/google/desktop-url`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ nonce })
+        })
+        if (!startResponse.ok) throw new Error(`Google login initialization failed (${startResponse.status})`)
+        const start = (await startResponse.json()) as { url?: string; state?: string }
+        if (!start.url || !start.state) throw new Error('Google login initialization returned invalid data')
+        const authUrl = new URL(start.url)
+        if (
+          authUrl.origin !== 'https://accounts.google.com' ||
+          authUrl.pathname !== '/o/oauth2/v2/auth' ||
+          authUrl.searchParams.get('state') !== start.state ||
+          authUrl.searchParams.get('redirect_uri') !== 'https://api-engine.wign.dev/api/v1/auth/oauth/google/desktop-callback'
+        ) {
+          throw new Error('Google login returned an unexpected authorization URL')
+        }
+        const redirectUri = 'http://127.0.0.1:43827/oauth/callback'
+        const browserAuthUrl = new URL(authUrl)
+        browserAuthUrl.searchParams.set('redirect_uri', redirectUri)
+        const callback = await invoke<{ code: string; state: string }>('google_oauth_callback', {
+          url: browserAuthUrl.toString(),
+          expectedState: start.state
+        })
+        if (!callback.code || callback.state !== start.state) throw new Error('Google login was not completed')
+        const finishResponse = await fetch(`${baseUrl}/api/v1/auth/oauth/google/desktop-callback`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            code: callback.code,
+            state: callback.state,
+            nonce,
+            redirect_uri: redirectUri
+          })
+        })
+        if (!finishResponse.ok) throw new Error(`Google login failed (${finishResponse.status})`)
+        const finish = (await finishResponse.json()) as { desktop_credential?: string }
+        if (!finish.desktop_credential) throw new Error('Google login did not return a credential')
+        if (!(await credManager.saveDesktopCredential(finish.desktop_credential))) {
+          throw new Error('Could not securely save desktop login')
+        }
+        piaProvider.initializeClient()
+        return true
+      },
+      logout: async () => {
+        const ok = await credManager.clearCredentials()
+        piaProvider.initializeClient()
+        return ok
+      },
       saveApiKey: async (input: SaveApiKeyInput) => {
         const ok = await credManager.saveCredentials(input.apiKey, input.baseUrl, input.wsUrl)
         piaProvider.initializeClient()

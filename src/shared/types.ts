@@ -217,6 +217,7 @@ export interface PaperAccount {
 
 export interface CredentialStatus {
   hasApiKey: boolean
+  isLoggedIn: boolean
   isSecureStorage: boolean
   baseUrl: string
   wsUrl: string

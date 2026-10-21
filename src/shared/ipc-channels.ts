@@ -2,6 +2,8 @@
  * Dependency-free IPC channel names shared by main and preload processes.
  */
 export const IPC_CHANNELS = {
+  AUTH_GOOGLE_LOGIN: 'auth:google-login',
+  AUTH_LOGOUT: 'auth:logout',
   MARKET_GET_SYMBOLS: 'market:get-symbols',
   MARKET_GET_CANDLES: 'market:get-candles',
   MARKET_GET_PRICES: 'market:get-prices',

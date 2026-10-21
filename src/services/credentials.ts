@@ -30,6 +30,7 @@ export function normalizeWsUrl(url?: string | null): string {
 
 interface StoredCredentials {
   apiKey: string
+  desktopCredential?: string
   baseUrl?: string
   wsUrl?: string
 }
@@ -37,6 +38,15 @@ interface StoredCredentials {
 export class CredentialManager {
   private inMemoryCreds: StoredCredentials | null = null
   private initialized = false
+
+  private async persist(content: string): Promise<boolean> {
+    try {
+      await invoke('save_credentials', { content })
+      return true
+    } catch {
+      return false
+    }
+  }
 
   public async initialize(): Promise<void> {
     if (this.initialized) return
@@ -46,10 +56,7 @@ export class CredentialManager {
         this.inMemoryCreds = JSON.parse(content)
       }
     } catch {
-      try {
-        const item = localStorage.getItem('pia_credentials')
-        if (item) this.inMemoryCreds = JSON.parse(item)
-      } catch {}
+      this.inMemoryCreds = null
     }
 
     const envApiKey =
@@ -83,7 +90,8 @@ export class CredentialManager {
 
   public getStatus(): CredentialStatus {
     return {
-      hasApiKey: Boolean(this.inMemoryCreds?.apiKey),
+      hasApiKey: Boolean(this.inMemoryCreds?.apiKey || this.inMemoryCreds?.desktopCredential),
+      isLoggedIn: Boolean(this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey),
       isSecureStorage: true,
       baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
       wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl)
@@ -91,7 +99,7 @@ export class CredentialManager {
   }
 
   public getApiKey(): string | null {
-    return this.inMemoryCreds?.apiKey || null
+    return this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey || null
   }
 
   public getBaseUrl(): string {
@@ -103,30 +111,32 @@ export class CredentialManager {
   }
 
   public async saveCredentials(apiKey: string, baseUrl?: string, wsUrl?: string): Promise<boolean> {
-    this.inMemoryCreds = {
+    const next = {
       apiKey,
       baseUrl: normalizeBaseUrl(baseUrl),
       wsUrl: normalizeWsUrl(wsUrl)
     }
-    const serialized = JSON.stringify(this.inMemoryCreds)
-    try {
-      await invoke('save_credentials', { content: serialized })
-    } catch {
-      try {
-        localStorage.setItem('pia_credentials', serialized)
-      } catch {}
+    if (!(await this.persist(JSON.stringify(next)))) return false
+    this.inMemoryCreds = next
+    return true
+  }
+
+  public async saveDesktopCredential(desktopCredential: string): Promise<boolean> {
+    const next = {
+      apiKey: '',
+      desktopCredential,
+      baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
+      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl)
     }
+    if (!(await this.persist(JSON.stringify(next)))) return false
+    this.inMemoryCreds = next
     return true
   }
 
   public async clearCredentials(): Promise<boolean> {
+    if (!(await this.persist(''))) return false
     this.inMemoryCreds = null
-    try {
-      await invoke('save_credentials', { content: '' })
-    } catch {}
-    try {
-      localStorage.removeItem('pia_credentials')
-    } catch {}
     return true
   }
+
 }
