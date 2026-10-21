@@ -71,6 +71,8 @@ export const IPC_CHANNELS = {
   PAPER_GET_ACCOUNT: 'paper:get-account',
   PAPER_SAVE_ACCOUNT: 'paper:save-account',
   SETTINGS_GET_CREDENTIALS: 'settings:get-credentials',
+  AUTH_GOOGLE_LOGIN: 'auth:google-login',
+  AUTH_LOGOUT: 'auth:logout',
   SETTINGS_SAVE_API_KEY: 'settings:save-api-key',
   SETTINGS_CLEAR_API_KEY: 'settings:clear-api-key',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',

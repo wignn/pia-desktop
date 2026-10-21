@@ -15,6 +15,8 @@ interface SettingsState {
   loadCredentials: () => Promise<void>
   saveApiKey: (apiKey: string, baseUrl?: string, wsUrl?: string) => Promise<boolean>
   clearApiKey: () => Promise<boolean>
+  loginWithGoogle: () => Promise<boolean>
+  logout: () => Promise<boolean>
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -68,6 +70,32 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         isSaving: false,
         errorMessage: err instanceof Error ? err.message : 'Failed to clear API key'
       })
+      return false
+    }
+  },
+
+  loginWithGoogle: async () => {
+    set({ isSaving: true, errorMessage: null })
+    try {
+      const ok = await window.api.settings.loginWithGoogle()
+      if (ok) await get().loadCredentials()
+      set({ isSaving: false })
+      return ok
+    } catch (err) {
+      set({ isSaving: false, errorMessage: err instanceof Error ? err.message : 'Google login failed' })
+      return false
+    }
+  },
+
+  logout: async () => {
+    set({ isSaving: true, errorMessage: null })
+    try {
+      const ok = await window.api.settings.logout()
+      if (ok) await get().loadCredentials()
+      set({ isSaving: false })
+      return ok
+    } catch (err) {
+      set({ isSaving: false, errorMessage: err instanceof Error ? err.message : 'Logout failed' })
       return false
     }
   }

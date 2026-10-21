@@ -1,4 +1,6 @@
 import { ipcMain, shell, type BrowserWindow } from 'electron'
+import { randomBytes } from 'node:crypto'
+import { createServer } from 'node:http'
 import {
   IPC_CHANNELS,
   GetCandlesSchema,
@@ -299,6 +301,120 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_CREDENTIALS, (event) => {
     if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
     return credManager.getStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_GOOGLE_LOGIN, async (event) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    const baseUrl = credManager.getBaseUrl()
+    const nonce = randomBytes(32).toString('hex')
+    const response = await fetch(`${baseUrl}/api/v1/auth/oauth/google/desktop-url`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce })
+    })
+    if (!response.ok) throw new Error(`Google login initialization failed (${response.status})`)
+    const { url, state } = (await response.json()) as { url?: string; state?: string }
+    if (typeof url !== 'string' || typeof state !== 'string') {
+      throw new Error('Google login initialization returned invalid data')
+    }
+    const authUrl = new URL(url)
+    if (
+      authUrl.origin !== 'https://accounts.google.com' ||
+      authUrl.pathname !== '/o/oauth2/v2/auth' ||
+      authUrl.searchParams.get('client_id') === null ||
+      authUrl.searchParams.get('state') !== state ||
+      authUrl.searchParams.get('redirect_uri') === null
+    ) {
+      throw new Error('Google login initialization returned an unexpected authorization URL')
+    }
+    if (authUrl.protocol !== 'https:' && !(authUrl.protocol === 'http:' && authUrl.hostname === 'localhost')) {
+      throw new Error('Refusing insecure OAuth URL')
+    }
+    const callbackInfo = await new Promise<{ callback: URL; redirectUri: string }>((resolve, reject) => {
+      const server = createServer((req, res) => {
+        if (req.headers.host !== '127.0.0.1:43827') {
+          res.writeHead(400, { 'cache-control': 'no-store' }).end('Invalid callback host')
+          return
+        }
+        const target = new URL(req.url || '/', 'http://127.0.0.1')
+        if (req.method !== 'GET' || target.pathname !== '/oauth/callback') {
+          res.writeHead(404).end()
+          return
+        }
+        if (target.searchParams.get('state') !== state) {
+          res.writeHead(400, { 'cache-control': 'no-store' }).end('Invalid OAuth state')
+          return
+        }
+        const oauthError = target.searchParams.get('error')
+        if (oauthError) {
+          res.writeHead(400, { 'cache-control': 'no-store' }).end('Google sign-in was not completed')
+          clearTimeout(timeout)
+          reject(new Error('Google sign-in was not completed'))
+          server.close()
+          return
+        }
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+          .end('<!doctype html><title>PIA</title><p>Login complete. You can return to PIA Desktop.</p>')
+        clearTimeout(timeout)
+        resolve({ callback: target, redirectUri })
+        server.close()
+      })
+      const timeout = setTimeout(() => {
+        server.close()
+        reject(new Error('Google login timed out'))
+      }, 180_000)
+      server.on('error', (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+      server.listen(43827, '127.0.0.1', async () => {
+        const address = server.address()
+        if (!address || typeof address === 'string') {
+          clearTimeout(timeout)
+          server.close()
+          return reject(new Error('Could not open OAuth callback'))
+        }
+        const redirectUri = `http://127.0.0.1:${address.port}/oauth/callback`
+        authUrl.searchParams.set('redirect_uri', redirectUri)
+        authUrl.searchParams.set('state', state)
+        try {
+          await shell.openExternal(authUrl.toString())
+        } catch (error) {
+          clearTimeout(timeout)
+          server.close()
+          reject(error)
+        }
+      })
+    })
+    const { callback, redirectUri } = callbackInfo
+    const code = callback.searchParams.get('code')
+    const returnedState = callback.searchParams.get('state')
+    if (!code || !returnedState || returnedState !== state || callback.searchParams.get('error')) {
+      throw new Error('Google login was not completed')
+    }
+    const completion = await fetch(`${baseUrl}/api/v1/auth/oauth/google/desktop-callback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, state: returnedState, nonce, redirect_uri: redirectUri })
+    })
+    if (!completion.ok) throw new Error(`Google login failed (${completion.status})`)
+    const result = await completion.json()
+    if (
+      !result.desktop_credential ||
+      typeof result.desktop_credential !== 'string' ||
+      !credManager.saveDesktopCredential(result.desktop_credential)
+    ) {
+      throw new Error('Could not securely save desktop login')
+    }
+    piaProvider.initializeClient()
+    return true
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AUTH_LOGOUT, (event) => {
+    if (!verifySender(event)) throw new Error('Unauthorized IPC sender')
+    const success = credManager.clearCredentials()
+    if (success) piaProvider.initializeClient()
+    return success
   })
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE_API_KEY, (event, rawInput) => {

@@ -181,6 +181,8 @@ const terminalApi: TerminalAPI = {
 
   settings: {
     getCredentials: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_CREDENTIALS),
+    loginWithGoogle: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_GOOGLE_LOGIN),
+    logout: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH_LOGOUT),
     saveApiKey: (input: SaveApiKeyInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_API_KEY, input),
     clearApiKey: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CLEAR_API_KEY)

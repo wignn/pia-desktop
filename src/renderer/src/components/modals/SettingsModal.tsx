@@ -6,7 +6,7 @@ import { THEME_TOKENS } from '../../theme/tokens'
 
 const SettingsModalContent: React.FC = () => {
   const { setSettingsModalOpen } = useWorkspaceStore()
-  const { credentials, loadCredentials } = useSettingsStore()
+  const { credentials, loadCredentials, loginWithGoogle, logout, isSaving, errorMessage } = useSettingsStore()
 
   const {
     status: updaterStatus,
@@ -119,6 +119,47 @@ const SettingsModalContent: React.FC = () => {
                 {credentials?.isSecureStorage ? 'Hardware-Encrypted SafeStorage' : 'Memory Runtime'}
               </span>
             </div>
+          </div>
+
+          <div
+            style={{
+              padding: '12px 14px',
+              borderRadius: 6,
+              backgroundColor: THEME_TOKENS.colors.bgApp,
+              border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: THEME_TOKENS.colors.textPrimary }}>
+                Google account
+              </span>
+              <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
+                {credentials?.isLoggedIn ? 'Signed in' : 'Sign in to access market data'}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => (credentials?.isLoggedIn ? logout() : loginWithGoogle())}
+              className="tv-btn"
+              style={{
+                fontSize: 11,
+                padding: '5px 12px',
+                border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
+                opacity: isSaving ? 0.6 : 1
+              }}
+            >
+              {isSaving ? 'Please wait…' : credentials?.isLoggedIn ? 'Sign out' : 'Sign in with Google'}
+            </button>
+            {errorMessage && (
+              <span role="alert" style={{ fontSize: 11, color: THEME_TOKENS.colors.bearish }}>
+                {errorMessage}
+              </span>
+            )}
           </div>
 
           {/* Software Updates Card */}
