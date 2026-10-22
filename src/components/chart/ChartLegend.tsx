@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { LineChart, Loader2 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
@@ -192,7 +193,7 @@ export const ChartLegend: React.FC = () => {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 4,
+            gap: 5,
             padding: '2px 7px',
             borderRadius: 4,
             border: '1px solid rgba(212, 175, 55, 0.35)',
@@ -204,7 +205,11 @@ export const ChartLegend: React.FC = () => {
             transition: 'all 0.15s ease'
           }}
         >
-          <span style={{ color: '#D4AF37' }}>◈</span>
+          {isAiDrawing ? (
+            <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', color: '#D4AF37' }} />
+          ) : (
+            <LineChart size={11} color="#D4AF37" />
+          )}
           <span>{isAiDrawing ? 'Drawing...' : 'AI Auto-Draw'}</span>
         </button>
       </div>

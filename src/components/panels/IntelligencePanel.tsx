@@ -1,4 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react'
+import {
+  Settings,
+  Bot,
+  Check,
+  LineChart,
+  Newspaper,
+  SlidersHorizontal,
+  Trash2,
+  X,
+  ShieldCheck,
+  Loader2
+} from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
@@ -223,7 +235,7 @@ export const IntelligencePanel: React.FC = () => {
               cursor: 'pointer'
             }}
           >
-            <span style={{ color: '#D4AF37' }}>⚙</span>
+            <Settings size={11} color="#D4AF37" />
             <span>{config.provider === 'openai' ? config.model : 'Built-in'}</span>
           </button>
         </div>
@@ -284,7 +296,7 @@ export const IntelligencePanel: React.FC = () => {
                           color: '#D4AF37'
                         }}
                       >
-                        <span>◈</span>
+                        <Bot size={12} color="#D4AF37" />
                         <span>PIA AGENT</span>
                         <span style={{ color: '#64748B', fontWeight: 400 }}>
                           ({config.provider === 'openai' ? config.model : 'Quant Engine'})
@@ -318,7 +330,7 @@ export const IntelligencePanel: React.FC = () => {
                               borderRadius: 4
                             }}
                           >
-                            <span>✓</span>
+                            <Check size={10} strokeWidth={2.5} />
                             <span>{tc.name}</span>
                           </div>
                         ))}
@@ -347,17 +359,7 @@ export const IntelligencePanel: React.FC = () => {
                   maxWidth: '92%'
                 }}
               >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  style={{ animation: 'spin 1s linear infinite' }}
-                >
-                  <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12" />
-                </svg>
+                <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
                 <span>{statusMessage || 'Sedang memproses...'}</span>
               </div>
             )}
@@ -393,10 +395,14 @@ export const IntelligencePanel: React.FC = () => {
                 color: '#FDE68A',
                 borderRadius: 4,
                 padding: '3px 8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
               }}
             >
-              ◈ Auto-Draw Chart
+              <LineChart size={11} color="#D4AF37" />
+              <span>Auto-Draw Chart</span>
             </button>
             <button
               type="button"
@@ -415,10 +421,14 @@ export const IntelligencePanel: React.FC = () => {
                 color: '#CBD5E1',
                 borderRadius: 4,
                 padding: '3px 8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
               }}
             >
-              📰 Sentimen Berita
+              <Newspaper size={11} color="#94A3B8" />
+              <span>Sentimen Berita</span>
             </button>
             <button
               type="button"
@@ -437,10 +447,14 @@ export const IntelligencePanel: React.FC = () => {
                 color: '#CBD5E1',
                 borderRadius: 4,
                 padding: '3px 8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
               }}
             >
-              🎯 Support &amp; Resistance
+              <SlidersHorizontal size={11} color="#94A3B8" />
+              <span>Support &amp; Resistance</span>
             </button>
             <button
               type="button"
@@ -455,10 +469,14 @@ export const IntelligencePanel: React.FC = () => {
                 color: '#F43F5E',
                 borderRadius: 4,
                 padding: '3px 8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
               }}
             >
-              🧹 Clear Drawings
+              <Trash2 size={11} color="#F43F5E" />
+              <span>Clear Drawings</span>
             </button>
           </div>
 
@@ -776,8 +794,8 @@ export const IntelligencePanel: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: '#D4AF37', fontSize: 14 }}>⚙</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Settings size={14} color="#D4AF37" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#F4F6FC' }}>
                   AI Agent Provider
                 </span>
@@ -789,11 +807,14 @@ export const IntelligencePanel: React.FC = () => {
                   border: 'none',
                   background: 'none',
                   color: '#838896',
-                  fontSize: 14,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 2
                 }}
               >
-                ✕
+                <X size={15} />
               </button>
             </div>
 
@@ -975,10 +996,16 @@ export const IntelligencePanel: React.FC = () => {
                   padding: 10,
                   backgroundColor: '#07090E',
                   borderRadius: 6,
-                  border: '1px solid rgba(255, 255, 255, 0.06)'
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8
                 }}
               >
-                ✓ <strong>Zero Configuration:</strong> Menggunakan engine kuantitatif bawaan PIA. Tidak memerlukan API key eksternal. Langsung membaca sentimen berita, orderbook depth, dan memproyeksikan garis support/resistance serta trendline ke chart.
+                <ShieldCheck size={16} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>Zero Configuration:</strong> Menggunakan engine kuantitatif bawaan PIA. Tidak memerlukan API key eksternal. Langsung membaca sentimen berita, orderbook depth, dan memproyeksikan garis support/resistance serta trendline ke chart.
+                </span>
               </div>
             )}
 

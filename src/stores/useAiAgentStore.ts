@@ -71,7 +71,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       id: 'init-msg',
       role: 'assistant',
       content:
-        'Halo! Saya **PIA AI Agent**. Saya bisa membaca sentimen berita, orderbook, dan data teknikal di terminal PIA, serta langsung menggambar trendline, support/resistance, dan supply/demand zone di chart Anda.\n\nKetik prompt seperti *"analisis BTC dan gambarkan support resistance"* atau klik salah satu tombol aksi di bawah!',
+        'PIA Copilot aktif. Terkoneksi dengan feeds market, orderbook, sentimen berita, dan charting engine.\n\nKetik instruksi analisis atau pilih salah satu aksi cepat di bawah untuk memplot level teknikal langsung ke chart.',
       timestamp: Date.now()
     }
   ],
@@ -176,7 +176,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
               id: `err-${Date.now()}`,
               role: 'assistant',
               content:
-                '⚠️ **API Key belum diisi!**\nSilakan klik icon gear ⚙️ di pojok kanan atas untuk memasukkan API Key OpenAI/DeepSeek/OpenRouter Anda, atau ubah provider ke **Built-in Quant Engine**.',
+                '[Konfigurasi Diperlukan] API Key belum disetel.\nBuka pengaturan (tombol konfigurasi provider) untuk memasukkan API Key atau beralih ke Built-in Quant Engine.',
               timestamp: Date.now()
             }
           ]
@@ -203,7 +203,8 @@ CRITICAL INSTRUCTIONS:
 1. When asked to analyze or draw on the chart, ALWAYS call the corresponding tools.
 2. If asked to draw trendlines or levels, execute the drawing tools immediately.
 3. Respond in concise, professional Indonesian (or the language asked by the user).
-4. Summarize clearly what was analyzed and what levels/trendlines were plotted onto the chart.`
+4. Summarize clearly what was analyzed and what levels/trendlines were plotted onto the chart.
+5. Do NOT use emojis. Maintain a serious, institutional financial terminal tone.`
 
         const conversationHistory = [
           { role: 'system', content: systemPrompt },
@@ -359,7 +360,7 @@ CRITICAL INSTRUCTIONS:
             {
               id: `err-${Date.now()}`,
               role: 'assistant',
-              content: `❌ **Gagal menghubungi model:** ${err?.message || 'Koneksi error'}\nPastikan Base URL, API Key, dan Nama Model sudah sesuai.`,
+              content: `[Koneksi Gagal] ${err?.message || 'Koneksi error'}\nPastikan Base URL, API Key, dan Nama Model sudah sesuai.`,
               timestamp: Date.now()
             }
           ]
