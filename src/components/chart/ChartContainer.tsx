@@ -15,7 +15,7 @@ import { useMarketStore } from '../../stores/useMarketStore'
 import { useChartStore, isOverlayIndicator } from '../../stores/useChartStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS, getChartThemeStyles } from '../../theme/tokens'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { SymbolLogo } from '../common/SymbolLogo'
 import { ChartLegend } from './ChartLegend'
 import { DrawingPropertyBar } from './DrawingPropertyBar'
@@ -62,6 +62,7 @@ export const ChartContainer: React.FC = () => {
   const liveSubscriberRef = useRef<((bar: KLineData) => void) | null>(null)
   const wasReplayActiveRef = useRef(false)
   const [hasHistoricalBars, setHasHistoricalBars] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
 
   const isClearingForSymbolSwitchRef = useRef(false)
   const selectedOverlayIdRef = useRef<string | null>(null)
@@ -249,6 +250,38 @@ export const ChartContainer: React.FC = () => {
     }
   }, [])
 
+  const handleRetryCandles = useCallback(async () => {
+    const chart = chartRef.current
+    const sym = useMarketStore.getState().symbol
+    const tf = useMarketStore.getState().timeframe
+    if (!chart || !sym) return
+
+    setIsLoadingCandles(true)
+    setLoadError(null)
+    setHasHistoricalBars(true)
+
+    try {
+      const bars = await candleEngine.setSymbolAndTimeframe(sym, tf, 500)
+      if (bars.length > 0) {
+        setHasHistoricalBars(true)
+        setLoadError(null)
+        const currentSym = chart.getSymbol()
+        if (currentSym) {
+          chart.setSymbol({ ...currentSym })
+        }
+      } else {
+        const err = candleEngine.getLastLoadError()
+        setHasHistoricalBars(false)
+        setLoadError(err ? String(err) : null)
+      }
+    } catch (err: any) {
+      setHasHistoricalBars(false)
+      setLoadError(err?.message || 'Failed to load candle feed')
+    } finally {
+      setIsLoadingCandles(false)
+    }
+  }, [setIsLoadingCandles])
+
   // Listen for programmatic drawing updates (e.g. from AI MCP engine)
   useEffect(() => {
     const handleReloadDrawings = (e: Event): void => {
@@ -330,6 +363,8 @@ export const ChartContainer: React.FC = () => {
           return
         }
 
+        const lastError = candleEngine.getLastLoadError()
+        setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
         setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
         if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
@@ -360,6 +395,8 @@ export const ChartContainer: React.FC = () => {
           return
         }
         setLatestBar(bars.at(-1) ?? null)
+        const lastErr = candleEngine.getLastLoadError()
+        setLoadError(bars.length === 0 && lastErr ? String(lastErr) : null)
         setHasHistoricalBars(bars.length > 0)
         setIsLoadingCandles(false)
         if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
@@ -927,14 +964,50 @@ export const ChartContainer: React.FC = () => {
             position: 'absolute',
             inset: 0,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
+            gap: 10,
             color: THEME_TOKENS.colors.textSecondary,
-            pointerEvents: 'none',
-            zIndex: 2
+            zIndex: 2,
+            backgroundColor: 'rgba(7, 9, 14, 0.45)'
           }}
         >
-          No historical candle data for {symbol || 'the selected symbol'} ({timeframe})
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#F4F6FC' }}>
+            {loadError
+              ? `Unable to load candle data for ${symbol || 'selected symbol'} (${timeframe})`
+              : `No historical candle data for ${symbol || 'the selected symbol'} (${timeframe})`}
+          </div>
+          {loadError ? (
+            <div style={{ fontSize: 11, color: '#838896', maxWidth: 360, textAlign: 'center', lineHeight: 1.5 }}>
+              The server connection timed out or was interrupted. Check your network connection.
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#838896' }}>
+              No recorded trades found for this timeframe yet.
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleRetryCandles}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              backgroundColor: 'rgba(212, 175, 55, 0.15)',
+              border: '1px solid rgba(212, 175, 55, 0.35)',
+              borderRadius: 6,
+              color: '#FDE68A',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginTop: 4
+            }}
+          >
+            <RefreshCw size={12} />
+            <span>Retry Feed</span>
+          </button>
         </div>
       )}
       <div

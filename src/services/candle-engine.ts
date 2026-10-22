@@ -79,12 +79,15 @@ export class CandleEngine {
     const execute = async (): Promise<KLineData[]> => {
       this.generationId++
       const activeGen = this.generationId
+      const isNewSymbol = this.currentSymbol !== symbol
       this.currentSymbol = symbol
       this.currentTimeframe = timeframe
       this.isLoading = true
       this.lastLoadError = null
       this.tickBuffer = []
-      this.activeBars = []
+      if (isNewSymbol) {
+        this.activeBars = []
+      }
       this.isReplayMode = false
       this.replayBars = []
       this.replayIndex = 0
@@ -95,9 +98,7 @@ export class CandleEngine {
       const RETRY_BACKOFF_MS = 250
       const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-      // A transient failure or empty response is not a valid chart state.
-      // Retry once with a short backoff before reporting empty to KLineChart,
-      // while keeping the same generation active.
+      // Retry once on transient network failure before reporting error
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const rawBars = await window.api.market.getCandles({

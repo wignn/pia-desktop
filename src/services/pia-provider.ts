@@ -191,6 +191,8 @@ export class PiaProvider {
         apiKey,
         baseUrl,
         wsUrl,
+        timeoutMs: 8000,
+        maxRetries: 1,
         debug: false
       })
 
@@ -867,7 +869,8 @@ export class PiaProvider {
   }): Promise<CandleBar[]> {
     if (!this.client) return []
 
-    const cacheKey = `${params.symbol}:${params.timeframe}:${params.limit || 500}:${params.to || 'latest'}`
+    const cleanSymbol = params.symbol.trim().toUpperCase()
+    const cacheKey = `${cleanSymbol}:${params.timeframe}:${params.limit || 500}:${params.to || 'latest'}`
     const cached = this.candleCache.get(cacheKey)
     // ponytail: memory cache 120s for active candles (instant 0ms chart switches). Live ticks update via WebSocket.
     const ttl = params.to ? 600_000 : 120_000
@@ -886,16 +889,18 @@ export class PiaProvider {
         const timeframe = params.timeframe as NonNullable<
           Parameters<typeof this.client.market.getCandles>[1]
         >['timeframe']
-        res = await this.client.market.getCandles(params.symbol, {
+        res = await this.client.market.getCandles(cleanSymbol, {
           timeframe,
           limit: params.limit,
           since: params.from,
-          until: params.to
-        })
+          until: params.to,
+          timeoutMs: 8000,
+          maxRetries: 1
+        } as any)
       } catch (sdkErr) {
         if (params.timeframe === '1w') {
           const dailyBars = await this.getCandles({
-            symbol: params.symbol,
+            symbol: cleanSymbol,
             timeframe: '1d',
             from: params.from,
             to: params.to,
