@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { LineChart, Loader2 } from 'lucide-react'
+import { LineChart, Loader2, Eye, EyeOff, Trash2 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { useChartStore } from '../../stores/useChartStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
@@ -17,7 +18,10 @@ export const ChartLegend: React.FC = () => {
   const symInfo = useMarketStore((state) =>
     state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
   )
+  const isDrawingsHidden = useChartStore((state) => state.isDrawingsHidden)
+  const toggleHideDrawings = useChartStore((state) => state.toggleHideDrawings)
   const [isAiDrawing, setIsAiDrawing] = useState(false)
+  const [isClearingAi, setIsClearingAi] = useState(false)
 
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, livePrice)
 
@@ -176,42 +180,98 @@ export const ChartLegend: React.FC = () => {
           </div>
         )}
 
-        {/* AI MCP Auto-Draw Action Pill */}
-        <button
-          type="button"
-          onClick={async () => {
-            if (!symbol || isAiDrawing) return
-            setIsAiDrawing(true)
-            try {
-              await AiMcpEngine.executeFullChartAnalysis(symbol, true)
-            } finally {
-              setIsAiDrawing(false)
-            }
-          }}
-          disabled={isAiDrawing}
-          title="AI MCP: Auto-analyze news sentiment & market structure and draw trendlines on chart"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '2px 7px',
-            borderRadius: 4,
-            border: '1px solid rgba(212, 175, 55, 0.35)',
-            backgroundColor: isAiDrawing ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.1)',
-            color: '#FDE68A',
-            fontSize: 10,
-            fontWeight: 700,
-            cursor: isAiDrawing ? 'not-allowed' : 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          {isAiDrawing ? (
-            <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', color: '#D4AF37' }} />
-          ) : (
-            <LineChart size={11} color="#D4AF37" />
-          )}
-          <span>{isAiDrawing ? 'Drawing...' : 'AI Auto-Draw'}</span>
-        </button>
+        {/* AI MCP Auto-Draw Action Pill & Controls */}
+        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!symbol || isAiDrawing) return
+              setIsAiDrawing(true)
+              try {
+                await AiMcpEngine.executeFullChartAnalysis(symbol, true)
+              } finally {
+                setIsAiDrawing(false)
+              }
+            }}
+            disabled={isAiDrawing}
+            title="AI MCP: Auto-analyze news sentiment & market structure and draw trendlines on chart"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '2px 7px',
+              borderRadius: '4px 0 0 4px',
+              border: '1px solid rgba(212, 175, 55, 0.35)',
+              borderRight: 'none',
+              backgroundColor: isAiDrawing ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.1)',
+              color: '#FDE68A',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: isAiDrawing ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {isAiDrawing ? (
+              <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', color: '#D4AF37' }} />
+            ) : (
+              <LineChart size={11} color="#D4AF37" />
+            )}
+            <span>{isAiDrawing ? 'Drawing...' : 'AI Auto-Draw'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleHideDrawings}
+            title={isDrawingsHidden ? 'Show AI drawings (Tampilkan gambar)' : 'Hide AI drawings (Sembunyikan gambar)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '2px 6px',
+              border: '1px solid rgba(212, 175, 55, 0.35)',
+              borderRight: 'none',
+              backgroundColor: isDrawingsHidden ? 'rgba(244, 63, 94, 0.18)' : 'rgba(212, 175, 55, 0.1)',
+              color: isDrawingsHidden ? '#F43F5E' : '#D4AF37',
+              fontSize: 10,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {isDrawingsHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              if (!symbol || isClearingAi) return
+              setIsClearingAi(true)
+              try {
+                await AiMcpEngine.clearDrawings(symbol)
+              } finally {
+                setIsClearingAi(false)
+              }
+            }}
+            disabled={isClearingAi}
+            title="Clear all AI drawings for this symbol (Hapus semua gambar AI)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '2px 6px',
+              borderRadius: '0 4px 4px 0',
+              border: '1px solid rgba(212, 175, 55, 0.35)',
+              backgroundColor: isClearingAi ? 'rgba(244, 63, 94, 0.2)' : 'rgba(212, 175, 55, 0.1)',
+              color: '#D4AF37',
+              fontSize: 10,
+              cursor: isClearingAi ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {isClearingAi ? (
+              <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Trash2 size={11} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -898,6 +898,22 @@ export class PiaProvider {
           maxRetries: 1
         } as any)
       } catch (sdkErr) {
+        if (params.timeframe === '15m') {
+          try {
+            const fiveMinBars = await this.getCandles({
+              symbol: cleanSymbol,
+              timeframe: '5m',
+              from: params.from,
+              to: params.to,
+              limit: Math.min((params.limit ?? 500) * 3, 1500)
+            })
+            const m15Bars = this.aggregate15mBars(fiveMinBars)
+            if (m15Bars.length > 0) {
+              this.candleCache.set(cacheKey, { bars: m15Bars, cachedAt: Date.now() })
+              return m15Bars
+            }
+          } catch {}
+        }
         if (params.timeframe === '1w') {
           const dailyBars = await this.getCandles({
             symbol: cleanSymbol,
@@ -924,6 +940,22 @@ export class PiaProvider {
             ? payload.data
             : []
       if (rawRows.length === 0) {
+        if (params.timeframe === '15m') {
+          try {
+            const fiveMinBars = await this.getCandles({
+              symbol: cleanSymbol,
+              timeframe: '5m',
+              from: params.from,
+              to: params.to,
+              limit: Math.min((params.limit ?? 500) * 3, 1500)
+            })
+            const m15Bars = this.aggregate15mBars(fiveMinBars)
+            if (m15Bars.length > 0) {
+              this.candleCache.set(cacheKey, { bars: m15Bars, cachedAt: Date.now() })
+              return m15Bars
+            }
+          } catch {}
+        }
         if (params.timeframe === '1w') {
           const dailyBars = await this.getCandles({
             symbol: params.symbol,
@@ -1012,6 +1044,35 @@ export class PiaProvider {
       }
     }
     return Array.from(weeklyMap.values()).sort((a, b) => a.timestamp - b.timestamp)
+  }
+
+  // ponytail: 15m synthesis from 5m bars when backend 15m feed has latency/timeout issues on high-frequency pairs like XAUUSD.
+  private aggregate15mBars(fiveMinBars: CandleBar[]): CandleBar[] {
+    const sorted = [...fiveMinBars].sort((a, b) => a.timestamp - b.timestamp)
+    const m15Map = new Map<number, CandleBar>()
+    const FIFTEEN_MIN_MS = 15 * 60 * 1000
+    for (const b of sorted) {
+      const bucket = Math.floor(b.timestamp / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS
+      const existing = m15Map.get(bucket)
+      if (!existing) {
+        m15Map.set(bucket, {
+          timestamp: bucket,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+          volume: b.volume
+        })
+      } else {
+        existing.high = Math.max(existing.high, b.high)
+        existing.low = Math.min(existing.low, b.low)
+        existing.close = b.close
+        if (b.volume !== undefined) {
+          existing.volume = (existing.volume ?? 0) + b.volume
+        }
+      }
+    }
+    return Array.from(m15Map.values()).sort((a, b) => a.timestamp - b.timestamp)
   }
 
   public async uploadSnapshot(params: {
