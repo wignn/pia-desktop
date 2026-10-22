@@ -15,8 +15,8 @@
         "title": "PIA Terminal",
         "width": 1440,
         "height": 900,
-        "minWidth": 1080,
-        "minHeight": 680
+        "minWidth": 420,
+        "minHeight": 560
       }
     ],
     "security": {

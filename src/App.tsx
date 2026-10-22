@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { TerminalWorkspace } from './components/layout/TerminalWorkspace'
 import { AuthGateway } from './components/auth/AuthGateway'
 import { SplashScreen } from './components/common/SplashScreen'
@@ -53,6 +54,17 @@ export function App(): React.JSX.Element {
       cleanupFn?.()
     }
   }, [loadCredentials, initUpdaterListener])
+
+  const isAuthenticated = Boolean(credentials?.isLoggedIn || credentials?.hasApiKey)
+
+  // Dynamically configure native desktop window size: compact dialog for auth, full workspace when logged in
+  useEffect(() => {
+    if (!isReady || credentials === null) return
+
+    if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+      invoke('set_window_mode', { mode: isAuthenticated ? 'workspace' : 'auth' }).catch(() => {})
+    }
+  }, [isReady, credentials, isAuthenticated])
 
   // Standalone centered splash card while initializing or actively downloading updates
   if (!isReady || credentials === null || updaterStatus.state === 'downloading') {

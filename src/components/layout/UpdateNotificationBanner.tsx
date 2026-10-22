@@ -2,7 +2,7 @@ import React from 'react'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
-export const UpdateNotificationBanner: React.FC = () => {
+export const UpdateNotificationBanner: React.FC<{ top?: number }> = ({ top = 52 }) => {
   const status = useUpdaterStore((state) => state.status)
   const isBannerDismissed = useUpdaterStore((state) => state.isBannerDismissed)
   const dismissBanner = useUpdaterStore((state) => state.dismissBanner)
@@ -30,7 +30,7 @@ export const UpdateNotificationBanner: React.FC = () => {
       aria-label="App Update Notification"
       style={{
         position: 'fixed',
-        top: 46,
+        top,
         right: 16,
         zIndex: 9999,
         width: 320,
