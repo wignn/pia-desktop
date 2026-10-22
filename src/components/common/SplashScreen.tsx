@@ -14,7 +14,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   statusText = 'Initializing terminal...',
   progressPercent,
   isIndeterminate = true,
-  version = '3.0.4',
+  version = '3.0.5',
   state,
   availableVersion
 }) => {
@@ -97,6 +97,58 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           zIndex: 10
         }}
       >
+        {/* Custom Window Drag Handle & Close Button for Frameless Splash */}
+        <div
+          data-tauri-drag-region
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 36,
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingRight: 10,
+            zIndex: 20
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              window.api?.system?.closeApp?.()
+            }}
+            title="Close"
+            aria-label="Close"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: '#64748B',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(244, 63, 94, 0.18)'
+              e.currentTarget.style.color = '#F43F5E'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = '#64748B'
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
         {/* Glowing Geometric PIA Emblem */}
         <div
           style={{

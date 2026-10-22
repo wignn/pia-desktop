@@ -9,6 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { CredentialManager } from './credentials'
 import { DatabaseService } from './database'
 import { PiaProvider } from './pia-provider'
+import { AiMcpEngine } from './ai-mcp-engine'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import type {
   TerminalAPI,
@@ -53,7 +54,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
-    currentVersion: '3.0.4'
+    currentVersion: '3.0.5'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {
@@ -381,7 +382,23 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           return true
         }
       },
-      getRateLimit: () => Promise.resolve(piaProvider.getRateLimitInfo())
+      getRateLimit: () => Promise.resolve(piaProvider.getRateLimitInfo()),
+      closeApp: async () => {
+        try {
+          if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+            await invoke('close_app')
+            return true
+          }
+        } catch {}
+        return false
+      }
+    },
+
+    ai: {
+      getTools: () => Promise.resolve(AiMcpEngine.getMcpTools()),
+      executeTool: (name: string, args: Record<string, any>) => AiMcpEngine.executeTool(name, args),
+      executeFullAnalysis: (symbol: string, applyToChart = true) => AiMcpEngine.executeFullChartAnalysis(symbol, applyToChart),
+      clearDrawings: (symbol: string) => AiMcpEngine.clearDrawings(symbol)
     },
 
     ws: {
@@ -396,7 +413,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         if (res.state === 'available') {
           currentUpdaterStatus = {
             state: 'available',
-            currentVersion: res.currentVersion || '3.0.4',
+            currentVersion: res.currentVersion || '3.0.5',
             availableVersion: res.availableVersion,
             progressPercent: 0
           }
@@ -437,12 +454,12 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         } else if (res.state === 'up-to-date') {
           currentUpdaterStatus = {
             state: 'not-available',
-            currentVersion: res.currentVersion || '3.0.4'
+            currentVersion: res.currentVersion || '3.0.5'
           }
         } else {
           currentUpdaterStatus = {
             state: 'error',
-            currentVersion: '3.0.4',
+            currentVersion: '3.0.5',
             error: res.error
           }
         }

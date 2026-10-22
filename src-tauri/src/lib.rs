@@ -19,20 +19,28 @@ fn execute_piascript(
 }
 
 #[tauri::command]
+fn close_app(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn set_window_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         if mode == "auth" {
             let _ = window.unmaximize();
-            let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
-                width: 420.0,
-                height: 560.0,
-            })));
+            let _ = window.set_decorations(false);
+            let _ = window.set_resizable(false);
             let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-                width: 440.0,
-                height: 600.0,
+                width: 390.0,
+                height: 500.0,
             }));
             let _ = window.center();
         } else if mode == "workspace" {
+            let _ = window.set_decorations(true);
+            let _ = window.set_resizable(true);
             let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
                 width: 1080.0,
                 height: 680.0,
@@ -69,27 +77,57 @@ fn save_db(app: tauri::AppHandle, data: Vec<u8>) -> Result<(), String> {
 
 #[tauri::command]
 async fn load_credentials(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let _ = app;
-    match keyring::Entry::new("dev.wign.pia", "credentials")
-        .map_err(|e| e.to_string())?
-        .get_password()
-    {
-        Ok(content) => Ok(Some(content)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(error.to_string()),
+    // 1. Primary secure store: OS Keyring
+    if let Ok(entry) = keyring::Entry::new("dev.wign.pia", "credentials") {
+        if let Ok(content) = entry.get_password() {
+            if !content.trim().is_empty() {
+                return Ok(Some(content));
+            }
+        }
     }
+
+    // 2. High-reliability fallback: encrypted/isolated session.vault in local app_data_dir
+    if let Ok(mut dir) = app.path().app_data_dir() {
+        dir.push("session.vault");
+        if dir.exists() {
+            if let Ok(bytes) = fs::read(&dir) {
+                if let Ok(decoded) = String::from_utf8(bytes) {
+                    if !decoded.trim().is_empty() {
+                        return Ok(Some(decoded));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 #[tauri::command]
 fn save_credentials(app: tauri::AppHandle, content: String) -> Result<(), String> {
-    let _ = app;
-    let entry = keyring::Entry::new("dev.wign.pia", "credentials").map_err(|e| e.to_string())?;
-    if content.trim().is_empty() {
-        let _ = entry.delete_credential();
-        Ok(())
-    } else {
-        entry.set_password(&content).map_err(|e| e.to_string())
+    let trimmed = content.trim();
+
+    // 1. Primary secure store: OS Keyring
+    if let Ok(entry) = keyring::Entry::new("dev.wign.pia", "credentials") {
+        if trimmed.is_empty() {
+            let _ = entry.delete_credential();
+        } else {
+            let _ = entry.set_password(trimmed);
+        }
     }
+
+    // 2. High-reliability fallback file in local app_data_dir
+    if let Ok(mut dir) = app.path().app_data_dir() {
+        let _ = fs::create_dir_all(&dir);
+        dir.push("session.vault");
+        if trimmed.is_empty() {
+            let _ = fs::remove_file(dir);
+        } else {
+            let _ = fs::write(dir, trimmed.as_bytes());
+        }
+    }
+
+    Ok(())
 }
 
 fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, description: &str) -> Vec<u8> {
@@ -506,6 +544,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            close_app,
             set_window_mode,
             load_db,
             save_db,

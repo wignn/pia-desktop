@@ -26,6 +26,7 @@ export function AuthGateway(): React.JSX.Element {
 
   return (
     <div
+      data-tauri-drag-region
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -38,13 +39,13 @@ export function AuthGateway(): React.JSX.Element {
           'radial-gradient(circle at 50% 45%, rgba(212, 175, 55, 0.05) 0%, rgba(13, 17, 26, 0.8) 55%, #07090E 100%)',
         color: '#F4F6FC',
         fontFamily: THEME_TOKENS.typography.fontSans,
-        overflow: 'auto',
+        overflow: 'hidden',
         position: 'relative',
-        padding: 20,
+        padding: 16,
         boxSizing: 'border-box'
       }}
     >
-      <UpdateNotificationBanner top={16} />
+      <UpdateNotificationBanner top={12} />
 
       {/* Focused Authentication Card */}
       <div
@@ -54,15 +55,67 @@ export function AuthGateway(): React.JSX.Element {
           backgroundColor: '#0D111A',
           border: '1px solid rgba(255, 255, 255, 0.09)',
           borderRadius: 12,
-          padding: '32px 28px',
+          padding: '28px 24px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 20,
+          gap: 18,
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 1px 1px rgba(255, 255, 255, 0.04)',
           position: 'relative',
           zIndex: 10
         }}
       >
+        {/* Custom Window Drag Handle & Close Button for Frameless Window */}
+        <div
+          data-tauri-drag-region
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 36,
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingRight: 10,
+            zIndex: 20
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              window.api?.system?.closeApp?.()
+            }}
+            title="Close"
+            aria-label="Close"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: '#64748B',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(244, 63, 94, 0.18)'
+              e.currentTarget.style.color = '#F43F5E'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = '#64748B'
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
         {/* Brand Header */}
         <div style={{ textAlign: 'center' }}>
           <div

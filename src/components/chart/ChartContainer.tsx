@@ -167,6 +167,28 @@ export const ChartContainer: React.FC = () => {
         if (currentSymbol !== targetSymbol) return
 
         for (const d of drawings) {
+          const lineStyle = d.style?.lineStyle === 'dashed' ? 'dashed' : 'solid'
+          const overlayStyles = d.style
+            ? ({
+                line: {
+                  color: d.style.color || '#D4AF37',
+                  size: d.style.lineWidth || 1.5,
+                  style: lineStyle
+                },
+                polygon: {
+                  borderColor: d.style.color || '#D4AF37',
+                  borderSize: d.style.lineWidth || 1,
+                  borderStyle: lineStyle,
+                  color: d.style.fillColor || 'rgba(212, 175, 55, 0.15)'
+                },
+                text: {
+                  color: d.style.fontColor || '#F4F6FC',
+                  size: d.style.fontSize || 12,
+                  text: d.style.text
+                }
+              } as any)
+            : undefined
+
           chart.createOverlay({
             id: d.id,
             name: d.type,
@@ -174,6 +196,7 @@ export const ChartContainer: React.FC = () => {
               timestamp: pt.timestamp,
               value: pt.value
             })),
+            styles: overlayStyles,
             lock: d.lock,
             visible: d.visible !== false,
             onPressedMoveEnd: (event): void => {
@@ -225,6 +248,24 @@ export const ChartContainer: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [])
+
+  // Listen for programmatic drawing updates (e.g. from AI MCP engine)
+  useEffect(() => {
+    const handleReloadDrawings = (e: Event): void => {
+      const customEvent = e as CustomEvent<{ symbol?: string }>
+      const sym = customEvent?.detail?.symbol || useMarketStore.getState().symbol
+      if (sym && chartRef.current) {
+        restoreDrawingsForSymbol(sym).catch((err) => {
+          console.error('[ChartContainer] Failed to reload drawings on event:', err)
+        })
+      }
+    }
+
+    window.addEventListener('pia:reload-drawings', handleReloadDrawings)
+    return (): void => {
+      window.removeEventListener('pia:reload-drawings', handleReloadDrawings)
+    }
+  }, [restoreDrawingsForSymbol])
 
   // Initialize KLineChart instance
   useEffect(() => {

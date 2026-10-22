@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
+import { AiMcpEngine } from '../../services/ai-mcp-engine'
 
 export const ChartLegend: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -15,6 +16,7 @@ export const ChartLegend: React.FC = () => {
   const symInfo = useMarketStore((state) =>
     state.symbol ? state.symbols.find((item) => item.symbol === state.symbol) : undefined
   )
+  const [isAiDrawing, setIsAiDrawing] = useState(false)
 
   const precision = getSymbolPrecision(symbol ?? '', symInfo?.category, livePrice)
 
@@ -172,6 +174,39 @@ export const ChartLegend: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* AI MCP Auto-Draw Action Pill */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (!symbol || isAiDrawing) return
+            setIsAiDrawing(true)
+            try {
+              await AiMcpEngine.executeFullChartAnalysis(symbol, true)
+            } finally {
+              setIsAiDrawing(false)
+            }
+          }}
+          disabled={isAiDrawing}
+          title="AI MCP: Auto-analyze news sentiment & market structure and draw trendlines on chart"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px 7px',
+            borderRadius: 4,
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            backgroundColor: isAiDrawing ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.1)',
+            color: '#FDE68A',
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: isAiDrawing ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span style={{ color: '#D4AF37' }}>◈</span>
+          <span>{isAiDrawing ? 'Drawing...' : 'AI Auto-Draw'}</span>
+        </button>
       </div>
     </div>
   )

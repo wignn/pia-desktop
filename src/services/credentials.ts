@@ -50,6 +50,13 @@ export class CredentialManager {
       if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
         await invoke('save_credentials', { content })
       }
+      if (typeof localStorage !== 'undefined') {
+        if (content && content.trim()) {
+          localStorage.setItem('pia_cached_session', content)
+        } else {
+          localStorage.removeItem('pia_cached_session')
+        }
+      }
       return true
     } catch {
       return false
@@ -84,6 +91,16 @@ export class CredentialManager {
         }
       } catch {
         this.inMemoryCreds = null
+      }
+
+      // High-reliability local fallback: restore cached session if load_credentials was empty
+      if (!this.inMemoryCreds && typeof localStorage !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('pia_cached_session')
+          if (cached && cached.trim()) {
+            this.inMemoryCreds = JSON.parse(cached)
+          }
+        } catch {}
       }
     } else {
       this.inMemoryCreds = null
@@ -184,6 +201,8 @@ export class CredentialManager {
     this.inMemoryCreds = null
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('pia_logged_out', 'true')
+      localStorage.removeItem('pia_cached_session')
+      localStorage.removeItem('pia_user_profile')
     }
     await this.persist('')
     return true

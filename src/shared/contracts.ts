@@ -445,6 +445,13 @@ export interface TerminalAPI {
   system: {
     openExternal: (url: string) => Promise<boolean>
     getRateLimit: () => Promise<RateLimitStatus>
+    closeApp?: () => Promise<boolean>
+  }
+  ai?: {
+    getTools: () => Promise<any[]>
+    executeTool: (name: string, args: Record<string, any>) => Promise<any>
+    executeFullAnalysis: (symbol: string, applyToChart?: boolean) => Promise<any>
+    clearDrawings: (symbol: string) => Promise<boolean>
   }
   ws: {
     createTicket: () => Promise<WsTicketData | null>
