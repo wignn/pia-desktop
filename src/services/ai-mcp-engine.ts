@@ -311,6 +311,27 @@ export class AiMcpEngine {
   }
 
   /**
+   * Get tools in OpenAI-compatible function calling format
+   */
+  public static getOpenAiTools(): Array<{
+    type: 'function'
+    function: {
+      name: string
+      description: string
+      parameters: Record<string, any>
+    }
+  }> {
+    return this.getMcpTools().map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema
+      }
+    }))
+  }
+
+  /**
    * Execute an MCP tool by name
    */
   public static async executeTool(name: string, args: Record<string, any>): Promise<any> {
