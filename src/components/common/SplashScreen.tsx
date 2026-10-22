@@ -14,7 +14,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   statusText = 'Initializing terminal...',
   progressPercent,
   isIndeterminate = true,
-  version = '3.0.6',
+  version = '3.0.7',
   state,
   availableVersion
 }) => {
