@@ -34,8 +34,8 @@ fn set_window_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
             let _ = window.set_decorations(false);
             let _ = window.set_resizable(false);
             let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-                width: 390.0,
-                height: 500.0,
+                width: 380.0,
+                height: 415.0,
             }));
             let _ = window.center();
         } else if mode == "workspace" {

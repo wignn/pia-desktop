@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "PIA Terminal",
-        "width": 390,
-        "height": 500,
+        "width": 380,
+        "height": 415,
         "minWidth": 360,
-        "minHeight": 480,
+        "minHeight": 380,
         "decorations": false,
         "resizable": false,
         "center": true

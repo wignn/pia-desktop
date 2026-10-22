@@ -33,7 +33,7 @@ export function AuthGateway(): React.JSX.Element {
         justifyContent: 'space-between',
         height: '100vh',
         width: '100vw',
-        backgroundColor: '#0D111A',
+     
         color: '#F4F6FC',
         fontFamily: THEME_TOKENS.typography.fontSans,
         overflow: 'hidden',
