@@ -86,6 +86,17 @@ describe('AiMcpEngine (AI & MCP Tool Execution)', () => {
 
     const zoneSuccess = await AiMcpEngine.drawZone('BTCUSDT', 'demand', 1700000000000, 63000, 1700080000000, 62500)
     expect(zoneSuccess).toBe(true)
+
+    const planPlotSuccess = await AiMcpEngine.plotTradePlanLevels({
+      symbol: 'BTCUSDT',
+      bias: 'LONG',
+      entry: 64000,
+      stopLoss: 63500,
+      takeProfit1: 65000,
+      takeProfit2: 66000
+    })
+    expect(planPlotSuccess).toBe(true)
+    expect(globalThis.window.api.drawings.save).toHaveBeenCalled()
   })
 
   it('runs full quantitative technical analysis with trade plan on mock candle series', async () => {

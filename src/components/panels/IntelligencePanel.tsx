@@ -204,7 +204,7 @@ const TacticalTradeTicket: React.FC<{
   }
 
   const handlePlot = async (): Promise<void> => {
-    const ok = await replotTradePlan(plan.symbol)
+    const ok = await replotTradePlan(plan)
     if (ok) showToast('Levels projected onto chart')
     else showToast('Failed to plot')
   }

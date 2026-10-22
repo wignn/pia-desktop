@@ -66,7 +66,7 @@ interface AiAgentState {
   clearChat: () => void
   testConnection: (overrideConfig?: Partial<AiAgentConfig>) => Promise<{ success: boolean; latencyMs?: number; error?: string }>
   executePaperOrderFromPlan: (plan: TradePlanData, lotSize?: number) => Promise<{ success: boolean; error?: string }>
-  replotTradePlan: (symbol: string) => Promise<boolean>
+  replotTradePlan: (planOrSymbol: TradePlanData | string) => Promise<boolean>
 }
 
 const DEFAULT_CONFIG: AiAgentConfig = {
@@ -142,6 +142,48 @@ async function readSseStream(
   }
 
   return accumulated
+}
+
+/**
+ * Fallback parser to extract actionable trade setup levels from unstructured LLM responses.
+ */
+// ponytail: regex heuristic parser for text trade plans. Upgrade to structured JSON mode or schema validation when provider strictly guarantees JSON schema.
+function extractTradePlanFromText(text: string, defaultSymbol: string): TradePlanData | undefined {
+  if (!text) return undefined
+  const biasMatch = text.match(/\b(LONG|SHORT|BUY|SELL)\b/i)
+  const entryMatch = text.match(/(?:entry|open|buy at|sell at|entry zone)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const slMatch = text.match(/(?:stop loss|sl|invalidation)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const tp1Match = text.match(/(?:take profit 1|tp1|target 1|tp 1|take profit)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const tp2Match = text.match(/(?:take profit 2|tp2|target 2|tp 2)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const rrMatch = text.match(/(?:risk[\s/:]*reward|r:r|rrr)[:\s*]+([0-9]+(?::[0-9.]+|(?:\.[0-9]+)?))/i)
+
+  if (entryMatch && slMatch && tp1Match) {
+    const rawBias = biasMatch ? biasMatch[1].toUpperCase() : ''
+    const bias: 'LONG' | 'SHORT' | 'NEUTRAL' =
+      rawBias === 'BUY' || rawBias === 'LONG' ? 'LONG' : rawBias === 'SELL' || rawBias === 'SHORT' ? 'SHORT' : 'NEUTRAL'
+
+    const entry = parseFloat(entryMatch[1])
+    const stopLoss = parseFloat(slMatch[1])
+    const takeProfit1 = parseFloat(tp1Match[1])
+    const takeProfit2 = tp2Match ? parseFloat(tp2Match[1]) : takeProfit1
+
+    const calculatedRr =
+      Math.abs(takeProfit1 - entry) > 0 && Math.abs(entry - stopLoss) > 0
+        ? `1:${(Math.abs(takeProfit1 - entry) / Math.abs(entry - stopLoss)).toFixed(2)}`
+        : '1:2'
+
+    return {
+      symbol: defaultSymbol,
+      bias,
+      entry,
+      stopLoss,
+      takeProfit1,
+      takeProfit2,
+      riskRewardRatio: rrMatch ? rrMatch[1] : calculatedRr,
+      rationale: 'Extracted from AI quantitative briefing'
+    }
+  }
+  return undefined
 }
 
 export const useAiAgentStore = create<AiAgentState>((set, get) => ({
@@ -305,9 +347,13 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     })
   },
 
-  replotTradePlan: async (symbol: string) => {
+  replotTradePlan: async (planOrSymbol: TradePlanData | string) => {
     try {
-      await AiMcpEngine.executeFullChartAnalysis(symbol, true)
+      if (typeof planOrSymbol === 'string') {
+        await AiMcpEngine.executeFullChartAnalysis(planOrSymbol, true)
+      } else {
+        await AiMcpEngine.plotTradePlanLevels(planOrSymbol)
+      }
       return true
     } catch {
       return false
@@ -548,12 +594,15 @@ OPERATIONAL RULES:
               abortController.signal
             )
 
+            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(finalContent, currentSymbol)
+
             set((state) => ({
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
                   ? {
                       ...m,
                       content: finalContent || 'Technical overlays and tactical plan executed.',
+                      tradePlan: resolvedPlan,
                       isStreaming: false
                     }
                   : m
@@ -566,6 +615,7 @@ OPERATIONAL RULES:
                   ? {
                       ...m,
                       content: 'Technical analysis and chart overlays successfully executed.',
+                      tradePlan: detectedTradePlan,
                       isStreaming: false
                     }
                   : m
@@ -580,6 +630,7 @@ OPERATIONAL RULES:
         // Direct response without tool calls
         const asstMsgId = `asst-${Date.now()}`
         const fullContent = assistantMsg.content || 'Instruction processed.'
+        const resolvedPlan = detectedTradePlan || extractTradePlanFromText(fullContent, currentSymbol)
 
         set((state) => ({
           statusMessage: null,
@@ -589,7 +640,7 @@ OPERATIONAL RULES:
               id: asstMsgId,
               role: 'assistant',
               content: fullContent,
-              tradePlan: detectedTradePlan,
+              tradePlan: resolvedPlan,
               timestamp: Date.now()
             }
           ]

@@ -798,6 +798,100 @@ export class AiMcpEngine {
   }
 
   /**
+   * Projects tactical trade plan levels (Entry, Stop Loss, Take Profit 1, Take Profit 2)
+   * directly onto the chart canvas.
+   */
+  // ponytail: plots discrete horizontal lines for plan levels. Upgrade to custom RiskRewardBox overlay when draggable dynamic ratio adjustment is requested.
+  public static async plotTradePlanLevels(plan: {
+    symbol: string
+    bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+    entry: number
+    stopLoss: number
+    takeProfit1: number
+    takeProfit2?: number
+  }): Promise<boolean> {
+    const { symbol, bias, entry, stopLoss, takeProfit1, takeProfit2 } = plan
+    if (!window.api?.drawings?.save) return false
+
+    const items: DrawingItem[] = [
+      {
+        id: `ai-plan-entry-${Date.now()}`,
+        type: 'horizontalStraightLine',
+        symbol,
+        points: [{ timestamp: Date.now(), value: entry }],
+        style: {
+          color: '#3B82F6',
+          lineWidth: 2,
+          lineStyle: 'solid',
+          text: `AI ENTRY (${bias}) @ ${entry}`
+        },
+        lock: true,
+        visible: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      },
+      {
+        id: `ai-plan-sl-${Date.now() + 1}`,
+        type: 'horizontalStraightLine',
+        symbol,
+        points: [{ timestamp: Date.now(), value: stopLoss }],
+        style: {
+          color: '#F43F5E',
+          lineWidth: 2,
+          lineStyle: 'dashed',
+          text: `AI STOP LOSS @ ${stopLoss}`
+        },
+        lock: true,
+        visible: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      },
+      {
+        id: `ai-plan-tp1-${Date.now() + 2}`,
+        type: 'horizontalStraightLine',
+        symbol,
+        points: [{ timestamp: Date.now(), value: takeProfit1 }],
+        style: {
+          color: '#10B981',
+          lineWidth: 2,
+          lineStyle: 'dashed',
+          text: `AI TP1 @ ${takeProfit1}`
+        },
+        lock: true,
+        visible: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+    ]
+
+    if (takeProfit2 && takeProfit2 !== takeProfit1) {
+      items.push({
+        id: `ai-plan-tp2-${Date.now() + 3}`,
+        type: 'horizontalStraightLine',
+        symbol,
+        points: [{ timestamp: Date.now(), value: takeProfit2 }],
+        style: {
+          color: '#059669',
+          lineWidth: 2,
+          lineStyle: 'dashed',
+          text: `AI TP2 @ ${takeProfit2}`
+        },
+        lock: true,
+        visible: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      })
+    }
+
+    for (const item of items) {
+      await window.api.drawings.save(item)
+    }
+
+    window.dispatchEvent(new CustomEvent('pia:reload-drawings', { detail: { symbol } }))
+    return true
+  }
+
+  /**
    * End-to-end master pipeline:
    * Analyzes candles, news sentiment, macro context, and plots trendlines + levels + zones on the chart.
    */
