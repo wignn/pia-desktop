@@ -55,11 +55,9 @@ async fn load_credentials(app: tauri::AppHandle) -> Result<Option<String>, Strin
 fn save_credentials(app: tauri::AppHandle, content: String) -> Result<(), String> {
     let _ = app;
     let entry = keyring::Entry::new("dev.wign.pia", "credentials").map_err(|e| e.to_string())?;
-    if content.is_empty() {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(error) => Err(error.to_string()),
-        }
+    if content.trim().is_empty() {
+        let _ = entry.delete_credential();
+        Ok(())
     } else {
         entry.set_password(&content).map_err(|e| e.to_string())
     }

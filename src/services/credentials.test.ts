@@ -41,4 +41,29 @@ describe('CredentialManager endpoint resilience', () => {
     expect(manager.getWsUrl()).toBe('wss://api-engine.wign.dev/api/v1/ws')
     expect(manager.getBaseUrl()).toBe('https://api-engine.wign.dev')
   })
+
+  it('keeps user logged out after clearCredentials across initialization', async () => {
+    // Provide polyfill if localStorage is missing in pure node test runner
+    if (typeof localStorage === 'undefined') {
+      const store: Record<string, string> = {}
+      ;(globalThis as any).localStorage = {
+        getItem: (k: string) => store[k] ?? null,
+        setItem: (k: string, v: string) => { store[k] = v },
+        removeItem: (k: string) => { delete store[k] }
+      }
+    }
+
+    await manager.saveCredentials('my-key')
+    expect(manager.getStatus().isLoggedIn).toBe(true)
+
+    await manager.clearCredentials()
+    expect(manager.getStatus().isLoggedIn).toBe(false)
+    expect(manager.getStatus().hasApiKey).toBe(false)
+    expect(localStorage.getItem('pia_logged_out')).toBe('true')
+
+    const newManager = new CredentialManager()
+    await newManager.initialize()
+    expect(newManager.getStatus().isLoggedIn).toBe(false)
+    expect(newManager.getStatus().hasApiKey).toBe(false)
+  })
 })

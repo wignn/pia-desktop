@@ -42,10 +42,14 @@ interface StoredCredentials {
 export class CredentialManager {
   private inMemoryCreds: StoredCredentials | null = null
   private initialized = false
+  private defaultBaseUrl: string = DEFAULT_BASE_URL
+  private defaultWsUrl: string = DEFAULT_WS_URL
 
   private async persist(content: string): Promise<boolean> {
     try {
-      await invoke('save_credentials', { content })
+      if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+        await invoke('save_credentials', { content })
+      }
       return true
     } catch {
       return false
@@ -54,19 +58,7 @@ export class CredentialManager {
 
   public async initialize(): Promise<void> {
     if (this.initialized) return
-    try {
-      const content = await invoke<string | null>('load_credentials')
-      if (content) {
-        this.inMemoryCreds = JSON.parse(content)
-      }
-    } catch {
-      this.inMemoryCreds = null
-    }
 
-    const envApiKey =
-      (typeof process !== 'undefined' && process.env?.PIA_API_KEY) ||
-      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_API_KEY) ||
-      ''
     const envBaseUrl =
       (typeof process !== 'undefined' && process.env?.PIA_BASE_URL) ||
       (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_BASE_URL) ||
@@ -76,33 +68,47 @@ export class CredentialManager {
       (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PIA_WS_URL) ||
       ''
 
-    if (!this.inMemoryCreds?.apiKey && envApiKey) {
-      this.inMemoryCreds = {
-        apiKey: envApiKey,
-        baseUrl: normalizeBaseUrl(envBaseUrl),
-        wsUrl: normalizeWsUrl(envWsUrl)
+    if (envBaseUrl) this.defaultBaseUrl = normalizeBaseUrl(envBaseUrl)
+    if (envWsUrl) this.defaultWsUrl = normalizeWsUrl(envWsUrl)
+
+    const isExplicitlyLoggedOut =
+      typeof localStorage !== 'undefined' && localStorage.getItem('pia_logged_out') === 'true'
+
+    if (!isExplicitlyLoggedOut) {
+      try {
+        if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+          const content = await invoke<string | null>('load_credentials')
+          if (content && content.trim()) {
+            this.inMemoryCreds = JSON.parse(content)
+          }
+        }
+      } catch {
+        this.inMemoryCreds = null
       }
+    } else {
+      this.inMemoryCreds = null
     }
 
     if (this.inMemoryCreds) {
-      this.inMemoryCreds.baseUrl = normalizeBaseUrl(this.inMemoryCreds.baseUrl)
-      this.inMemoryCreds.wsUrl = normalizeWsUrl(this.inMemoryCreds.wsUrl)
+      this.inMemoryCreds.baseUrl = normalizeBaseUrl(this.inMemoryCreds.baseUrl || this.defaultBaseUrl)
+      this.inMemoryCreds.wsUrl = normalizeWsUrl(this.inMemoryCreds.wsUrl || this.defaultWsUrl)
     }
 
     this.initialized = true
   }
 
   public getStatus(): CredentialStatus {
+    const hasCreds = Boolean(this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey)
     return {
-      hasApiKey: Boolean(this.inMemoryCreds?.apiKey || this.inMemoryCreds?.desktopCredential),
-      isLoggedIn: Boolean(this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey),
+      hasApiKey: hasCreds,
+      isLoggedIn: hasCreds,
       isSecureStorage: true,
-      baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
-      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl),
+      baseUrl: this.getBaseUrl(),
+      wsUrl: this.getWsUrl(),
       name: this.inMemoryCreds?.name,
       email: this.inMemoryCreds?.email,
       avatarUrl: this.inMemoryCreds?.avatarUrl,
-      plan: this.inMemoryCreds?.plan || 'enterprise'
+      plan: this.inMemoryCreds?.plan || 'free'
     }
   }
 
@@ -111,22 +117,25 @@ export class CredentialManager {
   }
 
   public getBaseUrl(): string {
-    return normalizeBaseUrl(this.inMemoryCreds?.baseUrl)
+    return normalizeBaseUrl(this.inMemoryCreds?.baseUrl || this.defaultBaseUrl)
   }
 
   public getWsUrl(): string {
-    return normalizeWsUrl(this.inMemoryCreds?.wsUrl)
+    return normalizeWsUrl(this.inMemoryCreds?.wsUrl || this.defaultWsUrl)
   }
 
   public async saveCredentials(apiKey: string, baseUrl?: string, wsUrl?: string): Promise<boolean> {
     const next: StoredCredentials = {
       ...this.inMemoryCreds,
       apiKey,
-      baseUrl: normalizeBaseUrl(baseUrl),
-      wsUrl: normalizeWsUrl(wsUrl)
+      baseUrl: normalizeBaseUrl(baseUrl || this.getBaseUrl()),
+      wsUrl: normalizeWsUrl(wsUrl || this.getWsUrl())
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('pia_logged_out')
+    }
     return true
   }
 
@@ -137,15 +146,18 @@ export class CredentialManager {
     const next: StoredCredentials = {
       apiKey: '',
       desktopCredential,
-      baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl),
-      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl),
+      baseUrl: normalizeBaseUrl(this.inMemoryCreds?.baseUrl || this.getBaseUrl()),
+      wsUrl: normalizeWsUrl(this.inMemoryCreds?.wsUrl || this.getWsUrl()),
       name: user?.name || this.inMemoryCreds?.name,
       email: user?.email || this.inMemoryCreds?.email,
       avatarUrl: user?.avatarUrl || this.inMemoryCreds?.avatarUrl,
-      plan: user?.plan || this.inMemoryCreds?.plan || 'enterprise'
+      plan: user?.plan || this.inMemoryCreds?.plan || 'free'
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('pia_logged_out')
+    }
     return true
   }
 
@@ -161,7 +173,7 @@ export class CredentialManager {
       name: user.name || this.inMemoryCreds.name,
       email: user.email || this.inMemoryCreds.email,
       avatarUrl: user.avatarUrl || this.inMemoryCreds.avatarUrl,
-      plan: user.plan || this.inMemoryCreds.plan || 'enterprise'
+      plan: user.plan || this.inMemoryCreds.plan || 'free'
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
@@ -169,8 +181,11 @@ export class CredentialManager {
   }
 
   public async clearCredentials(): Promise<boolean> {
-    if (!(await this.persist(''))) return false
     this.inMemoryCreds = null
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('pia_logged_out', 'true')
+    }
+    await this.persist('')
     return true
   }
 
