@@ -71,7 +71,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       id: 'init-msg',
       role: 'assistant',
       content:
-        'PIA Copilot aktif. Terkoneksi dengan feeds market, orderbook, sentimen berita, dan charting engine.\n\nKetik instruksi analisis atau pilih salah satu aksi cepat di bawah untuk memplot level teknikal langsung ke chart.',
+        'PIA Copilot active. Connected to real-time orderbook, candle history, news sentiment, and direct charting tools.\n\nType analysis instructions or select a quick action below to plot technical levels directly onto the chart.',
       timestamp: Date.now()
     }
   ],
@@ -137,7 +137,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
         {
           id: `init-${Date.now()}`,
           role: 'assistant',
-          content: 'Chat direset. Siap menerima instruksi analisis dan penggambaran chart berikutnya.',
+          content: 'Chat session reset. Ready for next analysis or chart plotting instructions.',
           timestamp: Date.now()
         }
       ],
@@ -159,7 +159,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, userMsg],
       isBusy: true,
-      statusMessage: 'Memproses instruksi...'
+      statusMessage: 'Processing request...'
     }))
 
     const { config, messages } = get()
@@ -176,7 +176,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
               id: `err-${Date.now()}`,
               role: 'assistant',
               content:
-                '[Konfigurasi Diperlukan] API Key belum disetel.\nBuka pengaturan (tombol konfigurasi provider) untuk memasukkan API Key atau beralih ke Built-in Quant Engine.',
+                '[Configuration Required] API Key is missing.\nClick the settings icon to configure your API key, or switch to the Built-in Quant Engine.',
               timestamp: Date.now()
             }
           ]
@@ -202,9 +202,9 @@ Tools available:
 CRITICAL INSTRUCTIONS:
 1. When asked to analyze or draw on the chart, ALWAYS call the corresponding tools.
 2. If asked to draw trendlines or levels, execute the drawing tools immediately.
-3. Respond in concise, professional Indonesian (or the language asked by the user).
+3. Respond in concise, professional English.
 4. Summarize clearly what was analyzed and what levels/trendlines were plotted onto the chart.
-5. Do NOT use emojis. Maintain a serious, institutional financial terminal tone.`
+5. Do NOT use emojis. Maintain an institutional, analytical terminal tone.`
 
         const conversationHistory = [
           { role: 'system', content: systemPrompt },
@@ -215,7 +215,7 @@ CRITICAL INSTRUCTIONS:
           { role: 'user', content: prompt }
         ]
 
-        set({ statusMessage: `Menghubungi ${config.model}...` })
+        set({ statusMessage: `Contacting ${config.model}...` })
 
         const headers: Record<string, string> = {
           'Content-Type': 'application/json'
@@ -241,7 +241,7 @@ CRITICAL INSTRUCTIONS:
 
         if (!initialRes.ok) {
           const errText = await initialRes.text()
-          throw new Error(`OpenAI API error (${initialRes.status}): ${errText.slice(0, 200)}`)
+          throw new Error(`API error (${initialRes.status}): ${errText.slice(0, 200)}`)
         }
 
         const data = await initialRes.json()
@@ -269,7 +269,7 @@ CRITICAL INSTRUCTIONS:
               toolArgs.symbol = currentSymbol
             }
 
-            set({ statusMessage: `Menjalankan tool: ${toolName}...` })
+            set({ statusMessage: `Executing tool: ${toolName}...` })
 
             try {
               const result = await AiMcpEngine.executeTool(toolName, toolArgs)
@@ -295,8 +295,8 @@ CRITICAL INSTRUCTIONS:
             }
           }
 
-          // Follow-up request to let LLM formulate the final answer with tool outputs
-          set({ statusMessage: 'Sintesis hasil analisis...' })
+          // Follow-up request to let LLM formulate final answer with tool outputs
+          set({ statusMessage: 'Synthesizing analysis...' })
 
           const followUpRes = await fetch(endpoint, {
             method: 'POST',
@@ -317,7 +317,7 @@ CRITICAL INSTRUCTIONS:
             const followUpData = await followUpRes.json()
             finalContent = followUpData.choices?.[0]?.message?.content || ''
           } else {
-            finalContent = 'Analisis dan penggambaran pada chart berhasil dieksekusi.'
+            finalContent = 'Analysis and chart technical overlays were successfully executed.'
           }
 
           set((state) => ({
@@ -346,7 +346,7 @@ CRITICAL INSTRUCTIONS:
             {
               id: `asst-${Date.now()}`,
               role: 'assistant',
-              content: assistantMsg.content || 'Instruksi telah diproses.',
+              content: assistantMsg.content || 'Instruction processed.',
               timestamp: Date.now()
             }
           ]
@@ -360,7 +360,7 @@ CRITICAL INSTRUCTIONS:
             {
               id: `err-${Date.now()}`,
               role: 'assistant',
-              content: `[Koneksi Gagal] ${err?.message || 'Koneksi error'}\nPastikan Base URL, API Key, dan Nama Model sudah sesuai.`,
+              content: `[Connection Error] ${err?.message || 'Network error'}\nVerify that Base URL, API Key, and Model name are properly configured.`,
               timestamp: Date.now()
             }
           ]
@@ -372,11 +372,11 @@ CRITICAL INSTRUCTIONS:
     // PATH 2: Built-in Institutional Quant Heuristic Agent
     try {
       const lower = prompt.toLowerCase()
-      const isClear = lower.includes('clear') || lower.includes('hapus') || lower.includes('reset')
-      const isSentimentOnly = lower.includes('sentimen') && !lower.includes('gambar') && !lower.includes('trendline')
+      const isClear = lower.includes('clear') || lower.includes('reset') || lower.includes('remove') || lower.includes('hapus')
+      const isSentimentOnly = lower.includes('sentiment') && !lower.includes('draw') && !lower.includes('trendline') && !lower.includes('chart')
 
       if (isClear) {
-        set({ statusMessage: 'Membersihkan gambar di chart...' })
+        set({ statusMessage: 'Clearing chart overlays...' })
         await AiMcpEngine.clearDrawings(currentSymbol)
         set((state) => ({
           isBusy: false,
@@ -386,7 +386,7 @@ CRITICAL INSTRUCTIONS:
             {
               id: `asst-${Date.now()}`,
               role: 'assistant',
-              content: `Seluruh gambar teknikal AI untuk **${currentSymbol}** telah dibersihkan dari chart.`,
+              content: `All AI technical drawings for **${currentSymbol}** have been cleared from the chart.`,
               toolCalls: [{ id: 'tc-clear', name: 'clear_chart_drawings', args: { symbol: currentSymbol }, result: true }],
               timestamp: Date.now()
             }
@@ -396,12 +396,12 @@ CRITICAL INSTRUCTIONS:
       }
 
       if (isSentimentOnly) {
-        set({ statusMessage: 'Menganalisis sentimen berita & FinTwit...' })
+        set({ statusMessage: 'Analyzing news sentiment & FinTwit feeds...' })
         const sent = await AiMcpEngine.getNewsSentiment(currentSymbol, 8)
-        const content = `### Analisis Sentimen ${currentSymbol}
-- **Polaritas:** ${sent.sentiment.toUpperCase()} (Skor: ${sent.score > 0 ? '+' : ''}${sent.score}%)
-- **Sinyal Bullish:** ${sent.bullishSignals} | **Sinyal Bearish:** ${sent.bearishSignals}
-${sent.topHeadlines.length > 0 ? `\n**Headline Berita Utama:**\n${sent.topHeadlines.map((h: string) => `- ${h}`).join('\n')}` : ''}`
+        const content = `### Sentiment Analysis: ${currentSymbol}
+- **Polarity:** ${sent.sentiment.toUpperCase()} (Score: ${sent.score > 0 ? '+' : ''}${sent.score}%)
+- **Bullish Signals:** ${sent.bullishSignals} | **Bearish Signals:** ${sent.bearishSignals}
+${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map((h: string) => `- ${h}`).join('\n')}` : ''}`
 
         set((state) => ({
           isBusy: false,
@@ -421,25 +421,25 @@ ${sent.topHeadlines.length > 0 ? `\n**Headline Berita Utama:**\n${sent.topHeadli
       }
 
       // Default: Full Technical & Sentiment Analysis + Chart Auto-Draw
-      set({ statusMessage: 'Menganalisis sentimen, orderbook, dan menggambar chart...' })
+      set({ statusMessage: 'Analyzing sentiment, orderbook, and plotting levels...' })
       const analysis = await AiMcpEngine.executeFullChartAnalysis(currentSymbol, true)
 
-      const content = `### Analisis Kuantitatif & Proyeksi Chart ${currentSymbol}
+      const content = `### Quantitative Analysis & Chart Projection: ${currentSymbol}
 
-- **Bias Institusional:** **${analysis.tradePlan.bias}** (Struktur Tren: **${analysis.trend.toUpperCase()}**)
-- **Sentimen Berita:** ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
+- **Institutional Bias:** **${analysis.tradePlan.bias}** (Trend Structure: **${analysis.trend.toUpperCase()}**)
+- **News Sentiment:** ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
 - **RSI (14):** ${analysis.indicators.rsi14} | **ATR:** ${analysis.indicators.atr14}
 
 #### Trade Plan
 - **Entry Zone:** ${analysis.tradePlan.suggestedEntry}
 - **Stop Loss:** ${analysis.tradePlan.stopLoss}
-- **Target Profit 1:** ${analysis.tradePlan.takeProfit1}
-- **Target Profit 2:** ${analysis.tradePlan.takeProfit2}
+- **Take Profit 1:** ${analysis.tradePlan.takeProfit1}
+- **Take Profit 2:** ${analysis.tradePlan.takeProfit2}
 - **Risk : Reward:** ${analysis.tradePlan.riskRewardRatio}
 
-*Catatan: ${analysis.tradePlan.rationale}*
+*Rationale: ${analysis.tradePlan.rationale}*
 
-**Status Chart:** Berhasil menggambar **${analysis.plottedDrawingsCount} overlay teknikal** (Support/Resistance horizontal, garis tren, dan Institutional Order Block) langsung di chart Anda!`
+**Chart Overlays Plotted:** Successfully drawn **${analysis.plottedDrawingsCount} technical overlays** (Horizontal support/resistance, structural trendlines, and Institutional Order Block) directly on your live chart.`
 
       set((state) => ({
         isBusy: false,
@@ -468,7 +468,7 @@ ${sent.topHeadlines.length > 0 ? `\n**Headline Berita Utama:**\n${sent.topHeadli
           {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            content: `Gagal menjalankan analisis: ${err?.message || 'Data candle tidak mencukupi.'}`,
+            content: `Failed to execute analysis: ${err?.message || 'Insufficient candle history.'}`,
             timestamp: Date.now()
           }
         ]

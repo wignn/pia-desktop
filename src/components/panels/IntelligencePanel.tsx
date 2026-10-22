@@ -360,7 +360,7 @@ export const IntelligencePanel: React.FC = () => {
                 }}
               >
                 <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                <span>{statusMessage || 'Sedang memproses...'}</span>
+                <span>{statusMessage || 'Processing request...'}</span>
               </div>
             )}
 
@@ -383,7 +383,7 @@ export const IntelligencePanel: React.FC = () => {
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `Analisis ${symbol} secara komprehensif, cek sentimen berita terbaru, dan langsung gambarkan trendline serta support resistance di chart.`
+                  `Analyze ${symbol} comprehensively, check recent news sentiment, and plot trendlines with key support and resistance levels on the chart.`
                 )
               }
               style={{
@@ -409,7 +409,7 @@ export const IntelligencePanel: React.FC = () => {
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `Bagaimana sentimen berita dan FinTwit untuk ${symbol} saat ini?`
+                  `What is the latest news and social sentiment polarity for ${symbol}?`
                 )
               }
               style={{
@@ -428,14 +428,14 @@ export const IntelligencePanel: React.FC = () => {
               }}
             >
               <Newspaper size={11} color="#94A3B8" />
-              <span>Sentimen Berita</span>
+              <span>News Sentiment</span>
             </button>
             <button
               type="button"
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `Gambarkan garis level support dan resistance kunci untuk ${symbol} di chart.`
+                  `Draw key horizontal support and resistance levels for ${symbol} on the chart.`
                 )
               }
               style={{
@@ -459,7 +459,7 @@ export const IntelligencePanel: React.FC = () => {
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => handleQuickAction(`Bersihkan semua gambar di chart untuk ${symbol}.`)}
+              onClick={() => handleQuickAction(`Clear all chart drawings for ${symbol}.`)}
               style={{
                 whiteSpace: 'nowrap',
                 fontSize: 10,
@@ -495,7 +495,7 @@ export const IntelligencePanel: React.FC = () => {
               type="text"
               value={inputPrompt}
               onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder={`Tanyakan analisis atau minta gambar di chart (${symbol})...`}
+              placeholder={`Ask for analysis or request chart drawings (${symbol})...`}
               disabled={isBusy}
               style={{
                 flex: 1,
@@ -550,7 +550,7 @@ export const IntelligencePanel: React.FC = () => {
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {deskLoading && (
             <div style={{ padding: 20, textAlign: 'center', color: '#838896' }}>
-              Memuat data pasar dan sentimen kuantitatif...
+              Loading quantitative market data and sentiment...
             </div>
           )}
 
@@ -1004,7 +1004,7 @@ export const IntelligencePanel: React.FC = () => {
               >
                 <ShieldCheck size={16} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  <strong>Zero Configuration:</strong> Menggunakan engine kuantitatif bawaan PIA. Tidak memerlukan API key eksternal. Langsung membaca sentimen berita, orderbook depth, dan memproyeksikan garis support/resistance serta trendline ke chart.
+                  <strong>Zero Configuration:</strong> Powered by PIA built-in quantitative engine. No external API key required. Ingests news sentiment, orderbook depth, and projects support/resistance and trendlines directly to the chart.
                 </span>
               </div>
             )}

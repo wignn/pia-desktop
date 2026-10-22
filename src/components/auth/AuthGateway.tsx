@@ -30,92 +30,76 @@ export function AuthGateway(): React.JSX.Element {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
+        justifyContent: 'space-between',
+        height: '100vh',
         width: '100vw',
-        backgroundColor: '#07090E',
-        backgroundImage:
-          'radial-gradient(circle at 50% 45%, rgba(212, 175, 55, 0.05) 0%, rgba(13, 17, 26, 0.8) 55%, #07090E 100%)',
+        backgroundColor: '#0D111A',
         color: '#F4F6FC',
         fontFamily: THEME_TOKENS.typography.fontSans,
         overflow: 'hidden',
         position: 'relative',
-        padding: 16,
-        boxSizing: 'border-box'
+        padding: '24px 22px 18px',
+        boxSizing: 'border-box',
+        border: '1px solid rgba(255, 255, 255, 0.08)'
       }}
     >
-      <UpdateNotificationBanner top={12} />
+      <UpdateNotificationBanner top={8} />
 
-      {/* Focused Authentication Card */}
+      {/* Custom Window Drag Handle & Close Button for Frameless Window */}
       <div
+        data-tauri-drag-region
         style={{
-          width: '100%',
-          maxWidth: 390,
-          backgroundColor: '#0D111A',
-          border: '1px solid rgba(255, 255, 255, 0.09)',
-          borderRadius: 12,
-          padding: '28px 24px',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 36,
+          cursor: 'grab',
           display: 'flex',
-          flexDirection: 'column',
-          gap: 18,
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 1px 1px rgba(255, 255, 255, 0.04)',
-          position: 'relative',
-          zIndex: 10
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          paddingRight: 10,
+          zIndex: 20
         }}
       >
-        {/* Custom Window Drag Handle & Close Button for Frameless Window */}
-        <div
-          data-tauri-drag-region
+        <button
+          type="button"
+          onClick={() => {
+            window.api?.system?.closeApp?.()
+          }}
+          title="Close"
+          aria-label="Close"
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 36,
-            cursor: 'grab',
+            width: 24,
+            height: 24,
+            borderRadius: 6,
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: '#64748B',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'flex-end',
-            paddingRight: 10,
-            zIndex: 20
+            justifyContent: 'center',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(244, 63, 94, 0.18)'
+            e.currentTarget.style.color = '#F43F5E'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+            e.currentTarget.style.color = '#64748B'
           }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              window.api?.system?.closeApp?.()
-            }}
-            title="Close"
-            aria-label="Close"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: '#64748B',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(244, 63, 94, 0.18)'
-              e.currentTarget.style.color = '#F43F5E'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#64748B'
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Main Content Body */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Brand Header */}
         <div style={{ textAlign: 'center' }}>
           <div
@@ -127,14 +111,16 @@ export function AuthGateway(): React.JSX.Element {
               backgroundColor: 'rgba(255, 255, 255, 0.03)',
               border: '1px solid rgba(255, 255, 255, 0.06)',
               borderRadius: 999,
-              marginBottom: 12
+              marginBottom: 10
             }}
           >
-            <span style={{ color: '#D4AF37', fontSize: 13 }}>◈</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 22 12 12 22 2 12" />
+            </svg>
             <span
               style={{
                 fontWeight: 700,
-                fontSize: 12,
+                fontSize: 11,
                 letterSpacing: '0.1em',
                 color: '#F4F6FC'
               }}
@@ -154,21 +140,21 @@ export function AuthGateway(): React.JSX.Element {
 
           <h1
             style={{
-              fontSize: 20,
+              fontSize: 19,
               fontWeight: 700,
               letterSpacing: '-0.02em',
               color: '#FFFFFF',
-              margin: '0 0 6px 0'
+              margin: '0 0 4px 0'
             }}
           >
             Sign In
           </h1>
           <p
             style={{
-              fontSize: 12,
+              fontSize: 11,
               color: '#838896',
               margin: 0,
-              lineHeight: 1.5
+              lineHeight: 1.4
             }}
           >
             Connect your account to access real-time market data and analytical feeds.
@@ -182,7 +168,7 @@ export function AuthGateway(): React.JSX.Element {
               backgroundColor: 'rgba(244, 63, 94, 0.1)',
               border: '1px solid rgba(244, 63, 94, 0.3)',
               borderRadius: 6,
-              padding: '10px 12px',
+              padding: '8px 10px',
               fontSize: 11,
               color: '#F43F5E',
               lineHeight: 1.4
@@ -199,7 +185,7 @@ export function AuthGateway(): React.JSX.Element {
           onClick={handleGoogleLogin}
           style={{
             width: '100%',
-            padding: '11px 16px',
+            padding: '10px 16px',
             backgroundColor: '#FFFFFF',
             color: '#0F172A',
             border: 'none',
@@ -350,20 +336,20 @@ export function AuthGateway(): React.JSX.Element {
             </form>
           )}
         </div>
+      </div>
 
-        {/* Keyring Security Footnote */}
-        <div
-          style={{
-            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-            paddingTop: 12,
-            textAlign: 'center',
-            fontSize: 10,
-            fontFamily: THEME_TOKENS.typography.fontMono,
-            color: '#525766'
-          }}
-        >
-          Credentials are securely encrypted in the OS vault.
-        </div>
+      {/* Keyring Security Footnote */}
+      <div
+        style={{
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+          paddingTop: 10,
+          textAlign: 'center',
+          fontSize: 10,
+          fontFamily: THEME_TOKENS.typography.fontMono,
+          color: '#525766'
+        }}
+      >
+        Credentials are securely encrypted in the OS vault.
       </div>
     </div>
   )
