@@ -9,14 +9,467 @@ import {
   Trash2,
   X,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Square,
+  Copy,
+  Activity,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  TrendingUp,
+  TrendingDown,
+  Zap,
+  AlertCircle
 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import type { IntelligenceAnalyzeResult, MarketInsightResult } from '@shared/types'
-import { useAiAgentStore } from '../../stores/useAiAgentStore'
-import { AiMcpEngine } from '../../services/ai-mcp-engine'
+import {
+  useAiAgentStore,
+  type TradePlanData,
+  type ToolCallExecution
+} from '../../stores/useAiAgentStore'
+
+// ==========================================
+// Institutional Markdown & Content Formatter
+// ==========================================
+
+const StructuredContentRenderer: React.FC<{
+  content: string
+  isStreaming?: boolean
+}> = ({ content, isStreaming }) => {
+  const lines = content.split('\n')
+
+  const renderInlineFormatted = (text: string): React.ReactNode[] => {
+    // Splits by bold **text** or backtick `code`
+    const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g)
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        const inner = part.slice(2, -2)
+        const isLong = inner === 'LONG' || inner.includes('BULLISH')
+        const isShort = inner === 'SHORT' || inner.includes('BEARISH')
+        return (
+          <strong
+            key={idx}
+            style={{
+              color: isLong ? '#10B981' : isShort ? '#F43F5E' : '#FFFFFF',
+              fontWeight: 700
+            }}
+          >
+            {inner}
+          </strong>
+        )
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <code
+            key={idx}
+            style={{
+              fontFamily: THEME_TOKENS.typography.fontMono,
+              fontSize: 10,
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              padding: '1px 4px',
+              borderRadius: 3,
+              color: '#FDE68A'
+            }}
+          >
+            {part.slice(1, -1)}
+          </code>
+        )
+      }
+      return part
+    })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, lineHeight: 1.55 }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim()
+        if (!trimmed) {
+          return <div key={idx} style={{ height: 4 }} />
+        }
+
+        // Heading 3: Major Section Title
+        if (trimmed.startsWith('### ')) {
+          return (
+            <div
+              key={idx}
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#D4AF37',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
+                paddingBottom: 3,
+                marginTop: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <Activity size={12} color="#D4AF37" />
+              <span>{trimmed.replace(/^###\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // Heading 4: Subsection
+        if (trimmed.startsWith('#### ')) {
+          return (
+            <div
+              key={idx}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#CBD5E1',
+                marginTop: 4
+              }}
+            >
+              {trimmed.replace(/^####\s+/, '')}
+            </div>
+          )
+        }
+
+        // Bullet list item
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const itemText = trimmed.replace(/^[-*]\s+/, '')
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 6,
+                paddingLeft: 4
+              }}
+            >
+              <span style={{ color: '#D4AF37', fontSize: 10, marginTop: 1, userSelect: 'none' }}>•</span>
+              <div style={{ color: '#E2E8F0', flex: 1 }}>{renderInlineFormatted(itemText)}</div>
+            </div>
+          )
+        }
+
+        // Normal paragraph
+        return (
+          <p key={idx} style={{ margin: 0, color: '#E2E8F0' }}>
+            {renderInlineFormatted(line)}
+          </p>
+        )
+      })}
+
+      {/* Live token stream cursor */}
+      {isStreaming && (
+        <span
+          style={{
+            display: 'inline-block',
+            width: 7,
+            height: 12,
+            backgroundColor: '#D4AF37',
+            marginLeft: 2,
+            verticalAlign: 'middle',
+            animation: 'pulse 0.8s infinite'
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ==========================================
+// Tactical Trade Ticket Component
+// ==========================================
+
+const TacticalTradeTicket: React.FC<{
+  plan: TradePlanData
+}> = ({ plan }) => {
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const { executePaperOrderFromPlan, replotTradePlan } = useAiAgentStore()
+
+  const showToast = (msg: string): void => {
+    setToastMessage(msg)
+    setTimeout(() => setToastMessage(null), 2500)
+  }
+
+  const handleCopy = async (): Promise<void> => {
+    const text = `PIA TRADE SETUP: ${plan.symbol}\nBIAS: ${plan.bias}\nENTRY: ${plan.entry}\nSTOP LOSS: ${plan.stopLoss}\nTARGET 1: ${plan.takeProfit1}\nTARGET 2: ${plan.takeProfit2}\nRISK/REWARD: ${plan.riskRewardRatio}`
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast('Copied to clipboard')
+    } catch {
+      showToast('Copy failed')
+    }
+  }
+
+  const handlePlot = async (): Promise<void> => {
+    const ok = await replotTradePlan(plan.symbol)
+    if (ok) showToast('Levels projected onto chart')
+    else showToast('Failed to plot')
+  }
+
+  const handleExecutePaper = async (): Promise<void> => {
+    setIsExecuting(true)
+    try {
+      const res = await executePaperOrderFromPlan(plan, 0.1)
+      if (res.success) {
+        showToast('Paper order executed!')
+      } else {
+        showToast(`Failed: ${res.error || 'Margin error'}`)
+      }
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
+  const isLong = plan.bias === 'LONG'
+  const isShort = plan.bias === 'SHORT'
+  const biasColor = isLong ? '#10B981' : isShort ? '#F43F5E' : '#F59E0B'
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        backgroundColor: '#07090E',
+        border: `1px solid ${biasColor}40`,
+        borderRadius: 8,
+        padding: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)'
+      }}
+    >
+      {/* Header Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: 4,
+              backgroundColor: `${biasColor}20`,
+              color: biasColor,
+              fontWeight: 800,
+              fontSize: 10,
+              letterSpacing: '0.05em',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            {isLong ? <TrendingUp size={11} /> : isShort ? <TrendingDown size={11} /> : <Zap size={11} />}
+            {plan.bias}
+          </span>
+          <span style={{ fontWeight: 700, fontSize: 11, color: '#F4F6FC' }}>
+            {plan.symbol}
+          </span>
+        </div>
+
+        <span
+          style={{
+            fontSize: 10,
+            fontFamily: THEME_TOKENS.typography.fontMono,
+            color: '#D4AF37',
+            backgroundColor: 'rgba(212, 175, 55, 0.1)',
+            padding: '2px 6px',
+            borderRadius: 4,
+            fontWeight: 700
+          }}
+        >
+          R:R {plan.riskRewardRatio}
+        </span>
+      </div>
+
+      {/* 4-Metric Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 6,
+          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+          padding: 6,
+          borderRadius: 6,
+          border: '1px solid rgba(255, 255, 255, 0.05)'
+        }}
+      >
+        <div>
+          <span style={{ fontSize: 9, color: '#838896', display: 'block' }}>ENTRY</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#F4F6FC', fontFamily: THEME_TOKENS.typography.fontMono }}>
+            {plan.entry}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontSize: 9, color: '#F43F5E', display: 'block' }}>STOP LOSS</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#F43F5E', fontFamily: THEME_TOKENS.typography.fontMono }}>
+            {plan.stopLoss}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 1</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
+            {plan.takeProfit1}
+          </span>
+        </div>
+        <div>
+          <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 2</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
+            {plan.takeProfit2}
+          </span>
+        </div>
+      </div>
+
+      {/* Actions Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={handlePlot}
+            title="Plot trendlines and key levels onto the active chart"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 7px',
+              borderRadius: 4,
+              backgroundColor: 'rgba(212, 175, 55, 0.12)',
+              border: '1px solid rgba(212, 175, 55, 0.3)',
+              color: '#FDE68A',
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <LineChart size={10} color="#D4AF37" />
+            <span>Plot Chart</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isExecuting}
+            onClick={handleExecutePaper}
+            title="Execute market simulation position in Paper Trading account"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 7px',
+              borderRadius: 4,
+              backgroundColor: isLong ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+              border: `1px solid ${biasColor}40`,
+              color: biasColor,
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: isExecuting ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <Zap size={10} />
+            <span>{isExecuting ? 'Submitting...' : 'Paper Trade'}</span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCopy}
+          title="Copy Trade Setup"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 6px',
+            borderRadius: 4,
+            backgroundColor: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            color: '#838896',
+            fontSize: 10,
+            cursor: 'pointer'
+          }}
+        >
+          <Copy size={10} />
+          <span>Copy</span>
+        </button>
+      </div>
+
+      {toastMessage && (
+        <div style={{ fontSize: 9, color: '#D4AF37', fontFamily: THEME_TOKENS.typography.fontMono }}>
+          {toastMessage}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================
+// Tool Execution Telemetry Drawer
+// ==========================================
+
+const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall }) => {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          fontSize: 9,
+          fontFamily: THEME_TOKENS.typography.fontMono,
+          backgroundColor: toolCall.isError ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+          border: toolCall.isError
+            ? '1px solid rgba(244, 63, 94, 0.25)'
+            : '1px solid rgba(16, 185, 129, 0.25)',
+          color: toolCall.isError ? '#F43F5E' : '#10B981',
+          padding: '2px 6px',
+          borderRadius: 4,
+          cursor: 'pointer'
+        }}
+      >
+        {toolCall.isError ? (
+          <AlertCircle size={10} color="#F43F5E" />
+        ) : (
+          <Check size={10} strokeWidth={2.5} />
+        )}
+        <span>{toolCall.name}</span>
+        {toolCall.durationMs !== undefined && (
+          <span style={{ color: '#64748B' }}>({toolCall.durationMs}ms)</span>
+        )}
+        {isOpen ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            backgroundColor: '#07090E',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 4,
+            padding: 6,
+            fontSize: 9,
+            fontFamily: THEME_TOKENS.typography.fontMono,
+            color: '#838896',
+            maxHeight: 140,
+            overflowY: 'auto'
+          }}
+        >
+          <div style={{ color: '#D4AF37', marginBottom: 2 }}>Arguments:</div>
+          <pre style={{ margin: '0 0 6px 0', color: '#CBD5E1' }}>
+            {JSON.stringify(toolCall.args, null, 2)}
+          </pre>
+          <div style={{ color: '#D4AF37', marginBottom: 2 }}>Telemetry Output:</div>
+          <pre style={{ margin: 0, color: '#CBD5E1' }}>
+            {JSON.stringify(toolCall.result, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================
+// Main Intelligence Panel Component
+// ==========================================
 
 export const IntelligencePanel: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -44,14 +497,18 @@ export const IntelligencePanel: React.FC = () => {
     updateConfig,
     applyPreset,
     sendMessage,
-    clearChat
+    abortGeneration,
+    clearChat,
+    testConnection
   } = useAiAgentStore()
 
   // Local draft for settings modal
   const [draftBaseUrl, setDraftBaseUrl] = useState(config.baseUrl)
   const [draftApiKey, setDraftApiKey] = useState(config.apiKey)
   const [draftModel, setDraftModel] = useState(config.model)
+  const [draftTemperature, setDraftTemperature] = useState(config.temperature ?? 0.1)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [testStatus, setTestStatus] = useState<{ testing: boolean; result?: string; isError?: boolean } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -76,6 +533,8 @@ export const IntelligencePanel: React.FC = () => {
       setDraftBaseUrl(config.baseUrl)
       setDraftApiKey(config.apiKey)
       setDraftModel(config.model)
+      setDraftTemperature(config.temperature ?? 0.1)
+      setTestStatus(null)
     }
   }, [isConfigOpen, config])
 
@@ -122,9 +581,32 @@ export const IntelligencePanel: React.FC = () => {
     updateConfig({
       baseUrl: draftBaseUrl.trim(),
       apiKey: draftApiKey.trim(),
-      model: draftModel.trim()
+      model: draftModel.trim(),
+      temperature: draftTemperature
     })
     setConfigOpen(false)
+  }
+
+  const handleTestConnection = async (): Promise<void> => {
+    setTestStatus({ testing: true })
+    const res = await testConnection({
+      baseUrl: draftBaseUrl.trim(),
+      apiKey: draftApiKey.trim(),
+      model: draftModel.trim()
+    })
+    if (res.success) {
+      setTestStatus({
+        testing: false,
+        result: `Connected successfully (${res.latencyMs}ms)`,
+        isError: false
+      })
+    } else {
+      setTestStatus({
+        testing: false,
+        result: res.error || 'Connection failed',
+        isError: true
+      })
+    }
   }
 
   const getSentimentColor = (sentiment?: string): string => {
@@ -180,7 +662,7 @@ export const IntelligencePanel: React.FC = () => {
                 transition: 'all 0.15s ease'
               }}
             >
-              AI Agent Copilot
+              AI Copilot
             </button>
             <button
               type="button"
@@ -269,7 +751,7 @@ export const IntelligencePanel: React.FC = () => {
                 >
                   <div
                     style={{
-                      maxWidth: '92%',
+                      maxWidth: '94%',
                       backgroundColor: isUser ? '#1E293B' : '#0D111A',
                       color: isUser ? '#F8FAFC' : '#E2E8F0',
                       border: isUser
@@ -280,8 +762,7 @@ export const IntelligencePanel: React.FC = () => {
                       fontSize: 11,
                       lineHeight: 1.5,
                       boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap'
+                      wordBreak: 'break-word'
                     }}
                   >
                     {!isUser && (
@@ -289,85 +770,98 @@ export const IntelligencePanel: React.FC = () => {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: 5,
-                          marginBottom: 6,
+                          justifyContent: 'space-between',
+                          marginBottom: 8,
                           fontSize: 10,
                           fontWeight: 700,
                           color: '#D4AF37'
                         }}
                       >
-                        <Bot size={12} color="#D4AF37" />
-                        <span>PIA AGENT</span>
-                        <span style={{ color: '#64748B', fontWeight: 400 }}>
-                          ({config.provider === 'openai' ? config.model : 'Quant Engine'})
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <Bot size={12} color="#D4AF37" />
+                          <span>PIA COPILOT</span>
+                          <span style={{ color: '#64748B', fontWeight: 400 }}>
+                            ({config.provider === 'openai' ? config.model : 'Quant Engine'})
+                          </span>
+                        </div>
                       </div>
                     )}
 
-                    {/* Render tool calls pill if any */}
+                    {/* Render tool calls drawer if any */}
                     {m.toolCalls && m.toolCalls.length > 0 && (
                       <div
                         style={{
                           marginBottom: 8,
                           display: 'flex',
                           flexWrap: 'wrap',
-                          gap: 4
+                          gap: 5
                         }}
                       >
                         {m.toolCalls.map((tc, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: 9,
-                              fontFamily: THEME_TOKENS.typography?.fontMono || 'monospace',
-                              backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                              border: '1px solid rgba(16, 185, 129, 0.25)',
-                              color: '#10B981',
-                              padding: '2px 6px',
-                              borderRadius: 4
-                            }}
-                          >
-                            <Check size={10} strokeWidth={2.5} />
-                            <span>{tc.name}</span>
-                          </div>
+                          <ToolCallDrawer key={idx} toolCall={tc} />
                         ))}
                       </div>
                     )}
 
-                    <div>{m.content}</div>
+                    {/* Formatted Content */}
+                    <StructuredContentRenderer content={m.content} isStreaming={m.isStreaming} />
+
+                    {/* Tactical Trade Ticket Card */}
+                    {m.tradePlan && <TacticalTradeTicket plan={m.tradePlan} />}
                   </div>
                 </div>
               )
             })}
 
-            {/* Active Execution State */}
+            {/* Active Execution State with Abort Button */}
             {isBusy && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  justifyContent: 'space-between',
                   padding: '8px 12px',
                   backgroundColor: 'rgba(212, 175, 55, 0.08)',
                   border: '1px solid rgba(212, 175, 55, 0.2)',
                   borderRadius: 6,
                   color: '#D4AF37',
                   fontSize: 11,
-                  maxWidth: '92%'
+                  maxWidth: '94%'
                 }}
               >
-                <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                <span>{statusMessage || 'Processing request...'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>{statusMessage || 'Processing telemetry...'}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={abortGeneration}
+                  title="Stop generation"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+                    border: '1px solid rgba(244, 63, 94, 0.3)',
+                    color: '#F43F5E',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Square size={9} />
+                  <span>Stop</span>
+                </button>
               </div>
             )}
 
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Action Chips */}
+          {/* Quick Action Institutional Playbook Chips */}
           <div
             style={{
               padding: '6px 12px',
@@ -383,7 +877,7 @@ export const IntelligencePanel: React.FC = () => {
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `Analyze ${symbol} comprehensively, check recent news sentiment, and plot trendlines with key support and resistance levels on the chart.`
+                  `Analyze ${symbol} market structure, compute key pivots, and plot trendlines and levels directly on the chart.`
                 )
               }
               style={{
@@ -409,7 +903,7 @@ export const IntelligencePanel: React.FC = () => {
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `What is the latest news and social sentiment polarity for ${symbol}?`
+                  `Scan live L2 orderbook depth, bid/ask volume imbalance, and spread metrics for ${symbol}.`
                 )
               }
               style={{
@@ -427,15 +921,15 @@ export const IntelligencePanel: React.FC = () => {
                 gap: 5
               }}
             >
-              <Newspaper size={11} color="#94A3B8" />
-              <span>News Sentiment</span>
+              <Layers size={11} color="#94A3B8" />
+              <span>L2 Orderbook</span>
             </button>
             <button
               type="button"
               disabled={isBusy}
               onClick={() =>
                 handleQuickAction(
-                  `Draw key horizontal support and resistance levels for ${symbol} on the chart.`
+                  `Analyze technical momentum indicators (RSI 14, ATR, EMA 20/50 alignment) for ${symbol}.`
                 )
               }
               style={{
@@ -454,12 +948,38 @@ export const IntelligencePanel: React.FC = () => {
               }}
             >
               <SlidersHorizontal size={11} color="#94A3B8" />
-              <span>Support &amp; Resistance</span>
+              <span>Technicals &amp; Momentum</span>
             </button>
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => handleQuickAction(`Clear all chart drawings for ${symbol}.`)}
+              onClick={() =>
+                handleQuickAction(
+                  `Evaluate latest news headline polarity and FinTwit social sentiment for ${symbol}.`
+                )
+              }
+              style={{
+                whiteSpace: 'nowrap',
+                fontSize: 10,
+                fontWeight: 600,
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#CBD5E1',
+                borderRadius: 4,
+                padding: '3px 8px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <Newspaper size={11} color="#94A3B8" />
+              <span>Sentiment Velocity</span>
+            </button>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => handleQuickAction(`Clear all AI chart overlays for ${symbol}.`)}
               style={{
                 whiteSpace: 'nowrap',
                 fontSize: 10,
@@ -476,7 +996,7 @@ export const IntelligencePanel: React.FC = () => {
               }}
             >
               <Trash2 size={11} color="#F43F5E" />
-              <span>Clear Drawings</span>
+              <span>Clear Overlays</span>
             </button>
           </div>
 
@@ -495,7 +1015,7 @@ export const IntelligencePanel: React.FC = () => {
               type="text"
               value={inputPrompt}
               onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder={`Ask for analysis or request chart drawings (${symbol})...`}
+              placeholder={`Ask quantitative query or request chart plots (${symbol})...`}
               disabled={isBusy}
               style={{
                 flex: 1,
@@ -508,27 +1028,50 @@ export const IntelligencePanel: React.FC = () => {
                 outline: 'none'
               }}
             />
-            <button
-              type="submit"
-              disabled={isBusy || !inputPrompt.trim()}
-              style={{
-                padding: '8px 14px',
-                backgroundColor: '#D4AF37',
-                color: '#07090E',
-                border: 'none',
-                borderRadius: 6,
-                fontWeight: 700,
-                fontSize: 11,
-                cursor: isBusy || !inputPrompt.trim() ? 'not-allowed' : 'pointer',
-                opacity: isBusy || !inputPrompt.trim() ? 0.6 : 1
-              }}
-            >
-              Send
-            </button>
+            {isBusy ? (
+              <button
+                type="button"
+                onClick={abortGeneration}
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#F43F5E',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontWeight: 700,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                <Square size={11} />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!inputPrompt.trim()}
+                style={{
+                  padding: '8px 14px',
+                  backgroundColor: '#D4AF37',
+                  color: '#07090E',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontWeight: 700,
+                  fontSize: 11,
+                  cursor: !inputPrompt.trim() ? 'not-allowed' : 'pointer',
+                  opacity: !inputPrompt.trim() ? 0.6 : 1
+                }}
+              >
+                Send
+              </button>
+            )}
             <button
               type="button"
               onClick={clearChat}
-              title="Reset Chat"
+              title="Reset Chat Session"
               style={{
                 padding: '8px 10px',
                 backgroundColor: 'transparent',
@@ -770,7 +1313,7 @@ export const IntelligencePanel: React.FC = () => {
           style={{
             position: 'absolute',
             inset: 0,
-            backgroundColor: 'rgba(7, 9, 14, 0.85)',
+            backgroundColor: 'rgba(7, 9, 14, 0.88)',
             backdropFilter: 'blur(6px)',
             zIndex: 50,
             display: 'flex',
@@ -782,7 +1325,7 @@ export const IntelligencePanel: React.FC = () => {
           <div
             style={{
               width: '100%',
-              maxWidth: 360,
+              maxWidth: 380,
               backgroundColor: '#0D111A',
               border: '1px solid rgba(255, 255, 255, 0.12)',
               borderRadius: 8,
@@ -797,7 +1340,7 @@ export const IntelligencePanel: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Settings size={14} color="#D4AF37" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#F4F6FC' }}>
-                  AI Agent Provider
+                  AI Copilot Configuration
                 </span>
               </div>
               <button
@@ -820,7 +1363,7 @@ export const IntelligencePanel: React.FC = () => {
 
             {/* Provider Selector Switch */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 11, color: '#838896' }}>Select Mode:</span>
+              <span style={{ fontSize: 11, color: '#838896' }}>Engine Mode:</span>
               <div
                 style={{
                   display: 'flex',
@@ -884,6 +1427,7 @@ export const IntelligencePanel: React.FC = () => {
                             const next = useAiAgentStore.getState().config
                             setDraftBaseUrl(next.baseUrl)
                             setDraftModel(next.model)
+                            setDraftTemperature(next.temperature ?? 0.1)
                           }}
                           style={{
                             padding: '3px 7px',
@@ -948,7 +1492,7 @@ export const IntelligencePanel: React.FC = () => {
                     type={showApiKey ? 'text' : 'password'}
                     value={draftApiKey}
                     onChange={(e) => setDraftApiKey(e.target.value)}
-                    placeholder="sk-..."
+                    placeholder="sk-... (leave empty for local models)"
                     style={{
                       width: '100%',
                       padding: '7px 10px',
@@ -985,6 +1529,63 @@ export const IntelligencePanel: React.FC = () => {
                       boxSizing: 'border-box'
                     }}
                   />
+                </div>
+
+                {/* Temperature Slider */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <label style={{ fontSize: 10, color: '#838896' }}>
+                      Temperature (Quant Determinism):
+                    </label>
+                    <span style={{ fontSize: 10, fontFamily: THEME_TOKENS.typography.fontMono, color: '#D4AF37' }}>
+                      {draftTemperature}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={draftTemperature}
+                    onChange={(e) => setDraftTemperature(parseFloat(e.target.value))}
+                    style={{ width: '100%', accentColor: '#D4AF37' }}
+                  />
+                </div>
+
+                {/* Test Connection Button */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <button
+                    type="button"
+                    disabled={testStatus?.testing}
+                    onClick={handleTestConnection}
+                    style={{
+                      padding: '5px 10px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: 4,
+                      color: '#CBD5E1',
+                      fontSize: 10,
+                      cursor: testStatus?.testing ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {testStatus?.testing ? 'Testing...' : 'Test Connection'}
+                  </button>
+
+                  {testStatus?.result && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: THEME_TOKENS.typography.fontMono,
+                        color: testStatus.isError ? '#F43F5E' : '#10B981',
+                        maxWidth: 200,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {testStatus.result}
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (

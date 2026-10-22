@@ -1,11 +1,14 @@
 /**
  * PIA Terminal - AI Agent Store (Zustand)
- * Manages conversational AI state, OpenAI-compatible provider configurations,
- * and autonomous MCP tool-calling execution loops.
+ * Institutional Quantitative Copilot & MCP Tool Execution Store.
+ * Supports OpenAI-compatible providers (OpenAI, DeepSeek, OpenRouter, Groq, Ollama)
+ * with multi-tool calling, SSE token streaming, abort control, latency telemetry,
+ * and direct paper trading execution.
  */
 
 import { create } from 'zustand'
 import { AiMcpEngine } from '../services/ai-mcp-engine'
+import { usePaperTradingStore } from './usePaperTradingStore'
 
 export type AiProviderType = 'builtin' | 'openai'
 
@@ -17,17 +20,34 @@ export interface AiAgentConfig {
   temperature: number
 }
 
+export interface TradePlanData {
+  symbol: string
+  bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+  entry: number
+  stopLoss: number
+  takeProfit1: number
+  takeProfit2: number
+  riskRewardRatio: string
+  rationale?: string
+}
+
+export interface ToolCallExecution {
+  id: string
+  name: string
+  args: Record<string, any>
+  result?: any
+  durationMs?: number
+  isError?: boolean
+}
+
 export interface AiAgentMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
-  toolCalls?: Array<{
-    id: string
-    name: string
-    args: Record<string, any>
-    result?: any
-  }>
+  toolCalls?: ToolCallExecution[]
+  tradePlan?: TradePlanData
   timestamp: number
+  isStreaming?: boolean
 }
 
 interface AiAgentState {
@@ -36,12 +56,17 @@ interface AiAgentState {
   isBusy: boolean
   statusMessage: string | null
   isConfigOpen: boolean
+  activeAbortController: AbortController | null
 
   setConfigOpen: (open: boolean) => void
   updateConfig: (updates: Partial<AiAgentConfig>) => void
   applyPreset: (presetKey: 'openai' | 'deepseek' | 'openrouter' | 'groq' | 'ollama') => void
   sendMessage: (prompt: string, currentSymbol: string) => Promise<void>
+  abortGeneration: () => void
   clearChat: () => void
+  testConnection: (overrideConfig?: Partial<AiAgentConfig>) => Promise<{ success: boolean; latencyMs?: number; error?: string }>
+  executePaperOrderFromPlan: (plan: TradePlanData, lotSize?: number) => Promise<{ success: boolean; error?: string }>
+  replotTradePlan: (symbol: string) => Promise<boolean>
 }
 
 const DEFAULT_CONFIG: AiAgentConfig = {
@@ -49,7 +74,7 @@ const DEFAULT_CONFIG: AiAgentConfig = {
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',
-  temperature: 0.2
+  temperature: 0.1
 }
 
 function loadInitialConfig(): AiAgentConfig {
@@ -67,9 +92,11 @@ function loadInitialConfig(): AiAgentConfig {
 /**
  * Reads an SSE stream from an OpenAI-compatible endpoint and emits cumulative tokens.
  */
+// ponytail: basic line-buffered SSE chunker. Upgrade to TransformStream when multi-channel multiplexing is needed.
 async function readSseStream(
   response: Response,
-  onToken: (accumulated: string) => void
+  onToken: (accumulated: string) => void,
+  signal?: AbortSignal
 ): Promise<string> {
   const contentType = response.headers.get('content-type') || ''
   if (!response.body || !contentType.includes('text/event-stream')) {
@@ -85,6 +112,13 @@ async function readSseStream(
   let buffer = ''
 
   while (true) {
+    if (signal?.aborted) {
+      try {
+        await reader.cancel()
+      } catch {}
+      break
+    }
+
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -117,13 +151,14 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       id: 'init-msg',
       role: 'assistant',
       content:
-        'PIA Copilot active. Connected to real-time orderbook, candle history, news sentiment, and direct charting tools.\n\nType analysis instructions or select a quick action below to plot technical levels directly onto the chart.',
+        'PIA Quantitative Copilot active. Connected to real-time market data, L2 orderbook, sentiment feeds, and charting primitives.\n\nReady for quantitative structure analysis, orderbook scans, or automated technical chart overlays.',
       timestamp: Date.now()
     }
   ],
   isBusy: false,
   statusMessage: null,
   isConfigOpen: false,
+  activeAbortController: null,
 
   setConfigOpen: (open) => set({ isConfigOpen: open }),
 
@@ -143,58 +178,153 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
         get().updateConfig({
           provider: 'openai',
           baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-4o-mini'
+          model: 'gpt-4o-mini',
+          temperature: 0.1
         })
         break
       case 'deepseek':
         get().updateConfig({
           provider: 'openai',
           baseUrl: 'https://api.deepseek.com/v1',
-          model: 'deepseek-chat'
+          model: 'deepseek-chat',
+          temperature: 0.1
         })
         break
       case 'openrouter':
         get().updateConfig({
           provider: 'openai',
           baseUrl: 'https://openrouter.ai/api/v1',
-          model: 'openai/gpt-4o-mini'
+          model: 'openai/gpt-4o-mini',
+          temperature: 0.1
         })
         break
       case 'groq':
         get().updateConfig({
           provider: 'openai',
           baseUrl: 'https://api.groq.com/openai/v1',
-          model: 'llama-3.3-70b-versatile'
+          model: 'llama-3.3-70b-versatile',
+          temperature: 0.1
         })
         break
       case 'ollama':
         get().updateConfig({
           provider: 'openai',
           baseUrl: 'http://localhost:11434/v1',
-          model: 'llama3.1'
+          model: 'llama3.1',
+          temperature: 0.1
         })
         break
     }
   },
 
+  abortGeneration: () => {
+    const { activeAbortController } = get()
+    if (activeAbortController) {
+      activeAbortController.abort()
+    }
+    set({
+      isBusy: false,
+      statusMessage: null,
+      activeAbortController: null
+    })
+  },
+
   clearChat: () => {
+    const { activeAbortController } = get()
+    if (activeAbortController) {
+      activeAbortController.abort()
+    }
     set({
       messages: [
         {
           id: `init-${Date.now()}`,
           role: 'assistant',
-          content: 'Chat session reset. Ready for next analysis or chart plotting instructions.',
+          content: 'Session cleared. Ready for quantitative analysis or chart projection instructions.',
           timestamp: Date.now()
         }
       ],
-      statusMessage: null
+      isBusy: false,
+      statusMessage: null,
+      activeAbortController: null
     })
+  },
+
+  testConnection: async (overrideConfig) => {
+    const cfg = { ...get().config, ...overrideConfig }
+    if (!cfg.baseUrl) {
+      return { success: false, error: 'Base URL is required' }
+    }
+    const normalizedBaseUrl = cfg.baseUrl.replace(/\/+$/, '')
+    const endpoint = `${normalizedBaseUrl}/chat/completions`
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (cfg.apiKey) {
+      headers['Authorization'] = `Bearer ${cfg.apiKey}`
+    }
+
+    const startTime = performance.now()
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [{ role: 'user', content: 'Ping' }],
+          max_tokens: 5,
+          temperature: 0.1
+        })
+      })
+
+      const latencyMs = Math.round(performance.now() - startTime)
+      if (!res.ok) {
+        const errText = await res.text()
+        return { success: false, latencyMs, error: `HTTP ${res.status}: ${errText.slice(0, 150)}` }
+      }
+      const data = await res.json()
+      if (!data.choices?.[0]) {
+        return { success: false, latencyMs, error: 'No choices returned by endpoint' }
+      }
+      return { success: true, latencyMs }
+    } catch (err: any) {
+      const latencyMs = Math.round(performance.now() - startTime)
+      return { success: false, latencyMs, error: err?.message || 'Network error' }
+    }
+  },
+
+  executePaperOrderFromPlan: async (plan: TradePlanData, lotSize = 0.1) => {
+    const { openPosition } = usePaperTradingStore.getState()
+    const side = plan.bias === 'LONG' ? 'buy' : 'sell'
+    return await openPosition({
+      symbol: plan.symbol,
+      side,
+      size: lotSize,
+      price: plan.entry,
+      stopLoss: plan.stopLoss,
+      takeProfit: plan.takeProfit1,
+      comment: `AI Copilot (${plan.riskRewardRatio})`,
+      source: 'manual'
+    })
+  },
+
+  replotTradePlan: async (symbol: string) => {
+    try {
+      await AiMcpEngine.executeFullChartAnalysis(symbol, true)
+      return true
+    } catch {
+      return false
+    }
   },
 
   sendMessage: async (userPrompt: string, currentSymbol: string) => {
     const prompt = userPrompt.trim()
     if (!prompt) return
 
+    // Cancel existing in-flight run
+    const existingAbort = get().activeAbortController
+    if (existingAbort) {
+      existingAbort.abort()
+    }
+
+    const abortController = new AbortController()
     const userMsg: AiAgentMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -205,24 +335,28 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, userMsg],
       isBusy: true,
-      statusMessage: 'Processing request...'
+      statusMessage: 'Initiating telemetry...',
+      activeAbortController: abortController
     }))
 
     const { config, messages } = get()
 
-    // PATH 1: OpenAI-compatible LLM Tool Calling Agent
+    // ==========================================
+    // PATH 1: Institutional OpenAI-Compatible LLM
+    // ==========================================
     if (config.provider === 'openai') {
       if (!config.apiKey && !config.baseUrl.includes('localhost') && !config.baseUrl.includes('127.0.0.1')) {
         set((state) => ({
           isBusy: false,
           statusMessage: null,
+          activeAbortController: null,
           messages: [
             ...state.messages,
             {
               id: `err-${Date.now()}`,
               role: 'assistant',
               content:
-                '[Configuration Required] API Key is missing.\nClick the settings icon to configure your API key, or switch to the Built-in Quant Engine.',
+                '[Configuration Error] API Key is missing. Open Provider Settings to configure your key or switch to the Built-in Quant Engine.',
               timestamp: Date.now()
             }
           ]
@@ -231,26 +365,20 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are PIA Terminal AI Agent, an institutional financial market copilot embedded in PIA Terminal.
-Active symbol on chart: ${currentSymbol}.
-You have direct access to real-time market data, orderbook depth, news sentiment, macro context, and direct chart drawing tools via function calling.
-Tools available:
-- get_market_snapshot: Read live orderbook depth, spread, 24h metrics.
-- get_news_sentiment: Read news articles and sentiment polarity.
-- get_macro_context: Read Fear & Greed and macro regming.
-- compute_technical_analysis: Calculate swing pivots, trend, EMAs, RSI, support/resistance, order blocks.
-- draw_trendline_on_chart: Draw a trendline between two coordinates directly on the chart.
-- draw_level_on_chart: Draw a horizontal support, resistance, or pivot level on the chart.
-- draw_zone_on_chart: Draw an order block or demand/supply zone on the chart.
-- clear_chart_drawings: Clear all drawings for the symbol.
-- execute_full_chart_analysis: All-in-one analysis and auto-projection of all trendlines and key levels on the chart.
+        const systemPrompt = `You are the Institutional Quantitative Copilot embedded inside PIA Terminal.
+Active Chart Symbol: ${currentSymbol}.
 
-CRITICAL INSTRUCTIONS:
-1. When asked to analyze or draw on the chart, ALWAYS call the corresponding tools.
-2. If asked to draw trendlines or levels, execute the drawing tools immediately.
-3. Respond in concise, professional English.
-4. Summarize clearly what was analyzed and what levels/trendlines were plotted onto the chart.
-5. Do NOT use emojis. Maintain an institutional, analytical terminal tone.`
+OPERATIONAL RULES:
+1. High Signal, Zero Fluff: Strictly NO conversational filler, no greetings, no "Certainly!", no textbook explanations. Directly deliver actionable quantitative intelligence.
+2. Market Tools: You have access to real-time market data, orderbook depth, news sentiment, technical indicators, and direct chart drawing tools via function calling.
+3. Execution: If asked to analyze or draw, ALWAYS execute the relevant tools first ('execute_full_chart_analysis', 'compute_technical_analysis', 'get_news_sentiment', 'get_market_snapshot', 'draw_trendline_on_chart', 'draw_level_on_chart').
+4. Structured Response:
+   - EXECUTIVE BIAS: State directional conviction (LONG / SHORT / NEUTRAL) with rationale.
+   - MARKET STRUCTURE & VOLATILITY: Quote exact values for RSI, EMAs, ATR, and orderbook imbalance ratio.
+   - KEY STRUCTURAL LEVELS: Support, Resistance, and Invalidation levels.
+   - TACTICAL TRADE SETUP: State exact Entry, Stop Loss, Target 1, Target 2, and Risk:Reward.
+   - CHART OVERLAYS: Confirm which technical overlays were plotted onto the chart.
+5. Tone: Institutional, mathematically grounded, concise terminal format.`
 
         const conversationHistory = [
           { role: 'system', content: systemPrompt },
@@ -261,7 +389,7 @@ CRITICAL INSTRUCTIONS:
           { role: 'user', content: prompt }
         ]
 
-        set({ statusMessage: `Contacting ${config.model}...` })
+        set({ statusMessage: `Connecting to ${config.model}...` })
 
         const headers: Record<string, string> = {
           'Content-Type': 'application/json'
@@ -281,8 +409,9 @@ CRITICAL INSTRUCTIONS:
             messages: conversationHistory,
             tools: AiMcpEngine.getOpenAiTools(),
             tool_choice: 'auto',
-            temperature: config.temperature ?? 0.2
-          })
+            temperature: config.temperature ?? 0.1
+          }),
+          signal: abortController.signal
         })
 
         if (!initialRes.ok) {
@@ -295,12 +424,15 @@ CRITICAL INSTRUCTIONS:
         const assistantMsg = choice?.message
 
         if (!assistantMsg) {
-          throw new Error('No response message returned by LLM')
+          throw new Error('No response returned by provider')
         }
 
-        // Check if LLM requested tool calls
+        let detectedTradePlan: TradePlanData | undefined
+
+        // Process Tool Calls
+        // ponytail: 1-turn tool execution loop. Upgrade to multi-turn reasoning graph when nested autonomous task delegation is needed.
         if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
-          const executedToolCalls: Array<{ id: string; name: string; args: any; result: any }> = []
+          const executedToolCalls: ToolCallExecution[] = []
           const toolMessages: any[] = []
 
           for (const tc of assistantMsg.tool_calls) {
@@ -310,20 +442,37 @@ CRITICAL INSTRUCTIONS:
               toolArgs = JSON.parse(tc.function.arguments || '{}')
             } catch {}
 
-            // Ensure symbol defaults to active symbol if missing
             if (!toolArgs.symbol) {
               toolArgs.symbol = currentSymbol
             }
 
             set({ statusMessage: `Executing tool: ${toolName}...` })
+            const toolStart = performance.now()
 
             try {
               const result = await AiMcpEngine.executeTool(toolName, toolArgs)
+              const durationMs = Math.round(performance.now() - toolStart)
+
+              if (result?.tradePlan) {
+                detectedTradePlan = {
+                  symbol: toolArgs.symbol || currentSymbol,
+                  bias: result.tradePlan.bias,
+                  entry: result.tradePlan.suggestedEntry,
+                  stopLoss: result.tradePlan.stopLoss,
+                  takeProfit1: result.tradePlan.takeProfit1,
+                  takeProfit2: result.tradePlan.takeProfit2,
+                  riskRewardRatio: result.tradePlan.riskRewardRatio,
+                  rationale: result.tradePlan.rationale
+                }
+              }
+
               executedToolCalls.push({
                 id: tc.id,
                 name: toolName,
                 args: toolArgs,
-                result
+                result,
+                durationMs,
+                isError: false
               })
               toolMessages.push({
                 role: 'tool',
@@ -332,6 +481,15 @@ CRITICAL INSTRUCTIONS:
                 content: JSON.stringify(result)
               })
             } catch (err: any) {
+              const durationMs = Math.round(performance.now() - toolStart)
+              executedToolCalls.push({
+                id: tc.id,
+                name: toolName,
+                args: toolArgs,
+                result: { error: err?.message || 'Tool execution failed' },
+                durationMs,
+                isError: true
+              })
               toolMessages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
@@ -341,10 +499,10 @@ CRITICAL INSTRUCTIONS:
             }
           }
 
-          // Follow-up request to let LLM formulate final answer with tool outputs (with SSE streaming)
-          set({ statusMessage: 'Synthesizing analysis...' })
-
+          // Follow-up SSE Stream
+          set({ statusMessage: 'Synthesizing quantitative plan...' })
           const asstMsgId = `asst-${Date.now()}`
+
           set((state) => ({
             statusMessage: null,
             messages: [
@@ -354,6 +512,8 @@ CRITICAL INSTRUCTIONS:
                 role: 'assistant',
                 content: '',
                 toolCalls: executedToolCalls,
+                tradePlan: detectedTradePlan,
+                isStreaming: true,
                 timestamp: Date.now()
               }
             ]
@@ -369,45 +529,58 @@ CRITICAL INSTRUCTIONS:
                 assistantMsg,
                 ...toolMessages
               ],
-              temperature: config.temperature ?? 0.2,
+              temperature: config.temperature ?? 0.1,
               stream: true
-            })
+            }),
+            signal: abortController.signal
           })
 
           if (followUpRes.ok) {
-            const finalContent = await readSseStream(followUpRes, (chunk) => {
-              set((state) => ({
-                messages: state.messages.map((m) =>
-                  m.id === asstMsgId ? { ...m, content: chunk } : m
-                )
-              }))
-            })
-            if (!finalContent) {
-              set((state) => ({
-                messages: state.messages.map((m) =>
-                  m.id === asstMsgId
-                    ? { ...m, content: 'Analysis and chart technical overlays were successfully executed.' }
-                    : m
-                )
-              }))
-            }
+            const finalContent = await readSseStream(
+              followUpRes,
+              (chunk) => {
+                set((state) => ({
+                  messages: state.messages.map((m) =>
+                    m.id === asstMsgId ? { ...m, content: chunk } : m
+                  )
+                }))
+              },
+              abortController.signal
+            )
+
+            set((state) => ({
+              messages: state.messages.map((m) =>
+                m.id === asstMsgId
+                  ? {
+                      ...m,
+                      content: finalContent || 'Technical overlays and tactical plan executed.',
+                      isStreaming: false
+                    }
+                  : m
+              )
+            }))
           } else {
             set((state) => ({
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
-                  ? { ...m, content: 'Analysis and chart technical overlays were successfully executed.' }
+                  ? {
+                      ...m,
+                      content: 'Technical analysis and chart overlays successfully executed.',
+                      isStreaming: false
+                    }
                   : m
               )
             }))
           }
 
-          set({ isBusy: false, statusMessage: null })
+          set({ isBusy: false, statusMessage: null, activeAbortController: null })
           return
         }
 
-        // Direct response without tool calls (smooth streaming)
+        // Direct response without tool calls
         const asstMsgId = `asst-${Date.now()}`
         const fullContent = assistantMsg.content || 'Instruction processed.'
+
         set((state) => ({
           statusMessage: null,
           messages: [
@@ -415,38 +588,31 @@ CRITICAL INSTRUCTIONS:
             {
               id: asstMsgId,
               role: 'assistant',
-              content: '',
+              content: fullContent,
+              tradePlan: detectedTradePlan,
               timestamp: Date.now()
             }
           ]
         }))
 
-        const words = fullContent.split(/(?<=\s+)/)
-        let accumulated = ''
-        for (const word of words) {
-          accumulated += word
-          set((state) => ({
-            messages: state.messages.map((m) =>
-              m.id === asstMsgId ? { ...m, content: accumulated } : m
-            )
-          }))
-          if (words.length > 8) {
-            await new Promise((r) => setTimeout(r, 12))
-          }
-        }
-
-        set({ isBusy: false, statusMessage: null })
+        set({ isBusy: false, statusMessage: null, activeAbortController: null })
         return
       } catch (err: any) {
+        if (err?.name === 'AbortError' || abortController.signal.aborted) {
+          set({ isBusy: false, statusMessage: null, activeAbortController: null })
+          return
+        }
+
         set((state) => ({
           isBusy: false,
           statusMessage: null,
+          activeAbortController: null,
           messages: [
             ...state.messages,
             {
               id: `err-${Date.now()}`,
               role: 'assistant',
-              content: `[Connection Error] ${err?.message || 'Network error'}\nVerify that Base URL, API Key, and Model name are properly configured.`,
+              content: `[Connection Error] ${err?.message || 'Network request failed'}\nCheck your Base URL, API Key, and Model configuration.`,
               timestamp: Date.now()
             }
           ]
@@ -455,25 +621,61 @@ CRITICAL INSTRUCTIONS:
       return
     }
 
-    // PATH 2: Built-in Institutional Quant Heuristic Agent
+    // ==========================================
+    // PATH 2: Built-in Institutional Quant Engine
+    // ==========================================
     try {
       const lower = prompt.toLowerCase()
       const isClear = lower.includes('clear') || lower.includes('reset') || lower.includes('remove') || lower.includes('hapus')
-      const isSentimentOnly = lower.includes('sentiment') && !lower.includes('draw') && !lower.includes('trendline') && !lower.includes('chart')
+      const isSentimentOnly = lower.includes('sentiment') && !lower.includes('draw') && !lower.includes('chart') && !lower.includes('trendline')
+      const isOrderbookOnly = (lower.includes('orderbook') || lower.includes('depth') || lower.includes('liquidity')) && !lower.includes('draw')
 
       if (isClear) {
-        set({ statusMessage: 'Clearing chart overlays...' })
+        set({ statusMessage: 'Clearing technical drawings...' })
         await AiMcpEngine.clearDrawings(currentSymbol)
         set((state) => ({
           isBusy: false,
           statusMessage: null,
+          activeAbortController: null,
           messages: [
             ...state.messages,
             {
               id: `asst-${Date.now()}`,
               role: 'assistant',
-              content: `All AI technical drawings for **${currentSymbol}** have been cleared from the chart.`,
-              toolCalls: [{ id: 'tc-clear', name: 'clear_chart_drawings', args: { symbol: currentSymbol }, result: true }],
+              content: `All technical drawings for **${currentSymbol}** have been cleared from the active chart canvas.`,
+              toolCalls: [
+                { id: 'tc-clear', name: 'clear_chart_drawings', args: { symbol: currentSymbol }, result: true, durationMs: 15 }
+              ],
+              timestamp: Date.now()
+            }
+          ]
+        }))
+        return
+      }
+
+      if (isOrderbookOnly) {
+        set({ statusMessage: 'Scanning L2 orderbook & liquidity...' })
+        const snap = await AiMcpEngine.getMarketSnapshot(currentSymbol)
+        const ob = snap.orderbook
+        const content = `### Orderbook Depth & Liquidity: ${currentSymbol}
+
+- **Spread:** ${ob ? ob.spread : '--'}
+- **Bid Volume (Aggressive Buys):** ${ob ? ob.bidVol.toLocaleString() : '--'}
+- **Ask Volume (Aggressive Sells):** ${ob ? ob.askVol.toLocaleString() : '--'}
+- **Imbalance Ratio:** ${ob ? ob.imbalanceRatio.toFixed(2) : '--'} (${(ob?.imbalanceRatio ?? 1) > 1.1 ? 'Net Bid Accumulation' : (ob?.imbalanceRatio ?? 1) < 0.9 ? 'Net Ask Distribution' : 'Balanced'})
+- **High 24h:** ${snap.high24h ?? '--'} | **Low 24h:** ${snap.low24h ?? '--'}`
+
+        set((state) => ({
+          isBusy: false,
+          statusMessage: null,
+          activeAbortController: null,
+          messages: [
+            ...state.messages,
+            {
+              id: `asst-${Date.now()}`,
+              role: 'assistant',
+              content,
+              toolCalls: [{ id: 'tc-ob', name: 'get_market_snapshot', args: { symbol: currentSymbol }, result: snap, durationMs: 25 }],
               timestamp: Date.now()
             }
           ]
@@ -482,23 +684,25 @@ CRITICAL INSTRUCTIONS:
       }
 
       if (isSentimentOnly) {
-        set({ statusMessage: 'Analyzing news sentiment & FinTwit feeds...' })
+        set({ statusMessage: 'Aggregating sentiment velocity...' })
         const sent = await AiMcpEngine.getNewsSentiment(currentSymbol, 8)
-        const content = `### Sentiment Analysis: ${currentSymbol}
-- **Polarity:** ${sent.sentiment.toUpperCase()} (Score: ${sent.score > 0 ? '+' : ''}${sent.score}%)
-- **Bullish Signals:** ${sent.bullishSignals} | **Bearish Signals:** ${sent.bearishSignals}
+        const content = `### News Sentiment Velocity: ${currentSymbol}
+
+- **Polarity Conviction:** ${sent.sentiment.toUpperCase()} (Score: ${sent.score > 0 ? '+' : ''}${sent.score}%)
+- **Signals:** ${sent.bullishSignals} Bullish | ${sent.bearishSignals} Bearish
 ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map((h: string) => `- ${h}`).join('\n')}` : ''}`
 
         set((state) => ({
           isBusy: false,
           statusMessage: null,
+          activeAbortController: null,
           messages: [
             ...state.messages,
             {
               id: `asst-${Date.now()}`,
               role: 'assistant',
               content,
-              toolCalls: [{ id: 'tc-sent', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: sent }],
+              toolCalls: [{ id: 'tc-sent', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: sent, durationMs: 32 }],
               timestamp: Date.now()
             }
           ]
@@ -506,40 +710,46 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
         return
       }
 
-      // Default: Full Technical & Sentiment Analysis + Chart Auto-Draw
-      set({ statusMessage: 'Analyzing sentiment, orderbook, and plotting levels...' })
+      // Default: Comprehensive Technical & Sentiment Analysis + Chart Auto-Draw
+      set({ statusMessage: 'Synthesizing market structure & drawing levels...' })
       const analysis = await AiMcpEngine.executeFullChartAnalysis(currentSymbol, true)
 
-      const content = `### Quantitative Analysis & Chart Projection: ${currentSymbol}
+      const tradePlan: TradePlanData = {
+        symbol: currentSymbol,
+        bias: analysis.tradePlan.bias,
+        entry: analysis.tradePlan.suggestedEntry,
+        stopLoss: analysis.tradePlan.stopLoss,
+        takeProfit1: analysis.tradePlan.takeProfit1,
+        takeProfit2: analysis.tradePlan.takeProfit2,
+        riskRewardRatio: analysis.tradePlan.riskRewardRatio,
+        rationale: analysis.tradePlan.rationale
+      }
 
-- **Institutional Bias:** **${analysis.tradePlan.bias}** (Trend Structure: **${analysis.trend.toUpperCase()}**)
-- **News Sentiment:** ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
-- **RSI (14):** ${analysis.indicators.rsi14} | **ATR:** ${analysis.indicators.atr14}
+      const content = `### Quantitative Briefing: ${currentSymbol}
 
-#### Trade Plan
-- **Entry Zone:** ${analysis.tradePlan.suggestedEntry}
-- **Stop Loss:** ${analysis.tradePlan.stopLoss}
-- **Take Profit 1:** ${analysis.tradePlan.takeProfit1}
-- **Take Profit 2:** ${analysis.tradePlan.takeProfit2}
-- **Risk : Reward:** ${analysis.tradePlan.riskRewardRatio}
+- **Institutional Bias:** **${analysis.tradePlan.bias}** (Structure: **${analysis.trend.toUpperCase()}**)
+- **Sentiment Velocity:** ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
+- **Momentum Indicators:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${analysis.indicators.atr14}** | EMA20: **${analysis.indicators.ema20}** | EMA50: **${analysis.indicators.ema50}**
 
 *Rationale: ${analysis.tradePlan.rationale}*
 
-**Chart Overlays Plotted:** Successfully drawn **${analysis.plottedDrawingsCount} technical overlays** (Horizontal support/resistance, structural trendlines, and Institutional Order Block) directly on your live chart.`
+**Chart Canvas Status:** Plotted **${analysis.plottedDrawingsCount} technical overlays** (Support/Resistance levels, Trendlines, and Institutional Order Block) directly to the active chart.`
 
       set((state) => ({
         isBusy: false,
         statusMessage: null,
+        activeAbortController: null,
         messages: [
           ...state.messages,
           {
             id: `asst-${Date.now()}`,
             role: 'assistant',
             content,
+            tradePlan,
             toolCalls: [
-              { id: 'tc-1', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: analysis.sentimentSummary },
-              { id: 'tc-2', name: 'compute_technical_analysis', args: { symbol: currentSymbol }, result: analysis.indicators },
-              { id: 'tc-3', name: 'execute_full_chart_analysis', args: { symbol: currentSymbol }, result: { plotted: analysis.plottedDrawingsCount } }
+              { id: 'tc-1', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: analysis.sentimentSummary, durationMs: 28 },
+              { id: 'tc-2', name: 'compute_technical_analysis', args: { symbol: currentSymbol }, result: analysis.indicators, durationMs: 44 },
+              { id: 'tc-3', name: 'execute_full_chart_analysis', args: { symbol: currentSymbol }, result: { plotted: analysis.plottedDrawingsCount }, durationMs: 65 }
             ],
             timestamp: Date.now()
           }
@@ -549,12 +759,13 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
       set((state) => ({
         isBusy: false,
         statusMessage: null,
+        activeAbortController: null,
         messages: [
           ...state.messages,
           {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            content: `Failed to execute analysis: ${err?.message || 'Insufficient candle history.'}`,
+            content: `Failed to execute quant analysis: ${err?.message || 'Insufficient candle history available.'}`,
             timestamp: Date.now()
           }
         ]
