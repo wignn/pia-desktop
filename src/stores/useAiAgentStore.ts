@@ -64,6 +64,52 @@ function loadInitialConfig(): AiAgentConfig {
   return DEFAULT_CONFIG
 }
 
+/**
+ * Reads an SSE stream from an OpenAI-compatible endpoint and emits cumulative tokens.
+ */
+async function readSseStream(
+  response: Response,
+  onToken: (accumulated: string) => void
+): Promise<string> {
+  const contentType = response.headers.get('content-type') || ''
+  if (!response.body || !contentType.includes('text/event-stream')) {
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content || ''
+    onToken(content)
+    return content
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let accumulated = ''
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
+      if (!line || !line.startsWith('data:')) continue
+      const dataStr = line.replace(/^data:\s*/, '').trim()
+      if (dataStr === '[DONE]') continue
+      try {
+        const parsed = JSON.parse(dataStr)
+        const delta = parsed.choices?.[0]?.delta?.content || ''
+        if (delta) {
+          accumulated += delta
+          onToken(accumulated)
+        }
+      } catch {}
+    }
+  }
+
+  return accumulated
+}
+
 export const useAiAgentStore = create<AiAgentState>((set, get) => ({
   config: loadInitialConfig(),
   messages: [
@@ -295,8 +341,23 @@ CRITICAL INSTRUCTIONS:
             }
           }
 
-          // Follow-up request to let LLM formulate final answer with tool outputs
+          // Follow-up request to let LLM formulate final answer with tool outputs (with SSE streaming)
           set({ statusMessage: 'Synthesizing analysis...' })
+
+          const asstMsgId = `asst-${Date.now()}`
+          set((state) => ({
+            statusMessage: null,
+            messages: [
+              ...state.messages,
+              {
+                id: asstMsgId,
+                role: 'assistant',
+                content: '',
+                toolCalls: executedToolCalls,
+                timestamp: Date.now()
+              }
+            ]
+          }))
 
           const followUpRes = await fetch(endpoint, {
             method: 'POST',
@@ -308,49 +369,74 @@ CRITICAL INSTRUCTIONS:
                 assistantMsg,
                 ...toolMessages
               ],
-              temperature: config.temperature ?? 0.2
+              temperature: config.temperature ?? 0.2,
+              stream: true
             })
           })
 
-          let finalContent = ''
           if (followUpRes.ok) {
-            const followUpData = await followUpRes.json()
-            finalContent = followUpData.choices?.[0]?.message?.content || ''
+            const finalContent = await readSseStream(followUpRes, (chunk) => {
+              set((state) => ({
+                messages: state.messages.map((m) =>
+                  m.id === asstMsgId ? { ...m, content: chunk } : m
+                )
+              }))
+            })
+            if (!finalContent) {
+              set((state) => ({
+                messages: state.messages.map((m) =>
+                  m.id === asstMsgId
+                    ? { ...m, content: 'Analysis and chart technical overlays were successfully executed.' }
+                    : m
+                )
+              }))
+            }
           } else {
-            finalContent = 'Analysis and chart technical overlays were successfully executed.'
+            set((state) => ({
+              messages: state.messages.map((m) =>
+                m.id === asstMsgId
+                  ? { ...m, content: 'Analysis and chart technical overlays were successfully executed.' }
+                  : m
+              )
+            }))
           }
 
-          set((state) => ({
-            isBusy: false,
-            statusMessage: null,
-            messages: [
-              ...state.messages,
-              {
-                id: `asst-${Date.now()}`,
-                role: 'assistant',
-                content: finalContent,
-                toolCalls: executedToolCalls,
-                timestamp: Date.now()
-              }
-            ]
-          }))
+          set({ isBusy: false, statusMessage: null })
           return
         }
 
-        // Direct response without tool calls
+        // Direct response without tool calls (smooth streaming)
+        const asstMsgId = `asst-${Date.now()}`
+        const fullContent = assistantMsg.content || 'Instruction processed.'
         set((state) => ({
-          isBusy: false,
           statusMessage: null,
           messages: [
             ...state.messages,
             {
-              id: `asst-${Date.now()}`,
+              id: asstMsgId,
               role: 'assistant',
-              content: assistantMsg.content || 'Instruction processed.',
+              content: '',
               timestamp: Date.now()
             }
           ]
         }))
+
+        const words = fullContent.split(/(?<=\s+)/)
+        let accumulated = ''
+        for (const word of words) {
+          accumulated += word
+          set((state) => ({
+            messages: state.messages.map((m) =>
+              m.id === asstMsgId ? { ...m, content: accumulated } : m
+            )
+          }))
+          if (words.length > 8) {
+            await new Promise((r) => setTimeout(r, 12))
+          }
+        }
+
+        set({ isBusy: false, statusMessage: null })
+        return
       } catch (err: any) {
         set((state) => ({
           isBusy: false,
