@@ -817,7 +817,7 @@ export const IntelligencePanel: React.FC = () => {
                 transition: 'all 0.15s ease'
               }}
             >
-              AI Copilot
+              PIA Agent
             </button>
             <button
               type="button"
@@ -878,7 +878,7 @@ export const IntelligencePanel: React.FC = () => {
         </div>
       </div>
 
-      {/* VIEW 1: INTERACTIVE AI AGENT COPILOT */}
+      {/* VIEW 1: INTERACTIVE AI AGENT */}
       {activeTab === 'agent' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {/* Messages Stream */}
@@ -934,7 +934,7 @@ export const IntelligencePanel: React.FC = () => {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <Bot size={12} color="#D4AF37" />
-                          <span>PIA COPILOT</span>
+                          <span>PIA AGENT</span>
                           <span style={{ color: '#64748B', fontWeight: 400 }}>
                             ({config.provider === 'openai' ? config.model : 'Quant Engine'})
                           </span>
@@ -1498,7 +1498,7 @@ export const IntelligencePanel: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Settings size={14} color="#D4AF37" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#F4F6FC' }}>
-                  AI Copilot Configuration
+                  PIA Agent Configuration
                 </span>
               </div>
               <button

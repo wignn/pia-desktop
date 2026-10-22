@@ -1,12 +1,13 @@
 /**
  * PIA Terminal - AI Agent Store (Zustand)
- * Institutional Quantitative Copilot & MCP Tool Execution Store.
+ * Institutional Quantitative Agent & MCP Tool Execution Store.
  * Supports OpenAI-compatible providers (OpenAI, DeepSeek, OpenRouter, Groq, Ollama)
  * with multi-tool calling, SSE token streaming, abort control, latency telemetry,
  * and direct paper trading execution.
  */
 
 import { create } from 'zustand'
+import { invoke } from '@tauri-apps/api/core'
 import { AiMcpEngine } from '../services/ai-mcp-engine'
 import { usePaperTradingStore } from './usePaperTradingStore'
 import { useMarketStore } from './useMarketStore'
@@ -127,41 +128,23 @@ function loadInitialConfig(): AiAgentConfig {
   return DEFAULT_CONFIG
 }
 
-/**
- * Reads an SSE stream from an OpenAI-compatible endpoint and emits cumulative tokens.
- */
-// ponytail: basic line-buffered SSE chunker. Upgrade to TransformStream when multi-channel multiplexing is needed.
-async function readSseStream(
-  response: Response,
-  onToken: (accumulated: string) => void,
-  signal?: AbortSignal
-): Promise<string> {
-  const contentType = response.headers.get('content-type') || ''
-  if (!response.body || !contentType.includes('text/event-stream')) {
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content || ''
-    onToken(content)
-    return content
+export function parseLlmResponseBody(raw: string): any {
+  const trimmed = raw.trim()
+  if (!trimmed) return {}
+
+  // If standard JSON, parse directly
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {}
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let accumulated = ''
-  let buffer = ''
-
-  while (true) {
-    if (signal?.aborted) {
-      try {
-        await reader.cancel()
-      } catch {}
-      break
-    }
-
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
+  // If SSE stream format (data: ...)
+  if (trimmed.includes('data:')) {
+    const lines = trimmed.split('\n')
+    let accumulatedContent = ''
+    let accumulatedReasoning = ''
+    let toolCalls: any[] = []
 
     for (const rawLine of lines) {
       const line = rawLine.trim()
@@ -170,16 +153,129 @@ async function readSseStream(
       if (dataStr === '[DONE]') continue
       try {
         const parsed = JSON.parse(dataStr)
-        const delta = parsed.choices?.[0]?.delta?.content || ''
-        if (delta) {
-          accumulated += delta
-          onToken(accumulated)
+        const choice = parsed.choices?.[0]
+        if (choice?.delta) {
+          if (choice.delta.content) accumulatedContent += choice.delta.content
+          if (choice.delta.reasoning_content) accumulatedReasoning += choice.delta.reasoning_content
+          if (choice.delta.tool_calls) {
+            for (const tc of choice.delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCalls[idx]) {
+                toolCalls[idx] = { id: tc.id || `tc-${idx}`, type: 'function', function: { name: '', arguments: '' } }
+              }
+              if (tc.function?.name) toolCalls[idx].function.name += tc.function.name
+              if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments
+            }
+          }
+        } else if (choice?.message) {
+          if (choice.message.content) accumulatedContent += choice.message.content
+          if (choice.message.reasoning_content) accumulatedReasoning += choice.message.reasoning_content
         }
       } catch {}
     }
+
+    let finalContent = accumulatedContent
+    if (accumulatedReasoning && !finalContent.includes('<thought>') && !finalContent.includes('<thinking>')) {
+      finalContent = `<thought>\n${accumulatedReasoning.trim()}\n</thought>\n\n${finalContent}`
+    }
+
+    return {
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: finalContent,
+            tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+          },
+          finish_reason: 'stop'
+        }
+      ]
+    }
   }
 
-  return accumulated
+  return { choices: [{ message: { role: 'assistant', content: trimmed } }] }
+}
+
+interface UniversalResponse {
+  ok: boolean
+  status: number
+  headers: Headers
+  text: () => Promise<string>
+  json: () => Promise<any>
+}
+
+/**
+ * Universal HTTP fetch: uses native Tauri reqwest backend on desktop to bypass CORS & OPTIONS preflights,
+ * and falls back to standard window.fetch in web environments.
+ */
+// ponytail: Native Tauri Rust proxy over browser fetch. Upgrade to WebSocket/IPC stream when token-by-token visual streaming is demanded in desktop mode.
+async function universalFetch(url: string, options: RequestInit = {}): Promise<UniversalResponse> {
+  const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)
+  if (isTauri) {
+    try {
+      const headersMap: Record<string, string> = {}
+      if (options.headers) {
+        if (options.headers instanceof Headers) {
+          options.headers.forEach((v, k) => {
+            headersMap[k] = v
+          })
+        } else if (Array.isArray(options.headers)) {
+          options.headers.forEach(([k, v]) => {
+            headersMap[k] = v
+          })
+        } else {
+          Object.assign(headersMap, options.headers)
+        }
+      }
+
+      const bodyStr =
+        typeof options.body === 'string'
+          ? options.body
+          : options.body
+          ? JSON.stringify(options.body)
+          : undefined
+
+      const res = await invoke<{
+        status: number
+        headers: Record<string, string>
+        body: string
+      }>('native_http_request', {
+        req: {
+          url,
+          method: options.method || 'GET',
+          headers: headersMap,
+          body: bodyStr
+        }
+      })
+
+      const headers = new Headers(res.headers)
+      return {
+        ok: res.status >= 200 && res.status < 300,
+        status: res.status,
+        headers,
+        text: async () => res.body,
+        json: async () => parseLlmResponseBody(res.body)
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      if (!msg.includes('command not found')) {
+        throw new Error(msg)
+      }
+    }
+  }
+
+  const res = await fetch(url, options)
+  return {
+    ok: res.ok,
+    status: res.status,
+    headers: res.headers,
+    text: () => res.text(),
+    json: async () => {
+      const raw = await res.text()
+      return parseLlmResponseBody(raw)
+    }
+  }
 }
 
 /**
@@ -254,7 +350,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       id: 'init-msg',
       role: 'assistant',
       content:
-        'PIA Quantitative Copilot active. Connected to real-time market data, L2 orderbook, sentiment feeds, and charting primitives.\n\nReady for quantitative structure analysis, orderbook scans, or automated technical chart overlays.',
+        'PIA Quantitative Agent active. Connected to real-time market data, L2 orderbook, sentiment feeds, and charting primitives.\n\nReady for quantitative structure analysis, orderbook scans, or automated technical chart overlays.',
       timestamp: Date.now()
     }
   ],
@@ -366,14 +462,15 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
 
     const startTime = performance.now()
     try {
-      const res = await fetch(endpoint, {
+      const res = await universalFetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           model: cfg.model,
           messages: [{ role: 'user', content: 'Ping' }],
           max_tokens: 5,
-          temperature: 0.1
+          temperature: 0.1,
+          stream: false
         })
       })
 
@@ -411,7 +508,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
         size,
         stopLoss: plan.stopLoss,
         takeProfit: plan.takeProfit1,
-        comment: `AI Copilot ${plan.orderType.replace('_', ' ')} (${plan.riskRewardRatio})`
+        comment: `PIA Agent ${plan.orderType.replace('_', ' ')} (${plan.riskRewardRatio})`
       })
     }
 
@@ -423,7 +520,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       price: plan.entry,
       stopLoss: plan.stopLoss,
       takeProfit: plan.takeProfit1,
-      comment: `AI Copilot Market (${plan.riskRewardRatio})`,
+      comment: `PIA Agent Market (${plan.riskRewardRatio})`,
       source: 'manual'
     })
   },
@@ -492,7 +589,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are PIA Copilot, an elite agentic quantitative trader and market assistant (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
+        const systemPrompt = `You are PIA Agent, an elite agentic quantitative trader and market assistant (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
 Active Chart Symbol: ${currentSymbol}.
 
 AGENTIC PROTOCOLS:
@@ -537,7 +634,7 @@ AGENTIC PROTOCOLS:
         const normalizedBaseUrl = config.baseUrl.replace(/\/+$/, '')
         const endpoint = `${normalizedBaseUrl}/chat/completions`
 
-        const initialRes = await fetch(endpoint, {
+        const initialRes = await universalFetch(endpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -545,7 +642,8 @@ AGENTIC PROTOCOLS:
             messages: conversationHistory,
             tools: AiMcpEngine.getOpenAiTools(),
             tool_choice: 'auto',
-            temperature: config.temperature ?? 0.1
+            temperature: config.temperature ?? 0.1,
+            stream: false
           }),
           signal: abortController.signal
         })
@@ -635,7 +733,7 @@ AGENTIC PROTOCOLS:
             }
           }
 
-          // Follow-up SSE Stream
+          // Follow-up request with tool results
           set({ statusMessage: 'Synthesizing quantitative plan...' })
           const asstMsgId = `asst-${Date.now()}`
 
@@ -655,7 +753,7 @@ AGENTIC PROTOCOLS:
             ]
           }))
 
-          const followUpRes = await fetch(endpoint, {
+          const followUpRes = await universalFetch(endpoint, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -666,31 +764,19 @@ AGENTIC PROTOCOLS:
                 ...toolMessages
               ],
               temperature: config.temperature ?? 0.1,
-              stream: true
+              stream: false
             }),
             signal: abortController.signal
           })
 
           if (followUpRes.ok) {
-            const finalRaw = await readSseStream(
-              followUpRes,
-              (chunk) => {
-                const parsed = parseThinkingAndContent(chunk)
-                set((state) => ({
-                  messages: state.messages.map((m) =>
-                    m.id === asstMsgId
-                      ? {
-                          ...m,
-                          thought: parsed.thought,
-                          content: parsed.content
-                        }
-                      : m
-                  )
-                }))
-              },
-              abortController.signal
-            )
-
+            let finalRaw = ''
+            try {
+              const followUpData = await followUpRes.json()
+              finalRaw = followUpData.choices?.[0]?.message?.content || ''
+            } catch {
+              finalRaw = await followUpRes.text()
+            }
             const finalParsed = parseThinkingAndContent(finalRaw)
             const resolvedPlan = detectedTradePlan || extractTradePlanFromText(finalParsed.content, currentSymbol)
 
@@ -862,7 +948,7 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
         return
       }
 
-      // Default: Comprehensive Technical & Sentiment Analysis + Chart Auto-Draw
+      // Default: Comprehensive Technical & Sentiment Analysis
       set({ statusMessage: 'Synthesizing market structure & agentic reasoning...' })
       const analysis = await AiMcpEngine.executeFullChartAnalysis(currentSymbol, true)
       const livePrice = useMarketStore.getState().prices[currentSymbol]?.price || analysis.currentPrice
@@ -870,220 +956,299 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
       const roundP = (n: number) => Number(Math.round(Number(n + 'e' + pricePrecision)) + 'e-' + pricePrecision)
       const formatP = (n?: number) => formatCleanPrice(n, pricePrecision)
 
-      const isIndonesian = /bagaimana|gimana|sekarang|terus|rekomendasi|kasih|apa|posisi|beli|jual|pasang|taktis|bisa|dong|halo|tolong|masuk|ambil|order|sarannya|kira|kemana|open/i.test(prompt)
+      // ponytail: Rule-based intent router ceiling for Built-in mode. Upgrade path: LLM API provider for full conversational reasoning.
+      const sortedSupports = [...analysis.levels.support].sort((a, b) => b - a)
+      const s1 = sortedSupports[0] ? roundP(sortedSupports[0]) : roundP(livePrice * 0.985)
+      const s2 = sortedSupports[1] ? roundP(sortedSupports[1]) : roundP(s1 - analysis.indicators.atr14 * 1.5)
+
+      const sortedResistances = [...analysis.levels.resistance].sort((a, b) => a - b)
+      const r1 = sortedResistances[0] ? roundP(sortedResistances[0]) : roundP(livePrice * 1.015)
+      const r2 = sortedResistances[1] ? roundP(sortedResistances[1]) : roundP(r1 + analysis.indicators.atr14 * 1.5)
+
+      const isIndonesian =
+        /(?:menurut|kamu|anda|saya|suport|support|resis|resist|resistance|supply|demand|mana|paling|kuat|lemah|kenapa|mengapa|apakah|bisa|gimana|bagaimana|naik|turun|arah|tren|trend|hari|ini|kira|sarannya|dong|lah|kah|kok|ya|nih|tuh|kan|dan|di|ke|dari|untuk|yang|ini|itu|ada|gak|nggak|enggak|tidak|mau|akan|udah|sudah|belum|lagi|sedang|terus|sekarang|posisi|beli|jual|pasang|taktis|halo|hai|tolong|masuk|ambil|order|open|jenuh|koreksi|pantulan)/i.test(
+          prompt
+        )
+
+      const isSupportQuery = /(?:suport|support|demand|lantai|bawah|bottom)/i.test(prompt)
+      const isResistanceQuery = /(?:resis|resist|resistance|supply|atap|pucuk|ceiling|plafon)/i.test(prompt)
+      const isTrendQuery = /(?:tren|trend|arah|ke mana|kemana|naik atau turun|bullish atau bearish|outlook|prediksi)/i.test(prompt)
+      const isTimingQuery = /(?:bisa buy|boleh buy|bisa sell|boleh sell|aman buy|aman sell|beli sekarang|jual sekarang|masuk sekarang|open sekarang|bagus beli|bagus jual|saatnya)/i.test(prompt)
+      const isWhyQuery = /(?:kenapa|mengapa|alasannya|why|alasan)/i.test(prompt)
+      const isGreeting = /^(?:halo|hai|hi|hey|hello|pagi|siang|malam|tes|test|siapa kamu|kamu siapa)\b/i.test(prompt.trim())
+
       const isBuyLimitIntent = /buy\s*limit|limit\s*buy|beli\s*limit|demand\s*entry/i.test(prompt)
       const isSellLimitIntent = /sell\s*limit|limit\s*sell|jual\s*limit|short\s*limit/i.test(prompt)
-      const isConversationalFollowUp = /sekarang|gimana|bagaimana|what now|next move|terus|what should|saran|rekomendasi|posisi apa|ke mana|open apa/i.test(prompt)
+      const isExplicitSetupRequest =
+        /rekomendasi|sinyal|signal|trade plan|setup|taktis|order limit|order apa|pasang apa|posisi apa/i.test(prompt) ||
+        isBuyLimitIntent ||
+        isSellLimitIntent
 
-      let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = analysis.tradePlan.bias
-      let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' =
-        analysis.tradePlan.orderType || (bias === 'LONG' ? 'BUY_LIMIT' : 'SELL_LIMIT')
-      let entry = roundP(analysis.tradePlan.suggestedEntry)
-      let stopLoss = roundP(analysis.tradePlan.stopLoss)
-      let takeProfit1 = roundP(analysis.tradePlan.takeProfit1)
-      let takeProfit2 = roundP(analysis.tradePlan.takeProfit2)
-      let rationale = analysis.tradePlan.rationale
+      let thought = ''
+      let content = ''
+      let tradePlanToAttach: TradePlanData | undefined = undefined
 
-      if (isBuyLimitIntent) {
-        bias = 'LONG'
-        orderType = 'BUY_LIMIT'
-        entry = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 0.8))
-        stopLoss = roundP(entry - analysis.indicators.atr14 * 0.85)
-        takeProfit1 = roundP(analysis.levels.resistance[0] || (livePrice + analysis.indicators.atr14 * 1.5))
-        takeProfit2 = roundP(takeProfit1 + (takeProfit1 - entry) * 0.618)
-        rationale = isIndonesian
-          ? `Order Buy Limit di area support demand ${formatP(entry)} dengan invalidasi SL di ${formatP(stopLoss)}.`
-          : `Buy Limit at demand support ${formatP(entry)} with SL invalidation at ${formatP(stopLoss)}.`
-      } else if (isSellLimitIntent) {
-        bias = 'SHORT'
-        orderType = 'SELL_LIMIT'
-        entry = roundP(analysis.levels.resistance[0] || Math.min(analysis.indicators.ema20, livePrice + analysis.indicators.atr14 * 0.8))
-        stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
-        takeProfit1 = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 1.5))
-        takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
-        rationale = isIndonesian
-          ? `Order Sell Limit di area resistance pullback ${formatP(entry)} untuk menghindari mengejar harga di support bawah.`
-          : `Sell Limit at resistance retest zone ${formatP(entry)} to avoid chasing market at lows.`
-      } else if (isConversationalFollowUp) {
-        if (analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32) {
-          bias = 'SHORT'
-          orderType = 'SELL_LIMIT'
-          entry = roundP(analysis.levels.resistance[0] || Math.min(analysis.indicators.ema20, livePrice + analysis.indicators.atr14 * 0.8))
-          stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
-          takeProfit1 = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 1.5))
-          takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
-          rationale = isIndonesian
-            ? `RSI oversold (${analysis.indicators.rsi14}). Rekomendasi Sell Limit di retest resistance ${formatP(entry)} untuk R:R optimal.`
-            : `RSI oversold (${analysis.indicators.rsi14}). Recommended Sell Limit at resistance retest ${formatP(entry)}.`
-        } else if (analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68) {
+      if (isSupportQuery && !isExplicitSetupRequest) {
+        thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Target: Evaluation of strongest key support levels for ${currentSymbol}
+   • Spot Price: ${formatP(livePrice)}
+
+2. Quantitative Support Clustering:
+   • Support S1 (Nearest Demand): ${formatP(s1)} [Distance: ${Math.abs(livePrice - s1).toFixed(2)} pts]
+   • Support S2 (Major Structural Pivot): ${formatP(s2)} [Distance: ${Math.abs(livePrice - s2).toFixed(2)} pts]
+   • Dynamic Confluence: EMA20 at ${formatP(analysis.indicators.ema20)} | EMA50 at ${formatP(analysis.indicators.ema50)}
+   • ATR(14) Volatility Buffer: ${formatP(analysis.indicators.atr14)}
+
+3. Assessment:
+   S2 (${formatP(s2)}) represents the strongest support level due to previous swing low clustering and historical institutional demand absorption. S1 (${formatP(s1)}) acts as the first line of defense.`
+
+        content = isIndonesian
+          ? `Menjawab pertanyaan Anda mengenai support pada **${currentSymbol}** (Harga aktif: **${formatP(livePrice)}**):
+
+### 1. Support Terkuat / Mayor: **${formatP(s2)}**
+- Merupakan **support paling kuat saat ini**, terbentuk dari klaster swing low mayor dan tumpukan likuiditas institusional.
+- Jika terjadi koreksi turun, level **${formatP(s2)}** memiliki probabilitas tertinggi sebagai bantalan harga (*strong bounce zone*) dengan risiko penembusan paling rendah.
+
+### 2. Support Terdekat (S1): **${formatP(s1)}**
+- Merupakan batas demand terdekat dengan toleransi volatilitas ATR(14) (**${formatP(analysis.indicators.atr14)}**).
+- Level ini bertindak sebagai garis pertahanan pertama buyer.
+
+💡 **Kesimpulan:** Level support paling kokoh yang menjadi bantalan utama adalah **${formatP(s2)}**. Selama harga bertahan di atas **${formatP(s1)}**, momentum penurunan masih tertahan.`
+          : `Answering your inquiry regarding support levels on **${currentSymbol}** (Active Price: **${formatP(livePrice)}**):
+
+### 1. Strongest / Major Support: **${formatP(s2)}**
+- This is the **strongest structural support** on the chart, backed by multi-bar swing low clusters and high institutional demand absorption.
+- Offers the highest probability for a solid price bounce.
+
+### 2. Immediate Support (S1): **${formatP(s1)}**
+- The nearest demand zone aligned with ATR(14) volatility (**${formatP(analysis.indicators.atr14)}**).
+- Acts as the first line of defense for active buyers.
+
+💡 **Summary:** Support at **${formatP(s2)}** is the sturdiest cushion on this timeframe.`
+      } else if (isResistanceQuery && !isExplicitSetupRequest) {
+        thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Target: Evaluation of overhead resistance levels for ${currentSymbol}
+   • Spot Price: ${formatP(livePrice)}
+
+2. Quantitative Resistance Clusters:
+   • Resistance R1 (Nearest Supply): ${formatP(r1)} [Distance: ${Math.abs(r1 - livePrice).toFixed(2)} pts]
+   • Resistance R2 (Major Ceiling): ${formatP(r2)} [Distance: ${Math.abs(r2 - livePrice).toFixed(2)} pts]
+   • Trend Momentum: RSI at ${analysis.indicators.rsi14} | EMA20 at ${formatP(analysis.indicators.ema20)}
+
+3. Assessment:
+   R2 (${formatP(r2)}) is the ultimate structural resistance ceiling.`
+
+        content = isIndonesian
+          ? `Berdasarkan kalkulasi struktur teknikal **${currentSymbol}** (Harga aktif: **${formatP(livePrice)}**):
+
+### 1. Resistance Terkuat / Mayor: **${formatP(r2)}**
+- Merupakan **plafon penolakan utama (*major supply wall*)**. Di level ini terdapat akumulasi order jual institusional dan target likuidasi take profit.
+
+### 2. Resistance Terdekat (R1): **${formatP(r1)}**
+- Area retest pertama di atas harga berjalan (berjarak ~${Math.abs(r1 - livePrice).toFixed(2)} poin).
+- Level penentu apakah harga sanggup melanjutkan reli atau kembali tertolak ke bawah.
+
+💡 **Kesimpulan:** Resistance paling tangguh berada di **${formatP(r2)}**, sementara **${formatP(r1)}** adalah target rintangan terdekat.`
+          : `Technical resistance analysis for **${currentSymbol}** (Current: **${formatP(livePrice)}**):
+
+### 1. Strongest Resistance (R2): **${formatP(r2)}**
+- Primary structural supply ceiling with concentrated overhead liquidity.
+
+### 2. Immediate Resistance (R1): **${formatP(r1)}**
+- First technical retest barrier situated ~${Math.abs(r1 - livePrice).toFixed(2)} pts above current spot.
+
+💡 **Summary:** Key supply wall sits at **${formatP(r2)}**.`
+      } else if (isTrendQuery && !isExplicitSetupRequest) {
+        thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Target: Market trend structure and directional bias
+   • Trend: ${analysis.trend.toUpperCase()} | Price: ${formatP(livePrice)}
+
+2. Moving Average Alignment:
+   • EMA20: ${formatP(analysis.indicators.ema20)} | EMA50: ${formatP(analysis.indicators.ema50)}
+   • RSI(14): ${analysis.indicators.rsi14} | News Sentiment: ${analysis.sentimentSummary.sentiment}`
+
+        content = isIndonesian
+          ? `Analisa arah dan struktur tren **${currentSymbol}** (Harga: **${formatP(livePrice)}**):
+
+- **Arah Tren Saat Ini:** **${analysis.trend.toUpperCase()}**
+- **Struktur Moving Average:** Harga bergerak ${livePrice > analysis.indicators.ema20 ? 'di atas' : 'di bawah'} EMA 20 (${formatP(analysis.indicators.ema20)}), dengan susunan EMA 20 vs EMA 50 (${formatP(analysis.indicators.ema50)}) menunjukkan bias **${analysis.trend.toUpperCase()}**.
+- **Indikator Momentum:** RSI(14) berada di **${analysis.indicators.rsi14}** (${analysis.indicators.rsi14 < 32 ? 'Jenuh Jual / Oversold' : analysis.indicators.rsi14 > 68 ? 'Jenuh Beli / Overbought' : 'Zona Seimbang'}).
+- **Sentimen Berita:** **${analysis.sentimentSummary.sentiment.toUpperCase()}** (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%).
+
+💡 **Kesimpulan:** Struktur harga saat ini mengindikasikan bias dominan **${analysis.tradePlan.bias}**. ${analysis.trend === 'bearish' ? 'Sebaiknya hindari membeli agresif sebelum ada konfirmasi pola pembalikan arah.' : 'Tren didominasi buyer, cari peluang entry pada area support.'}`
+          : `Trend structure review for **${currentSymbol}** (Spot: **${formatP(livePrice)}**):
+
+- **Dominant Trend:** **${analysis.trend.toUpperCase()}**
+- **Dynamic Alignment:** Price trades ${livePrice > analysis.indicators.ema20 ? 'above' : 'below'} EMA20 (${formatP(analysis.indicators.ema20)}) with EMA50 at ${formatP(analysis.indicators.ema50)}.
+- **RSI(14):** ${analysis.indicators.rsi14} (${analysis.indicators.rsi14 < 32 ? 'Oversold' : analysis.indicators.rsi14 > 68 ? 'Overbought' : 'Neutral'}).
+
+💡 **Summary:** Structural bias favors **${analysis.tradePlan.bias}**.`
+      } else if (isTimingQuery && !isExplicitSetupRequest) {
+        thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Target: Entry timing safety & risk evaluation
+   • RSI: ${analysis.indicators.rsi14} | Trend: ${analysis.trend.toUpperCase()}`
+
+        content = isIndonesian
+          ? `Evaluasi keamanan posisi untuk **${currentSymbol}** di harga **${formatP(livePrice)}**:
+
+- **Kondisi Momentum RSI(14):** **${analysis.indicators.rsi14}**
+${
+  analysis.indicators.rsi14 < 32
+    ? `⚠️ **RSI sudah sangat jenuh jual (oversold).** Mengambil posisi Sell langsung di market saat ini memiliki risiko tinggi terkena *short squeeze* atau pembalikan arah teknikal (*dead cat bounce*). Lebih bijak menunggu pullback ke resistance ${formatP(r1)} atau mencari konfirmasi buy di support ${formatP(s1)}.`
+    : analysis.indicators.rsi14 > 68
+    ? `⚠️ **RSI berada di area jenuh beli (overbought).** Membeli langsung di harga sekarang berisiko terjebak di pucuk (*buying the top*). Disarankan sabar menunggu koreksi harga menuju support ${formatP(s1)}.`
+    : `Momentum berada dalam rentang wajar. Jika ingin membuka posisi, gunakan pending limit order dekat level kunci untuk menjaga rasio risiko tetap ideal.`
+}
+
+💡 **Saran:** Hindari *market order* terburu-buru. Gunakan **Limit Order** di area ${analysis.trend === 'bullish' ? `Support (${formatP(s1)})` : `Resistance (${formatP(r1)})`} agar stop loss terukur.`
+          : `Timing & entry evaluation for **${currentSymbol}** at **${formatP(livePrice)}**:
+
+- **RSI(14) Momentum:** **${analysis.indicators.rsi14}**
+${
+  analysis.indicators.rsi14 < 32
+    ? `⚠️ **RSI is oversold.** Chasing market sells here carries high short-squeeze risk. Await a pullback to resistance ${formatP(r1)}.`
+    : analysis.indicators.rsi14 > 68
+    ? `⚠️ **RSI is overbought.** Buying directly risks entering at local highs. Wait for a pullback to support ${formatP(s1)}.`
+    : `Momentum is balanced. Prioritize limit orders near key structural boundaries.`
+}`
+      } else if (isWhyQuery && !isExplicitSetupRequest) {
+        thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Target: Strategic reasoning & indicator justification`
+
+        content = isIndonesian
+          ? `Alasan kalkulasi kuantitatif pada chart **${currentSymbol}**:
+
+1. **Struktur MA & Price Action:** EMA 20 berada di **${formatP(analysis.indicators.ema20)}** dan EMA 50 di **${formatP(analysis.indicators.ema50)}**. Selama harga berada ${livePrice > analysis.indicators.ema20 ? 'di atas' : 'di bawah'} EMA 20, momentum dominan adalah **${analysis.trend.toUpperCase()}**.
+2. **Kondisi Kejenuhan (RSI):** Nilai RSI(14) di **${analysis.indicators.rsi14}** ${analysis.indicators.rsi14 < 32 ? 'menandakan pelemahan sudah di ujung jenuh jual' : analysis.indicators.rsi14 > 68 ? 'menandakan reli sudah mendekati area jenuh beli' : 'menunjukkan pergerakan masih stabil'}.
+3. **Volatilitas:** Rentang fluktuasi harian ATR(14) tercatat **${formatP(analysis.indicators.atr14)}** poin, sehingga batas toleransi stop loss harus berada di luar rentang ini agar tidak terpicu oleh *market noise*.`
+          : `Quantitative rationale for **${currentSymbol}**:
+
+1. **Moving Average Alignment:** EMA20 (${formatP(analysis.indicators.ema20)}) and EMA50 (${formatP(analysis.indicators.ema50)}) confirm ${analysis.trend.toUpperCase()} trend structure.
+2. **Momentum State:** RSI(14) at ${analysis.indicators.rsi14} confirms current market extension.
+3. **Volatility:** ATR(14) of ${formatP(analysis.indicators.atr14)} sets rational risk invalidation limits.`
+      } else if (isGreeting && !isExplicitSetupRequest) {
+        thought = `1. Intent: Friendly greeting / assistance inquiry for ${currentSymbol}`
+        content = isIndonesian
+          ? `Halo! Saya **PIA Agent**, asisten kuantitatif pasar Anda.
+
+Saat ini kita sedang memantau instrumen **${currentSymbol}** di harga **${formatP(livePrice)}** (Tren: **${analysis.trend.toUpperCase()}**, RSI: **${analysis.indicators.rsi14}**).
+
+Anda bisa bertanya seputar kondisi pasar saat ini, misalnya:
+- *"Menurut kamu support mana paling kuat?"*
+- *"Resistance terdekat di berapa?"*
+- *"Apakah aman buy sekarang?"*
+- *"Minta rekomendasi order taktis"*`
+          : `Hello! I am **PIA Agent**, your institutional quantitative agent. Active symbol: **${currentSymbol}** at **${formatP(livePrice)}** (Trend: **${analysis.trend.toUpperCase()}**). How can I assist your trading analysis today?`
+      } else {
+        let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = analysis.tradePlan.bias
+        let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' =
+          analysis.tradePlan.orderType || (bias === 'LONG' ? 'BUY_LIMIT' : 'SELL_LIMIT')
+        let entry = roundP(analysis.tradePlan.suggestedEntry)
+        let stopLoss = roundP(analysis.tradePlan.stopLoss)
+        let takeProfit1 = roundP(analysis.tradePlan.takeProfit1)
+        let takeProfit2 = roundP(analysis.tradePlan.takeProfit2)
+        let rationale = analysis.tradePlan.rationale
+
+        if (isBuyLimitIntent) {
           bias = 'LONG'
           orderType = 'BUY_LIMIT'
-          entry = roundP(analysis.levels.support[0] || Math.max(analysis.indicators.ema20, livePrice - analysis.indicators.atr14 * 0.8))
+          entry = s1
           stopLoss = roundP(entry - analysis.indicators.atr14 * 0.85)
-          takeProfit1 = roundP(analysis.levels.resistance[0] || (livePrice + analysis.indicators.atr14 * 1.5))
+          takeProfit1 = r1
           takeProfit2 = roundP(takeProfit1 + (takeProfit1 - entry) * 0.618)
           rationale = isIndonesian
-            ? `RSI overbought (${analysis.indicators.rsi14}). Rekomendasi Buy Limit di pullback support ${formatP(entry)}.`
-            : `RSI overbought (${analysis.indicators.rsi14}). Recommended Buy Limit at support pullback ${formatP(entry)}.`
+            ? `Order Buy Limit di area support demand ${formatP(entry)} dengan invalidasi SL di ${formatP(stopLoss)}.`
+            : `Buy Limit at demand support ${formatP(entry)} with SL invalidation at ${formatP(stopLoss)}.`
+        } else if (isSellLimitIntent) {
+          bias = 'SHORT'
+          orderType = 'SELL_LIMIT'
+          entry = r1
+          stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
+          takeProfit1 = s1
+          takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
+          rationale = isIndonesian
+            ? `Order Sell Limit di area resistance pullback ${formatP(entry)} untuk menghindari mengejar harga di support bawah.`
+            : `Sell Limit at resistance retest zone ${formatP(entry)} to avoid chasing market at lows.`
+        } else {
+          if (analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32) {
+            bias = 'SHORT'
+            orderType = 'SELL_LIMIT'
+            entry = r1
+            stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
+            takeProfit1 = s1
+            takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
+            rationale = isIndonesian
+              ? `RSI jenuh jual (${analysis.indicators.rsi14}). Rekomendasi Sell Limit di retest resistance ${formatP(entry)} untuk rasio R:R terbaik.`
+              : `RSI oversold (${analysis.indicators.rsi14}). Recommended Sell Limit at resistance retest ${formatP(entry)}.`
+          } else if (analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68) {
+            bias = 'LONG'
+            orderType = 'BUY_LIMIT'
+            entry = s1
+            stopLoss = roundP(entry - analysis.indicators.atr14 * 0.85)
+            takeProfit1 = r1
+            takeProfit2 = roundP(takeProfit1 + (takeProfit1 - entry) * 0.618)
+            rationale = isIndonesian
+              ? `RSI jenuh beli (${analysis.indicators.rsi14}). Rekomendasi Buy Limit di pullback support ${formatP(entry)}.`
+              : `RSI overbought (${analysis.indicators.rsi14}). Recommended Buy Limit at support pullback ${formatP(entry)}.`
+          }
         }
-      }
 
-      const risk = Math.abs(entry - stopLoss)
-      const reward = Math.abs(takeProfit1 - entry)
-      const riskRewardRatio = risk > 0 ? `1:${(reward / risk).toFixed(2)}` : '1:2.0'
+        const risk = Math.abs(entry - stopLoss)
+        const reward = Math.abs(takeProfit1 - entry)
+        const riskRewardRatio = risk > 0 ? `1:${(reward / risk).toFixed(2)}` : '1:2.0'
 
-      const tradePlan: TradePlanData = {
-        symbol: currentSymbol,
-        bias,
-        orderType,
-        entry,
-        stopLoss,
-        takeProfit1,
-        takeProfit2,
-        riskRewardRatio,
-        suggestedLotSize: 0.1,
-        rationale
-      }
+        tradePlanToAttach = {
+          symbol: currentSymbol,
+          bias,
+          orderType,
+          entry,
+          stopLoss,
+          takeProfit1,
+          takeProfit2,
+          riskRewardRatio,
+          suggestedLotSize: 0.1,
+          rationale
+        }
 
-      // Replot trade plan levels on the chart canvas
-      await AiMcpEngine.plotTradePlanLevels(tradePlan)
+        // Replot trade plan levels on the chart canvas
+        await AiMcpEngine.plotTradePlanLevels(tradePlanToAttach)
 
-      // Agentic Thought Process (Claude Code / OpenCode / Hermes style)
-      const thought = `1. Intent Analysis:
+        thought = `1. Intent Analysis:
    • Query: "${prompt}"
-   • Language: ${isIndonesian ? 'Indonesian' : 'English'} | Mode: ${
-     isConversationalFollowUp
-       ? 'Conversational follow-up & tactical order advice'
-       : isBuyLimitIntent
-       ? 'Explicit Buy Limit recommendation'
-       : isSellLimitIntent
-       ? 'Explicit Sell Limit recommendation'
-       : 'Quantitative chart analysis & level projection'
-   }
+   • Mode: Tactical Trade Setup Recommendation
    • Symbol: ${currentSymbol} spot price at ${formatP(livePrice)}
 
 2. Quantitative Microstructure:
-   • Structural Trend: ${analysis.trend.toUpperCase()} (EMA20: ${formatP(analysis.indicators.ema20)} | EMA50: ${formatP(analysis.indicators.ema50)})
-   • Momentum Velocity: RSI(14) at ${analysis.indicators.rsi14} (${
-     analysis.indicators.rsi14 < 32
-       ? 'exhaustion / oversold bounce risk'
-       : analysis.indicators.rsi14 > 68
-       ? 'stretch / overbought pullback risk'
-       : 'balanced momentum'
-   })
-   • Volatility Range: ATR(14) = ${formatP(analysis.indicators.atr14)}
-   • Orderbook Flow: Imbalance ratio ${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'} (${
-     (analysis.orderbookSummary?.imbalanceRatio ?? 1) > 1.1
-       ? 'net bid accumulation'
-       : (analysis.orderbookSummary?.imbalanceRatio ?? 1) < 0.9
-       ? 'net ask distribution'
-       : 'balanced orderbook'
-   })
+   • Trend: ${analysis.trend.toUpperCase()} (EMA20: ${formatP(analysis.indicators.ema20)} | EMA50: ${formatP(analysis.indicators.ema50)})
+   • Momentum Velocity: RSI(14) at ${analysis.indicators.rsi14}
+   • Volatility ATR(14): ${formatP(analysis.indicators.atr14)}
    • News Sentiment: ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
 
-3. Execution Tactics:
-   • Tactical Order Type: ${orderType.replace('_', ' ')} (${
-     orderType === 'SELL_LIMIT'
-       ? `Retest entry at ${formatP(entry)} to avoid shorting into oversold support`
-       : orderType === 'BUY_LIMIT'
-       ? `Demand entry at ${formatP(entry)} to capture liquidity bounce`
-       : `Market execution at ${formatP(entry)}`
-   })
-   • Risk Calibration: Sized at 0.10 Lot (~1.0% equity risk model) | R:R ${riskRewardRatio}
-   • Chart Canvas: Plotted ${analysis.plottedDrawingsCount + 4} technical overlays and key levels directly`
+3. Execution Setup:
+   • Order Type: ${orderType.replace('_', ' ')} at ${formatP(entry)}
+   • Risk Calibration: Sized at 0.10 Lot | Risk:Reward ${riskRewardRatio}`
 
-      let content = ''
-      if (isIndonesian) {
-        if (isConversationalFollowUp) {
-          content = `Melihat pergerakan **${currentSymbol}** saat ini di harga **${formatP(livePrice)}**:
+        content = isIndonesian
+          ? `Berikut rekomendasi order taktis terukur untuk **${currentSymbol}** (Harga aktif: **${formatP(livePrice)}**):
 
-${
-  analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32
-    ? `Meskipun struktur harga masih berada dalam tren **BEARISH** di bawah EMA 20 (${formatP(analysis.indicators.ema20)}), indikator RSI(14) saat ini sudah sangat jenuh jual (**${analysis.indicators.rsi14}**). Melakukan Market Sell langsung di harga sekarang memiliki risiko tinggi terkena *short squeeze* atau technical rebound.`
-    : analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68
-    ? `Struktur harga berada dalam tren **BULLISH** di atas EMA 20 (${formatP(analysis.indicators.ema20)}), namun RSI(14) berada di area overbought (**${analysis.indicators.rsi14}**). Sebaiknya tunggu koreksi harga daripada membeli di pucuk.`
-    : `Struktur pasar saat ini bergerak dengan bias **${bias}**. Harga aktif berada di **${formatP(livePrice)}** dengan rentang volatilitas ATR(14) sebesar **${formatP(analysis.indicators.atr14)}**.`
-}
-
-### Rekomendasi Taktis: **${orderType.replace('_', ' ')}**
-${
-  orderType === 'SELL_LIMIT'
-    ? `Strategi dengan rasio risiko-imbalan terbaik adalah menempatkan **SELL LIMIT** di area resistance re-test **${formatP(entry)}**. Ini memberi harga masuk yang jauh lebih ideal saat terjadi pullback.`
-    : `Strategi optimal adalah memasang **BUY LIMIT** di area demand support **${formatP(entry)}** untuk menangkap pantulan harga dengan stop loss terukur.`
-}
+### Setup Order Taktis: **${orderType.replace('_', ' ')}**
+${rationale}
 
 - **Tipe Order:** \`${orderType}\`
 - **Area Entry:** **${formatP(entry)}**
 - **Stop Loss (Invalidasi):** **${formatP(stopLoss)}**
 - **Target Take Profit 1:** **${formatP(takeProfit1)}**
 - **Target Take Profit 2:** **${formatP(takeProfit2)}**
-- **Risk / Reward:** **${riskRewardRatio}**
-- **Saran Ukuran Lot:** **0.10 Lot** (Model resiko modal ~1.0%)
-
-*Level taktis dan overlays telah otomatis diproyeksikan ke chart. Anda bisa langsung meninjau atau mengeksekusi order simulasi melalui tiket di bawah.*`
-        } else if (isBuyLimitIntent || isSellLimitIntent) {
-          content = `Berikut rencana order limit terukur untuk **${currentSymbol}** di harga **${formatP(livePrice)}**:
-
-### Setup Taktis: **${orderType.replace('_', ' ')}**
-${rationale}
-
-- **Tipe Order:** \`${orderType}\`
-- **Area Entry:** **${formatP(entry)}**
-- **Stop Loss:** **${formatP(stopLoss)}**
-- **Take Profit 1:** **${formatP(takeProfit1)}**
-- **Take Profit 2:** **${formatP(takeProfit2)}**
 - **Rasio Risk / Reward:** **${riskRewardRatio}**
-- **Saran Ukuran Lot:** **0.10 Lot**
+- **Saran Ukuran Lot:** **0.10 Lot** (~1.0% model resiko modal)
 
-*Level harga telah diproyeksikan langsung ke canvas chart. Klik tombol pada tiket di bawah untuk menempatkan order.*`
-        } else {
-          content = `Analisis kuantitatif dan struktur pasar **${currentSymbol}** (Harga: **${formatP(livePrice)}**):
-
-- **Bias Institusional:** **${bias}** (Struktur: **${analysis.trend.toUpperCase()}**)
-- **Sentimen & Flow:** Sentimen berita **${analysis.sentimentSummary.sentiment.toUpperCase()}** (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%) | Imbalance Orderbook: **${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'}**
-- **Momentum:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${formatP(analysis.indicators.atr14)}** | EMA20: **${formatP(analysis.indicators.ema20)}**
-
-### Rekomendasi Order Taktis: **${orderType.replace('_', ' ')}**
-${rationale}
-
-- **Tipe Order:** \`${orderType}\`
-- **Area Entry:** **${formatP(entry)}**
-- **Stop Loss:** **${formatP(stopLoss)}**
-- **Target TP 1 & TP 2:** **${formatP(takeProfit1)}** / **${formatP(takeProfit2)}**
-- **Risk / Reward:** **${riskRewardRatio}**
-
-*Level teknikal dan zona supply/demand telah otomatis digambar pada chart canvas.*`
-        }
-      } else {
-        if (isConversationalFollowUp) {
-          content = `Analyzing current price action for **${currentSymbol}** trading at **${formatP(livePrice)}**:
-
-${
-  analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32
-    ? `While the prevailing structure is **BEARISH** below EMA 20 (${formatP(analysis.indicators.ema20)}), RSI(14) is heavily oversold (**${analysis.indicators.rsi14}**). Entering a Market Sell directly here carries high squeeze and bounce risk.`
-    : analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68
-    ? `The trend is strongly **BULLISH** above EMA 20 (${formatP(analysis.indicators.ema20)}), but RSI(14) is stretched into overbought territory (**${analysis.indicators.rsi14}**). Avoid FOMO buying into local resistance.`
-    : `The market is currently consolidating with a **${bias}** bias. Active mark price is **${formatP(livePrice)}** with ATR(14) volatility at **${formatP(analysis.indicators.atr14)}**.`
-}
-
-### Tactical Recommendation: **${orderType.replace('_', ' ')}**
-${
-  orderType === 'SELL_LIMIT'
-    ? `The highest expectancy play is placing a **SELL LIMIT** at the resistance retest zone **${formatP(entry)}**. This yields a superior entry price on any technical pullback.`
-    : `The optimal play is placing a **BUY LIMIT** at the structural demand support zone **${formatP(entry)}** to capture the liquidity bounce with tight invalidation.`
-}
-
-- **Order Type:** \`${orderType}\`
-- **Entry Price:** **${formatP(entry)}**
-- **Stop Loss (Invalidation):** **${formatP(stopLoss)}**
-- **Target 1:** **${formatP(takeProfit1)}**
-- **Target 2:** **${formatP(takeProfit2)}**
-- **Risk / Reward:** **${riskRewardRatio}**
-- **Suggested Position Size:** **0.10 Lot** (~1.0% equity risk model)
-
-*Tactical price levels and chart overlays have been drawn. You can execute this simulation order directly via the trade ticket below.*`
-        } else if (isBuyLimitIntent || isSellLimitIntent) {
-          content = `Tactical order setup for **${currentSymbol}** at **${formatP(livePrice)}**:
+*Level harga telah diproyeksikan ke canvas chart. Anda bisa langsung meninjau atau mengeksekusi order simulasi melalui tiket di bawah.*`
+          : `Tactical trade plan recommendation for **${currentSymbol}** (Spot: **${formatP(livePrice)}**):
 
 ### Tactical Setup: **${orderType.replace('_', ' ')}**
 ${rationale}
@@ -1094,27 +1259,9 @@ ${rationale}
 - **Target 1:** **${formatP(takeProfit1)}**
 - **Target 2:** **${formatP(takeProfit2)}**
 - **Risk / Reward:** **${riskRewardRatio}**
-- **Suggested Lot Size:** **0.10 Lot**
+- **Suggested Position Size:** **0.10 Lot**
 
 *Chart levels projected onto active canvas. Click below to place order into paper account.*`
-        } else {
-          content = `Quantitative structure scan for **${currentSymbol}** (Spot: **${formatP(livePrice)}**):
-
-- **Institutional Bias:** **${bias}** (Structure: **${analysis.trend.toUpperCase()}**)
-- **Sentiment & Flow:** News sentiment **${analysis.sentimentSummary.sentiment.toUpperCase()}** (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%) | Orderbook Imbalance: **${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'}**
-- **Momentum Metrics:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${formatP(analysis.indicators.atr14)}** | EMA20: **${formatP(analysis.indicators.ema20)}**
-
-### Tactical Recommendation: **${orderType.replace('_', ' ')}**
-${rationale}
-
-- **Order Type:** \`${orderType}\`
-- **Entry Price:** **${formatP(entry)}**
-- **Stop Loss:** **${formatP(stopLoss)}**
-- **Take Profit Targets:** **${formatP(takeProfit1)}** / **${formatP(takeProfit2)}**
-- **Risk / Reward:** **${riskRewardRatio}**
-
-*Plotted ${analysis.plottedDrawingsCount} technical overlays and key levels directly to the chart canvas.*`
-        }
       }
 
       set((state) => ({
@@ -1128,7 +1275,7 @@ ${rationale}
             role: 'assistant',
             thought,
             content,
-            tradePlan,
+            tradePlan: tradePlanToAttach,
             toolCalls: [
               { id: 'tc-1', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: analysis.sentimentSummary, durationMs: 28 },
               { id: 'tc-2', name: 'compute_technical_analysis', args: { symbol: currentSymbol }, result: analysis.indicators, durationMs: 44 },

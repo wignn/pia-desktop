@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAiAgentStore } from './useAiAgentStore'
+import { useAiAgentStore, parseLlmResponseBody } from './useAiAgentStore'
 
 describe('useAiAgentStore', () => {
   beforeEach(() => {
@@ -34,5 +34,22 @@ describe('useAiAgentStore', () => {
     const store = useAiAgentStore.getState()
     store.clearChat()
     expect(useAiAgentStore.getState().messages).toHaveLength(1)
+  })
+
+  it('correctly parses standard JSON and SSE stream responses in parseLlmResponseBody', () => {
+    // 1. JSON
+    const jsonInput = JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'hello world' } }] })
+    expect(parseLlmResponseBody(jsonInput).choices[0].message.content).toBe('hello world')
+
+    // 2. SSE chunks
+    const sseInput = `data: {"choices":[{"delta":{"content":"foo "}}]}\n\ndata: {"choices":[{"delta":{"content":"bar"}}]}\n\ndata: [DONE]`
+    const parsedSse = parseLlmResponseBody(sseInput)
+    expect(parsedSse.choices[0].message.content).toBe('foo bar')
+
+    // 3. SSE chunks with reasoning
+    const sseReasoning = `data: {"choices":[{"delta":{"reasoning_content":"thinking..."}}]}\n\ndata: {"choices":[{"delta":{"content":"result"}}]}\n\ndata: [DONE]`
+    const parsedReasoning = parseLlmResponseBody(sseReasoning)
+    expect(parsedReasoning.choices[0].message.content).toContain('<thought>\nthinking...\n</thought>')
+    expect(parsedReasoning.choices[0].message.content).toContain('result')
   })
 })

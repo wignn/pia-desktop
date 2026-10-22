@@ -18,6 +18,62 @@ fn execute_piascript(
     Ok(engine.execute(&script, initial_capital))
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct NativeHttpRequest {
+    pub url: String,
+    pub method: String,
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct NativeHttpResponse {
+    pub status: u16,
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+}
+
+#[tauri::command]
+async fn native_http_request(req: NativeHttpRequest) -> Result<NativeHttpResponse, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let method = match req.method.to_uppercase().as_str() {
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        _ => reqwest::Method::GET,
+    };
+
+    let mut request = client.request(method, &req.url);
+    for (k, v) in req.headers {
+        request = request.header(k, v);
+    }
+    if let Some(b) = req.body {
+        request = request.body(b);
+    }
+
+    let res = request.send().await.map_err(|e| e.to_string())?;
+    let status = res.status().as_u16();
+
+    let mut resp_headers = std::collections::HashMap::new();
+    for (k, v) in res.headers() {
+        if let Ok(val) = v.to_str() {
+            resp_headers.insert(k.as_str().to_string(), val.to_string());
+        }
+    }
+
+    let body = res.text().await.map_err(|e| e.to_string())?;
+
+    Ok(NativeHttpResponse {
+        status,
+        headers: resp_headers,
+        body,
+    })
+}
+
 #[tauri::command]
 fn close_app(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -553,6 +609,7 @@ pub fn run() {
             google_oauth_callback,
             pia_native_candles,
             pia_native_request,
+            native_http_request,
             execute_piascript
         ])
         .run(tauri::generate_context!())
