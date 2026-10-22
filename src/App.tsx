@@ -21,6 +21,11 @@ export function App(): React.JSX.Element {
     const boot = async (): Promise<(() => void) | undefined> => {
       const unsub = initUpdaterListener()
 
+      // Ensure clean compact dialog on initial launch / splash loader
+      if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+        invoke('set_window_mode', { mode: 'auth' }).catch(() => {})
+      }
+
       try {
         setSplashStatus('Checking for updates...')
         await Promise.allSettled([
@@ -88,6 +93,8 @@ export function App(): React.JSX.Element {
         isIndeterminate={isIndeterminate}
         progressPercent={progressPercent}
         version={updaterStatus.currentVersion}
+        state={updaterStatus.state}
+        availableVersion={updaterStatus.availableVersion}
       />
     )
   }
