@@ -9,6 +9,8 @@
 import { create } from 'zustand'
 import { AiMcpEngine } from '../services/ai-mcp-engine'
 import { usePaperTradingStore } from './usePaperTradingStore'
+import { useMarketStore } from './useMarketStore'
+import { getSymbolPrecision } from '@shared/market-utils'
 
 export type AiProviderType = 'builtin' | 'openai'
 
@@ -23,11 +25,13 @@ export interface AiAgentConfig {
 export interface TradePlanData {
   symbol: string
   bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+  orderType?: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET'
   entry: number
   stopLoss: number
   takeProfit1: number
   takeProfit2: number
   riskRewardRatio: string
+  suggestedLotSize?: number
   rationale?: string
 }
 
@@ -44,10 +48,44 @@ export interface AiAgentMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  thought?: string
   toolCalls?: ToolCallExecution[]
   tradePlan?: TradePlanData
   timestamp: number
   isStreaming?: boolean
+}
+
+/**
+ * Format raw numbers cleanly to avoid floating-point drift (e.g. 82221.95999999999).
+ */
+export function formatCleanPrice(val?: number, precision = 2): string {
+  if (val === undefined || isNaN(val)) return '--'
+  const rounded = Number(Math.round(Number(val + 'e' + precision)) + 'e-' + precision)
+  return rounded.toLocaleString('en-US', {
+    minimumFractionDigits: Math.min(precision, 2),
+    maximumFractionDigits: precision
+  })
+}
+
+/**
+ * Parses <thought>...</thought> blocks out of raw text (Claude Code / OpenCode / Hermes style).
+ */
+export function parseThinkingAndContent(raw: string): { thought?: string; content: string } {
+  if (!raw) return { content: '' }
+
+  const thoughtMatch = raw.match(/<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/i)
+  if (thoughtMatch) {
+    const thought = thoughtMatch[1].trim()
+    const content = raw.replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>/i, '').trim()
+    return { thought, content }
+  }
+
+  const openMatch = raw.match(/<(?:thought|thinking)>([\s\S]*)$/i)
+  if (openMatch) {
+    return { thought: openMatch[1].trim(), content: '' }
+  }
+
+  return { content: raw }
 }
 
 interface AiAgentState {
@@ -150,22 +188,43 @@ async function readSseStream(
 // ponytail: regex heuristic parser for text trade plans. Upgrade to structured JSON mode or schema validation when provider strictly guarantees JSON schema.
 function extractTradePlanFromText(text: string, defaultSymbol: string): TradePlanData | undefined {
   if (!text) return undefined
-  const biasMatch = text.match(/\b(LONG|SHORT|BUY|SELL)\b/i)
-  const entryMatch = text.match(/(?:entry|open|buy at|sell at|entry zone)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
-  const slMatch = text.match(/(?:stop loss|sl|invalidation)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
-  const tp1Match = text.match(/(?:take profit 1|tp1|target 1|tp 1|take profit)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
-  const tp2Match = text.match(/(?:take profit 2|tp2|target 2|tp 2)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
-  const rrMatch = text.match(/(?:risk[\s/:]*reward|r:r|rrr)[:\s*]+([0-9]+(?::[0-9.]+|(?:\.[0-9]+)?))/i)
+  // Strip thought tags before parsing setup
+  const clean = text.replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>/gi, '')
+
+  const biasMatch = clean.match(/\b(LONG|SHORT|BUY|SELL)\b/i)
+  const orderTypeMatch = clean.match(/\b(BUY[_\s]LIMIT|SELL[_\s]LIMIT|BUY[_\s]STOP|SELL[_\s]STOP|MARKET[_\s]BUY|MARKET[_\s]SELL|MARKET)\b/i)
+  const entryMatch = clean.match(/(?:entry|open|buy at|sell at|entry zone)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const slMatch = clean.match(/(?:stop loss|sl|invalidation)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const tp1Match = clean.match(/(?:take profit 1|tp1|target 1|tp 1|take profit)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const tp2Match = clean.match(/(?:take profit 2|tp2|target 2|tp 2)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
+  const rrMatch = clean.match(/(?:risk[\s/:]*reward|r:r|rrr)[:\s*]+([0-9]+(?::[0-9.]+|(?:\.[0-9]+)?))/i)
+  const lotMatch = clean.match(/(?:suggested lot|lot size|size|lot)[:\s*]+([0-9]+(?:\.[0-9]+)?)/i)
 
   if (entryMatch && slMatch && tp1Match) {
     const rawBias = biasMatch ? biasMatch[1].toUpperCase() : ''
     const bias: 'LONG' | 'SHORT' | 'NEUTRAL' =
       rawBias === 'BUY' || rawBias === 'LONG' ? 'LONG' : rawBias === 'SELL' || rawBias === 'SHORT' ? 'SHORT' : 'NEUTRAL'
 
-    const entry = parseFloat(entryMatch[1])
-    const stopLoss = parseFloat(slMatch[1])
-    const takeProfit1 = parseFloat(tp1Match[1])
-    const takeProfit2 = tp2Match ? parseFloat(tp2Match[1]) : takeProfit1
+    let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' =
+      bias === 'LONG' ? 'BUY_LIMIT' : 'SELL_LIMIT'
+
+    if (orderTypeMatch) {
+      const normalizedType = orderTypeMatch[1].toUpperCase().replace(/\s+/, '_')
+      if (normalizedType.includes('BUY_LIMIT')) orderType = 'BUY_LIMIT'
+      else if (normalizedType.includes('SELL_LIMIT')) orderType = 'SELL_LIMIT'
+      else if (normalizedType.includes('BUY_STOP')) orderType = 'BUY_STOP'
+      else if (normalizedType.includes('SELL_STOP')) orderType = 'SELL_STOP'
+      else if (normalizedType.includes('MARKET')) orderType = 'MARKET'
+    }
+
+    const { pricePrecision } = getSymbolPrecision(defaultSymbol, undefined, parseFloat(entryMatch[1]))
+    const roundP = (n: number) => Number(Math.round(Number(n + 'e' + pricePrecision)) + 'e-' + pricePrecision)
+
+    const entry = roundP(parseFloat(entryMatch[1]))
+    const stopLoss = roundP(parseFloat(slMatch[1]))
+    const takeProfit1 = roundP(parseFloat(tp1Match[1]))
+    const takeProfit2 = tp2Match ? roundP(parseFloat(tp2Match[1])) : takeProfit1
+    const suggestedLotSize = lotMatch ? parseFloat(lotMatch[1]) : 0.1
 
     const calculatedRr =
       Math.abs(takeProfit1 - entry) > 0 && Math.abs(entry - stopLoss) > 0
@@ -175,11 +234,13 @@ function extractTradePlanFromText(text: string, defaultSymbol: string): TradePla
     return {
       symbol: defaultSymbol,
       bias,
+      orderType,
       entry,
       stopLoss,
       takeProfit1,
       takeProfit2,
       riskRewardRatio: rrMatch ? rrMatch[1] : calculatedRr,
+      suggestedLotSize,
       rationale: 'Extracted from AI quantitative briefing'
     }
   }
@@ -332,17 +393,37 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     }
   },
 
-  executePaperOrderFromPlan: async (plan: TradePlanData, lotSize = 0.1) => {
-    const { openPosition } = usePaperTradingStore.getState()
+  executePaperOrderFromPlan: async (plan: TradePlanData, lotSize?: number) => {
+    const size = lotSize || plan.suggestedLotSize || 0.1
+    const { openPosition, placeOrder } = usePaperTradingStore.getState()
+    const isLimitOrStop =
+      plan.orderType === 'BUY_LIMIT' ||
+      plan.orderType === 'SELL_LIMIT' ||
+      plan.orderType === 'BUY_STOP' ||
+      plan.orderType === 'SELL_STOP'
+
+    if (isLimitOrStop && plan.orderType) {
+      const paperType = plan.orderType.toLowerCase() as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop'
+      return await placeOrder({
+        symbol: plan.symbol,
+        type: paperType,
+        price: plan.entry,
+        size,
+        stopLoss: plan.stopLoss,
+        takeProfit: plan.takeProfit1,
+        comment: `AI Copilot ${plan.orderType.replace('_', ' ')} (${plan.riskRewardRatio})`
+      })
+    }
+
     const side = plan.bias === 'LONG' ? 'buy' : 'sell'
     return await openPosition({
       symbol: plan.symbol,
       side,
-      size: lotSize,
+      size,
       price: plan.entry,
       stopLoss: plan.stopLoss,
       takeProfit: plan.takeProfit1,
-      comment: `AI Copilot (${plan.riskRewardRatio})`,
+      comment: `AI Copilot Market (${plan.riskRewardRatio})`,
       source: 'manual'
     })
   },
@@ -411,20 +492,29 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are the Institutional Quantitative Copilot embedded inside PIA Terminal.
+        const systemPrompt = `You are PIA Copilot, an elite agentic quantitative trader and market assistant (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
 Active Chart Symbol: ${currentSymbol}.
 
-OPERATIONAL RULES:
-1. High Signal, Zero Fluff: Strictly NO conversational filler, no greetings, no "Certainly!", no textbook explanations. Directly deliver actionable quantitative intelligence.
-2. Market Tools: You have access to real-time market data, orderbook depth, news sentiment, technical indicators, and direct chart drawing tools via function calling.
-3. Execution: If asked to analyze or draw, ALWAYS execute the relevant tools first ('execute_full_chart_analysis', 'compute_technical_analysis', 'get_news_sentiment', 'get_market_snapshot', 'draw_trendline_on_chart', 'draw_level_on_chart').
-4. Structured Response:
-   - EXECUTIVE BIAS: State directional conviction (LONG / SHORT / NEUTRAL) with rationale.
-   - MARKET STRUCTURE & VOLATILITY: Quote exact values for RSI, EMAs, ATR, and orderbook imbalance ratio.
-   - KEY STRUCTURAL LEVELS: Support, Resistance, and Invalidation levels.
-   - TACTICAL TRADE SETUP: State exact Entry, Stop Loss, Target 1, Target 2, and Risk:Reward.
-   - CHART OVERLAYS: Confirm which technical overlays were plotted onto the chart.
-5. Tone: Institutional, mathematically grounded, concise terminal format.`
+AGENTIC PROTOCOLS:
+1. Deep Chain-of-Thought: Before providing your response, formulate your step-by-step reasoning inside <thought>...</thought> tags:
+   - User intent & conversational context
+   - Market microstructure (orderbook bid/ask imbalance, liquidity walls, spread)
+   - Technical indicators (EMA alignment, RSI momentum/divergence, ATR volatility)
+   - Tactical order selection (Why BUY_LIMIT/SELL_LIMIT is preferred over market execution)
+   - Risk management & position sizing
+2. Conversational & Multilingual: Speak naturally, concisely, and insightfully. If the user writes in Indonesian, respond fluently in Indonesian. If in English, respond in English. Do NOT repeat a static generic template on follow-ups (e.g. "ok sekarang bagaimana"). Answer directly what they asked.
+3. Explicit Order Types: Always recommend explicit order types: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET. Explain WHY placing a Limit Order at a retest/demand zone avoids slippage and prevents chasing tops/bottoms.
+4. Clean Precision: Never quote unrounded raw floating points (quote 82,220.00, not 82221.95999999999).
+5. Tool Usage: Use available tools ('execute_full_chart_analysis', 'compute_technical_analysis', 'get_news_sentiment', 'get_market_snapshot', 'draw_trendline_on_chart', 'draw_level_on_chart') when fresh telemetry or chart drawings are needed.
+6. Structured Trade Plan: Whenever you recommend a tactical setup, provide:
+   - Bias: LONG or SHORT
+   - Order Type: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET
+   - Entry: [clean price]
+   - Stop Loss: [clean price]
+   - Target 1: [clean price]
+   - Target 2: [clean price]
+   - Risk:Reward: [e.g. 1:2.4]
+   - Suggested Lot: [e.g. 0.10 Lot]`
 
         const conversationHistory = [
           { role: 'system', content: systemPrompt },
@@ -582,26 +672,35 @@ OPERATIONAL RULES:
           })
 
           if (followUpRes.ok) {
-            const finalContent = await readSseStream(
+            const finalRaw = await readSseStream(
               followUpRes,
               (chunk) => {
+                const parsed = parseThinkingAndContent(chunk)
                 set((state) => ({
                   messages: state.messages.map((m) =>
-                    m.id === asstMsgId ? { ...m, content: chunk } : m
+                    m.id === asstMsgId
+                      ? {
+                          ...m,
+                          thought: parsed.thought,
+                          content: parsed.content
+                        }
+                      : m
                   )
                 }))
               },
               abortController.signal
             )
 
-            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(finalContent, currentSymbol)
+            const finalParsed = parseThinkingAndContent(finalRaw)
+            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(finalParsed.content, currentSymbol)
 
             set((state) => ({
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
                   ? {
                       ...m,
-                      content: finalContent || 'Technical overlays and tactical plan executed.',
+                      thought: finalParsed.thought,
+                      content: finalParsed.content || 'Technical overlays and tactical plan executed.',
                       tradePlan: resolvedPlan,
                       isStreaming: false
                     }
@@ -630,7 +729,8 @@ OPERATIONAL RULES:
         // Direct response without tool calls
         const asstMsgId = `asst-${Date.now()}`
         const fullContent = assistantMsg.content || 'Instruction processed.'
-        const resolvedPlan = detectedTradePlan || extractTradePlanFromText(fullContent, currentSymbol)
+        const parsedDirect = parseThinkingAndContent(fullContent)
+        const resolvedPlan = detectedTradePlan || extractTradePlanFromText(parsedDirect.content, currentSymbol)
 
         set((state) => ({
           statusMessage: null,
@@ -639,7 +739,8 @@ OPERATIONAL RULES:
             {
               id: asstMsgId,
               role: 'assistant',
-              content: fullContent,
+              thought: parsedDirect.thought,
+              content: parsedDirect.content || 'Instruction processed.',
               tradePlan: resolvedPlan,
               timestamp: Date.now()
             }
@@ -762,29 +863,259 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
       }
 
       // Default: Comprehensive Technical & Sentiment Analysis + Chart Auto-Draw
-      set({ statusMessage: 'Synthesizing market structure & drawing levels...' })
+      set({ statusMessage: 'Synthesizing market structure & agentic reasoning...' })
       const analysis = await AiMcpEngine.executeFullChartAnalysis(currentSymbol, true)
+      const livePrice = useMarketStore.getState().prices[currentSymbol]?.price || analysis.currentPrice
+      const { pricePrecision } = getSymbolPrecision(currentSymbol, undefined, livePrice)
+      const roundP = (n: number) => Number(Math.round(Number(n + 'e' + pricePrecision)) + 'e-' + pricePrecision)
+      const formatP = (n?: number) => formatCleanPrice(n, pricePrecision)
+
+      const isIndonesian = /bagaimana|gimana|sekarang|terus|rekomendasi|kasih|apa|posisi|beli|jual|pasang|taktis|bisa|dong|halo|tolong|masuk|ambil|order|sarannya|kira|kemana|open/i.test(prompt)
+      const isBuyLimitIntent = /buy\s*limit|limit\s*buy|beli\s*limit|demand\s*entry/i.test(prompt)
+      const isSellLimitIntent = /sell\s*limit|limit\s*sell|jual\s*limit|short\s*limit/i.test(prompt)
+      const isConversationalFollowUp = /sekarang|gimana|bagaimana|what now|next move|terus|what should|saran|rekomendasi|posisi apa|ke mana|open apa/i.test(prompt)
+
+      let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = analysis.tradePlan.bias
+      let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' =
+        analysis.tradePlan.orderType || (bias === 'LONG' ? 'BUY_LIMIT' : 'SELL_LIMIT')
+      let entry = roundP(analysis.tradePlan.suggestedEntry)
+      let stopLoss = roundP(analysis.tradePlan.stopLoss)
+      let takeProfit1 = roundP(analysis.tradePlan.takeProfit1)
+      let takeProfit2 = roundP(analysis.tradePlan.takeProfit2)
+      let rationale = analysis.tradePlan.rationale
+
+      if (isBuyLimitIntent) {
+        bias = 'LONG'
+        orderType = 'BUY_LIMIT'
+        entry = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 0.8))
+        stopLoss = roundP(entry - analysis.indicators.atr14 * 0.85)
+        takeProfit1 = roundP(analysis.levels.resistance[0] || (livePrice + analysis.indicators.atr14 * 1.5))
+        takeProfit2 = roundP(takeProfit1 + (takeProfit1 - entry) * 0.618)
+        rationale = isIndonesian
+          ? `Order Buy Limit di area support demand ${formatP(entry)} dengan invalidasi SL di ${formatP(stopLoss)}.`
+          : `Buy Limit at demand support ${formatP(entry)} with SL invalidation at ${formatP(stopLoss)}.`
+      } else if (isSellLimitIntent) {
+        bias = 'SHORT'
+        orderType = 'SELL_LIMIT'
+        entry = roundP(analysis.levels.resistance[0] || Math.min(analysis.indicators.ema20, livePrice + analysis.indicators.atr14 * 0.8))
+        stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
+        takeProfit1 = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 1.5))
+        takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
+        rationale = isIndonesian
+          ? `Order Sell Limit di area resistance pullback ${formatP(entry)} untuk menghindari mengejar harga di support bawah.`
+          : `Sell Limit at resistance retest zone ${formatP(entry)} to avoid chasing market at lows.`
+      } else if (isConversationalFollowUp) {
+        if (analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32) {
+          bias = 'SHORT'
+          orderType = 'SELL_LIMIT'
+          entry = roundP(analysis.levels.resistance[0] || Math.min(analysis.indicators.ema20, livePrice + analysis.indicators.atr14 * 0.8))
+          stopLoss = roundP(entry + analysis.indicators.atr14 * 0.85)
+          takeProfit1 = roundP(analysis.levels.support[0] || (livePrice - analysis.indicators.atr14 * 1.5))
+          takeProfit2 = roundP(takeProfit1 - (entry - takeProfit1) * 0.618)
+          rationale = isIndonesian
+            ? `RSI oversold (${analysis.indicators.rsi14}). Rekomendasi Sell Limit di retest resistance ${formatP(entry)} untuk R:R optimal.`
+            : `RSI oversold (${analysis.indicators.rsi14}). Recommended Sell Limit at resistance retest ${formatP(entry)}.`
+        } else if (analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68) {
+          bias = 'LONG'
+          orderType = 'BUY_LIMIT'
+          entry = roundP(analysis.levels.support[0] || Math.max(analysis.indicators.ema20, livePrice - analysis.indicators.atr14 * 0.8))
+          stopLoss = roundP(entry - analysis.indicators.atr14 * 0.85)
+          takeProfit1 = roundP(analysis.levels.resistance[0] || (livePrice + analysis.indicators.atr14 * 1.5))
+          takeProfit2 = roundP(takeProfit1 + (takeProfit1 - entry) * 0.618)
+          rationale = isIndonesian
+            ? `RSI overbought (${analysis.indicators.rsi14}). Rekomendasi Buy Limit di pullback support ${formatP(entry)}.`
+            : `RSI overbought (${analysis.indicators.rsi14}). Recommended Buy Limit at support pullback ${formatP(entry)}.`
+        }
+      }
+
+      const risk = Math.abs(entry - stopLoss)
+      const reward = Math.abs(takeProfit1 - entry)
+      const riskRewardRatio = risk > 0 ? `1:${(reward / risk).toFixed(2)}` : '1:2.0'
 
       const tradePlan: TradePlanData = {
         symbol: currentSymbol,
-        bias: analysis.tradePlan.bias,
-        entry: analysis.tradePlan.suggestedEntry,
-        stopLoss: analysis.tradePlan.stopLoss,
-        takeProfit1: analysis.tradePlan.takeProfit1,
-        takeProfit2: analysis.tradePlan.takeProfit2,
-        riskRewardRatio: analysis.tradePlan.riskRewardRatio,
-        rationale: analysis.tradePlan.rationale
+        bias,
+        orderType,
+        entry,
+        stopLoss,
+        takeProfit1,
+        takeProfit2,
+        riskRewardRatio,
+        suggestedLotSize: 0.1,
+        rationale
       }
 
-      const content = `### Quantitative Briefing: ${currentSymbol}
+      // Replot trade plan levels on the chart canvas
+      await AiMcpEngine.plotTradePlanLevels(tradePlan)
 
-- **Institutional Bias:** **${analysis.tradePlan.bias}** (Structure: **${analysis.trend.toUpperCase()}**)
-- **Sentiment Velocity:** ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
-- **Momentum Indicators:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${analysis.indicators.atr14}** | EMA20: **${analysis.indicators.ema20}** | EMA50: **${analysis.indicators.ema50}**
+      // Agentic Thought Process (Claude Code / OpenCode / Hermes style)
+      const thought = `1. Intent Analysis:
+   • Query: "${prompt}"
+   • Language: ${isIndonesian ? 'Indonesian' : 'English'} | Mode: ${
+     isConversationalFollowUp
+       ? 'Conversational follow-up & tactical order advice'
+       : isBuyLimitIntent
+       ? 'Explicit Buy Limit recommendation'
+       : isSellLimitIntent
+       ? 'Explicit Sell Limit recommendation'
+       : 'Quantitative chart analysis & level projection'
+   }
+   • Symbol: ${currentSymbol} spot price at ${formatP(livePrice)}
 
-*Rationale: ${analysis.tradePlan.rationale}*
+2. Quantitative Microstructure:
+   • Structural Trend: ${analysis.trend.toUpperCase()} (EMA20: ${formatP(analysis.indicators.ema20)} | EMA50: ${formatP(analysis.indicators.ema50)})
+   • Momentum Velocity: RSI(14) at ${analysis.indicators.rsi14} (${
+     analysis.indicators.rsi14 < 32
+       ? 'exhaustion / oversold bounce risk'
+       : analysis.indicators.rsi14 > 68
+       ? 'stretch / overbought pullback risk'
+       : 'balanced momentum'
+   })
+   • Volatility Range: ATR(14) = ${formatP(analysis.indicators.atr14)}
+   • Orderbook Flow: Imbalance ratio ${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'} (${
+     (analysis.orderbookSummary?.imbalanceRatio ?? 1) > 1.1
+       ? 'net bid accumulation'
+       : (analysis.orderbookSummary?.imbalanceRatio ?? 1) < 0.9
+       ? 'net ask distribution'
+       : 'balanced orderbook'
+   })
+   • News Sentiment: ${analysis.sentimentSummary.sentiment.toUpperCase()} (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%)
 
-**Chart Canvas Status:** Plotted **${analysis.plottedDrawingsCount} technical overlays** (Support/Resistance levels, Trendlines, and Institutional Order Block) directly to the active chart.`
+3. Execution Tactics:
+   • Tactical Order Type: ${orderType.replace('_', ' ')} (${
+     orderType === 'SELL_LIMIT'
+       ? `Retest entry at ${formatP(entry)} to avoid shorting into oversold support`
+       : orderType === 'BUY_LIMIT'
+       ? `Demand entry at ${formatP(entry)} to capture liquidity bounce`
+       : `Market execution at ${formatP(entry)}`
+   })
+   • Risk Calibration: Sized at 0.10 Lot (~1.0% equity risk model) | R:R ${riskRewardRatio}
+   • Chart Canvas: Plotted ${analysis.plottedDrawingsCount + 4} technical overlays and key levels directly`
+
+      let content = ''
+      if (isIndonesian) {
+        if (isConversationalFollowUp) {
+          content = `Melihat pergerakan **${currentSymbol}** saat ini di harga **${formatP(livePrice)}**:
+
+${
+  analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32
+    ? `Meskipun struktur harga masih berada dalam tren **BEARISH** di bawah EMA 20 (${formatP(analysis.indicators.ema20)}), indikator RSI(14) saat ini sudah sangat jenuh jual (**${analysis.indicators.rsi14}**). Melakukan Market Sell langsung di harga sekarang memiliki risiko tinggi terkena *short squeeze* atau technical rebound.`
+    : analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68
+    ? `Struktur harga berada dalam tren **BULLISH** di atas EMA 20 (${formatP(analysis.indicators.ema20)}), namun RSI(14) berada di area overbought (**${analysis.indicators.rsi14}**). Sebaiknya tunggu koreksi harga daripada membeli di pucuk.`
+    : `Struktur pasar saat ini bergerak dengan bias **${bias}**. Harga aktif berada di **${formatP(livePrice)}** dengan rentang volatilitas ATR(14) sebesar **${formatP(analysis.indicators.atr14)}**.`
+}
+
+### Rekomendasi Taktis: **${orderType.replace('_', ' ')}**
+${
+  orderType === 'SELL_LIMIT'
+    ? `Strategi dengan rasio risiko-imbalan terbaik adalah menempatkan **SELL LIMIT** di area resistance re-test **${formatP(entry)}**. Ini memberi harga masuk yang jauh lebih ideal saat terjadi pullback.`
+    : `Strategi optimal adalah memasang **BUY LIMIT** di area demand support **${formatP(entry)}** untuk menangkap pantulan harga dengan stop loss terukur.`
+}
+
+- **Tipe Order:** \`${orderType}\`
+- **Area Entry:** **${formatP(entry)}**
+- **Stop Loss (Invalidasi):** **${formatP(stopLoss)}**
+- **Target Take Profit 1:** **${formatP(takeProfit1)}**
+- **Target Take Profit 2:** **${formatP(takeProfit2)}**
+- **Risk / Reward:** **${riskRewardRatio}**
+- **Saran Ukuran Lot:** **0.10 Lot** (Model resiko modal ~1.0%)
+
+*Level taktis dan overlays telah otomatis diproyeksikan ke chart. Anda bisa langsung meninjau atau mengeksekusi order simulasi melalui tiket di bawah.*`
+        } else if (isBuyLimitIntent || isSellLimitIntent) {
+          content = `Berikut rencana order limit terukur untuk **${currentSymbol}** di harga **${formatP(livePrice)}**:
+
+### Setup Taktis: **${orderType.replace('_', ' ')}**
+${rationale}
+
+- **Tipe Order:** \`${orderType}\`
+- **Area Entry:** **${formatP(entry)}**
+- **Stop Loss:** **${formatP(stopLoss)}**
+- **Take Profit 1:** **${formatP(takeProfit1)}**
+- **Take Profit 2:** **${formatP(takeProfit2)}**
+- **Rasio Risk / Reward:** **${riskRewardRatio}**
+- **Saran Ukuran Lot:** **0.10 Lot**
+
+*Level harga telah diproyeksikan langsung ke canvas chart. Klik tombol pada tiket di bawah untuk menempatkan order.*`
+        } else {
+          content = `Analisis kuantitatif dan struktur pasar **${currentSymbol}** (Harga: **${formatP(livePrice)}**):
+
+- **Bias Institusional:** **${bias}** (Struktur: **${analysis.trend.toUpperCase()}**)
+- **Sentimen & Flow:** Sentimen berita **${analysis.sentimentSummary.sentiment.toUpperCase()}** (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%) | Imbalance Orderbook: **${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'}**
+- **Momentum:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${formatP(analysis.indicators.atr14)}** | EMA20: **${formatP(analysis.indicators.ema20)}**
+
+### Rekomendasi Order Taktis: **${orderType.replace('_', ' ')}**
+${rationale}
+
+- **Tipe Order:** \`${orderType}\`
+- **Area Entry:** **${formatP(entry)}**
+- **Stop Loss:** **${formatP(stopLoss)}**
+- **Target TP 1 & TP 2:** **${formatP(takeProfit1)}** / **${formatP(takeProfit2)}**
+- **Risk / Reward:** **${riskRewardRatio}**
+
+*Level teknikal dan zona supply/demand telah otomatis digambar pada chart canvas.*`
+        }
+      } else {
+        if (isConversationalFollowUp) {
+          content = `Analyzing current price action for **${currentSymbol}** trading at **${formatP(livePrice)}**:
+
+${
+  analysis.trend === 'bearish' && analysis.indicators.rsi14 < 32
+    ? `While the prevailing structure is **BEARISH** below EMA 20 (${formatP(analysis.indicators.ema20)}), RSI(14) is heavily oversold (**${analysis.indicators.rsi14}**). Entering a Market Sell directly here carries high squeeze and bounce risk.`
+    : analysis.trend === 'bullish' && analysis.indicators.rsi14 > 68
+    ? `The trend is strongly **BULLISH** above EMA 20 (${formatP(analysis.indicators.ema20)}), but RSI(14) is stretched into overbought territory (**${analysis.indicators.rsi14}**). Avoid FOMO buying into local resistance.`
+    : `The market is currently consolidating with a **${bias}** bias. Active mark price is **${formatP(livePrice)}** with ATR(14) volatility at **${formatP(analysis.indicators.atr14)}**.`
+}
+
+### Tactical Recommendation: **${orderType.replace('_', ' ')}**
+${
+  orderType === 'SELL_LIMIT'
+    ? `The highest expectancy play is placing a **SELL LIMIT** at the resistance retest zone **${formatP(entry)}**. This yields a superior entry price on any technical pullback.`
+    : `The optimal play is placing a **BUY LIMIT** at the structural demand support zone **${formatP(entry)}** to capture the liquidity bounce with tight invalidation.`
+}
+
+- **Order Type:** \`${orderType}\`
+- **Entry Price:** **${formatP(entry)}**
+- **Stop Loss (Invalidation):** **${formatP(stopLoss)}**
+- **Target 1:** **${formatP(takeProfit1)}**
+- **Target 2:** **${formatP(takeProfit2)}**
+- **Risk / Reward:** **${riskRewardRatio}**
+- **Suggested Position Size:** **0.10 Lot** (~1.0% equity risk model)
+
+*Tactical price levels and chart overlays have been drawn. You can execute this simulation order directly via the trade ticket below.*`
+        } else if (isBuyLimitIntent || isSellLimitIntent) {
+          content = `Tactical order setup for **${currentSymbol}** at **${formatP(livePrice)}**:
+
+### Tactical Setup: **${orderType.replace('_', ' ')}**
+${rationale}
+
+- **Order Type:** \`${orderType}\`
+- **Entry Price:** **${formatP(entry)}**
+- **Stop Loss:** **${formatP(stopLoss)}**
+- **Target 1:** **${formatP(takeProfit1)}**
+- **Target 2:** **${formatP(takeProfit2)}**
+- **Risk / Reward:** **${riskRewardRatio}**
+- **Suggested Lot Size:** **0.10 Lot**
+
+*Chart levels projected onto active canvas. Click below to place order into paper account.*`
+        } else {
+          content = `Quantitative structure scan for **${currentSymbol}** (Spot: **${formatP(livePrice)}**):
+
+- **Institutional Bias:** **${bias}** (Structure: **${analysis.trend.toUpperCase()}**)
+- **Sentiment & Flow:** News sentiment **${analysis.sentimentSummary.sentiment.toUpperCase()}** (${analysis.sentimentSummary.score > 0 ? '+' : ''}${analysis.sentimentSummary.score}%) | Orderbook Imbalance: **${analysis.orderbookSummary?.imbalanceRatio?.toFixed(2) || '1.00'}**
+- **Momentum Metrics:** RSI(14): **${analysis.indicators.rsi14}** | ATR(14): **${formatP(analysis.indicators.atr14)}** | EMA20: **${formatP(analysis.indicators.ema20)}**
+
+### Tactical Recommendation: **${orderType.replace('_', ' ')}**
+${rationale}
+
+- **Order Type:** \`${orderType}\`
+- **Entry Price:** **${formatP(entry)}**
+- **Stop Loss:** **${formatP(stopLoss)}**
+- **Take Profit Targets:** **${formatP(takeProfit1)}** / **${formatP(takeProfit2)}**
+- **Risk / Reward:** **${riskRewardRatio}**
+
+*Plotted ${analysis.plottedDrawingsCount} technical overlays and key levels directly to the chart canvas.*`
+        }
+      }
 
       set((state) => ({
         isBusy: false,
@@ -795,6 +1126,7 @@ ${sent.topHeadlines.length > 0 ? `\n**Top Headlines:**\n${sent.topHeadlines.map(
           {
             id: `asst-${Date.now()}`,
             role: 'assistant',
+            thought,
             content,
             tradePlan,
             toolCalls: [

@@ -19,7 +19,8 @@ import {
   TrendingUp,
   TrendingDown,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
@@ -27,6 +28,7 @@ import { getSymbolPrecision } from '@shared/market-utils'
 import type { IntelligenceAnalyzeResult, MarketInsightResult } from '@shared/types'
 import {
   useAiAgentStore,
+  formatCleanPrice,
   type TradePlanData,
   type ToolCallExecution
 } from '../../stores/useAiAgentStore'
@@ -178,6 +180,83 @@ const StructuredContentRenderer: React.FC<{
 }
 
 // ==========================================
+// Agentic Chain-of-Thought Collapsible Card
+// ==========================================
+
+const ThoughtProcessCard: React.FC<{
+  thought?: string
+  isStreaming?: boolean
+}> = ({ thought, isStreaming }) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  if (!thought) return null
+
+  return (
+    <div
+      style={{
+        marginBottom: 8,
+        borderRadius: 6,
+        border: '1px solid rgba(168, 85, 247, 0.25)',
+        backgroundColor: 'rgba(168, 85, 247, 0.05)',
+        overflow: 'hidden'
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '5px 8px',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#C084FC',
+          fontSize: 10,
+          fontWeight: 600,
+          fontFamily: THEME_TOKENS.typography.fontMono
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Sparkles size={11} color="#C084FC" />
+          <span>Agent Reasoning Process</span>
+          {isStreaming && (
+            <span style={{ fontSize: 9, color: '#A855F7', animation: 'pulse 1s infinite' }}>
+              (Thinking...)
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: 9 }}>
+          <span>{isExpanded ? 'Hide' : 'View thought'}</span>
+          {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderTop: '1px solid rgba(168, 85, 247, 0.15)',
+            backgroundColor: 'rgba(7, 9, 14, 0.85)',
+            fontSize: 10,
+            lineHeight: 1.55,
+            color: '#CBD5E1',
+            fontFamily: THEME_TOKENS.typography.fontMono,
+            whiteSpace: 'pre-wrap',
+            maxHeight: 220,
+            overflowY: 'auto'
+          }}
+        >
+          {thought}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================
 // Tactical Trade Ticket Component
 // ==========================================
 
@@ -186,15 +265,30 @@ const TacticalTradeTicket: React.FC<{
 }> = ({ plan }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
+  const [selectedLot, setSelectedLot] = useState<number>(plan.suggestedLotSize || 0.1)
   const { executePaperOrderFromPlan, replotTradePlan } = useAiAgentStore()
+
+  const { pricePrecision } = getSymbolPrecision(plan.symbol, undefined, plan.entry)
+  const formatP = (v?: number) => formatCleanPrice(v, pricePrecision)
 
   const showToast = (msg: string): void => {
     setToastMessage(msg)
     setTimeout(() => setToastMessage(null), 2500)
   }
 
+  const orderType = plan.orderType || (plan.bias === 'LONG' ? 'BUY_LIMIT' : 'SELL_LIMIT')
+  const orderTypeLabel = orderType.replace('_', ' ')
+
   const handleCopy = async (): Promise<void> => {
-    const text = `PIA TRADE SETUP: ${plan.symbol}\nBIAS: ${plan.bias}\nENTRY: ${plan.entry}\nSTOP LOSS: ${plan.stopLoss}\nTARGET 1: ${plan.takeProfit1}\nTARGET 2: ${plan.takeProfit2}\nRISK/REWARD: ${plan.riskRewardRatio}`
+    const text = `PIA TRADE SETUP: ${plan.symbol}
+ORDER TYPE: ${orderType}
+BIAS: ${plan.bias}
+ENTRY: ${formatP(plan.entry)}
+STOP LOSS: ${formatP(plan.stopLoss)}
+TARGET 1: ${formatP(plan.takeProfit1)}
+TARGET 2: ${formatP(plan.takeProfit2)}
+RISK/REWARD: ${plan.riskRewardRatio}
+SIZE: ${selectedLot} Lot`
     try {
       await navigator.clipboard.writeText(text)
       showToast('Copied to clipboard')
@@ -212,9 +306,9 @@ const TacticalTradeTicket: React.FC<{
   const handleExecutePaper = async (): Promise<void> => {
     setIsExecuting(true)
     try {
-      const res = await executePaperOrderFromPlan(plan, 0.1)
+      const res = await executePaperOrderFromPlan(plan, selectedLot)
       if (res.success) {
-        showToast('Paper order executed!')
+        showToast(`${orderTypeLabel} placed (${selectedLot} Lot)`)
       } else {
         showToast(`Failed: ${res.error || 'Margin error'}`)
       }
@@ -226,6 +320,7 @@ const TacticalTradeTicket: React.FC<{
   const isLong = plan.bias === 'LONG'
   const isShort = plan.bias === 'SHORT'
   const biasColor = isLong ? '#10B981' : isShort ? '#F43F5E' : '#F59E0B'
+  const isLimit = orderType.includes('LIMIT')
 
   return (
     <div
@@ -243,7 +338,7 @@ const TacticalTradeTicket: React.FC<{
     >
       {/* Header Bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span
             style={{
               padding: '2px 7px',
@@ -261,6 +356,22 @@ const TacticalTradeTicket: React.FC<{
             {isLong ? <TrendingUp size={11} /> : isShort ? <TrendingDown size={11} /> : <Zap size={11} />}
             {plan.bias}
           </span>
+
+          <span
+            style={{
+              padding: '2px 6px',
+              borderRadius: 4,
+              backgroundColor: isLimit ? 'rgba(6, 182, 212, 0.15)' : 'rgba(212, 175, 55, 0.15)',
+              border: `1px solid ${isLimit ? 'rgba(6, 182, 212, 0.35)' : 'rgba(212, 175, 55, 0.35)'}`,
+              color: isLimit ? '#22D3EE' : '#FDE68A',
+              fontWeight: 700,
+              fontSize: 9,
+              letterSpacing: '0.04em'
+            }}
+          >
+            {orderTypeLabel}
+          </span>
+
           <span style={{ fontWeight: 700, fontSize: 11, color: '#F4F6FC' }}>
             {plan.symbol}
           </span>
@@ -296,27 +407,70 @@ const TacticalTradeTicket: React.FC<{
         <div>
           <span style={{ fontSize: 9, color: '#838896', display: 'block' }}>ENTRY</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#F4F6FC', fontFamily: THEME_TOKENS.typography.fontMono }}>
-            {plan.entry}
+            {formatP(plan.entry)}
           </span>
         </div>
         <div>
           <span style={{ fontSize: 9, color: '#F43F5E', display: 'block' }}>STOP LOSS</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#F43F5E', fontFamily: THEME_TOKENS.typography.fontMono }}>
-            {plan.stopLoss}
+            {formatP(plan.stopLoss)}
           </span>
         </div>
         <div>
           <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 1</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
-            {plan.takeProfit1}
+            {formatP(plan.takeProfit1)}
           </span>
         </div>
         <div>
           <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 2</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
-            {plan.takeProfit2}
+            {formatP(plan.takeProfit2)}
           </span>
         </div>
+      </div>
+
+      {/* Position Sizing Selector */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '4px 6px',
+          borderRadius: 4,
+          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.04)',
+          fontSize: 10
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#838896' }}>
+          <span>Order Size:</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[0.05, 0.1, 0.25, 0.5].map((val) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setSelectedLot(val)}
+                style={{
+                  border: selectedLot === val ? '1px solid rgba(212, 175, 55, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  backgroundColor: selectedLot === val ? 'rgba(212, 175, 55, 0.15)' : 'transparent',
+                  color: selectedLot === val ? '#FDE68A' : '#94A3B8',
+                  padding: '1px 5px',
+                  borderRadius: 3,
+                  fontSize: 9,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {val} Lot
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <span style={{ fontFamily: THEME_TOKENS.typography.fontMono, color: '#F4F6FC', fontWeight: 700 }}>
+          {selectedLot} Lot
+        </span>
       </div>
 
       {/* Actions Toolbar */}
@@ -330,7 +484,7 @@ const TacticalTradeTicket: React.FC<{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: '3px 7px',
+              padding: '4px 8px',
               borderRadius: 4,
               backgroundColor: 'rgba(212, 175, 55, 0.12)',
               border: '1px solid rgba(212, 175, 55, 0.3)',
@@ -341,30 +495,31 @@ const TacticalTradeTicket: React.FC<{
             }}
           >
             <LineChart size={10} color="#D4AF37" />
-            <span>Plot Chart</span>
+            <span>Plot Levels</span>
           </button>
 
           <button
             type="button"
             disabled={isExecuting}
             onClick={handleExecutePaper}
-            title="Execute market simulation position in Paper Trading account"
+            title={`Submit ${orderTypeLabel} to Paper Trading account`}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: '3px 7px',
+              padding: '4px 10px',
               borderRadius: 4,
-              backgroundColor: isLong ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-              border: `1px solid ${biasColor}40`,
+              backgroundColor: isLong ? 'rgba(16, 185, 129, 0.18)' : 'rgba(244, 63, 94, 0.18)',
+              border: `1px solid ${biasColor}50`,
               color: biasColor,
               fontSize: 10,
-              fontWeight: 600,
-              cursor: isExecuting ? 'not-allowed' : 'pointer'
+              fontWeight: 700,
+              cursor: isExecuting ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s ease'
             }}
           >
             <Zap size={10} />
-            <span>{isExecuting ? 'Submitting...' : 'Paper Trade'}</span>
+            <span>{isExecuting ? 'Submitting...' : `Place ${orderTypeLabel}`}</span>
           </button>
         </div>
 
@@ -376,7 +531,7 @@ const TacticalTradeTicket: React.FC<{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
-            padding: '3px 6px',
+            padding: '4px 7px',
             borderRadius: 4,
             backgroundColor: 'transparent',
             border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -786,6 +941,9 @@ export const IntelligencePanel: React.FC = () => {
                         </div>
                       </div>
                     )}
+
+                    {/* Chain-of-Thought Reasoning Card */}
+                    <ThoughtProcessCard thought={m.thought} isStreaming={m.isStreaming} />
 
                     {/* Render tool calls drawer if any */}
                     {m.toolCalls && m.toolCalls.length > 0 && (

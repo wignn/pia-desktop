@@ -9,6 +9,7 @@
 import { candleEngine } from './candle-engine'
 import { useMarketStore } from '../stores/useMarketStore'
 import type { DrawingItem } from '@shared/types'
+import { getSymbolPrecision } from '@shared/market-utils'
 
 export interface McpToolDefinition {
   name: string
@@ -73,11 +74,13 @@ export interface TechnicalAnalysisResult {
   }>
   tradePlan: {
     bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+    orderType?: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET'
     suggestedEntry: number
     stopLoss: number
     takeProfit1: number
     takeProfit2: number
     riskRewardRatio: string
+    suggestedLotSize?: number
     rationale: string
   }
   plottedDrawingsCount: number
@@ -598,37 +601,66 @@ export class AiMcpEngine {
     const sentimentSummary = await this.getNewsSentiment(symbol, 6)
     const marketSnapshot = await this.getMarketSnapshot(symbol)
 
+    // Precision helper to prevent raw floating-point drift (e.g. 82221.95999999999)
+    const { pricePrecision } = getSymbolPrecision(symbol, undefined, currentPrice)
+    const roundPrice = (n: number) => Number(Math.round(Number(n + 'e' + pricePrecision)) + 'e-' + pricePrecision)
+
     // Formulate institutional trade plan
     let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = 'NEUTRAL'
-    let suggestedEntry = currentPrice
-    let stopLoss = currentPrice
-    let tp1 = currentPrice
-    let tp2 = currentPrice
+    let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' = 'BUY_LIMIT'
+    let suggestedEntry = roundPrice(currentPrice)
+    let stopLoss = roundPrice(currentPrice)
+    let tp1 = roundPrice(currentPrice)
+    let tp2 = roundPrice(currentPrice)
     let rationale = ''
 
     if (trend === 'bullish' || (sentimentSummary.score > 20 && trend !== 'bearish')) {
       bias = 'LONG'
-      suggestedEntry = currentPrice
-      const primarySupport = supportLevels[0] || currentPrice * 0.985
-      stopLoss = Number((primarySupport - atr14 * 0.8).toFixed(4))
-      const primaryResistance = resistanceLevels[0] || currentPrice * 1.025
-      tp1 = primaryResistance
-      tp2 = Number((currentPrice + (tp1 - suggestedEntry) * 1.618).toFixed(4))
-      rationale = `Bullish continuation supported by EMA20 > EMA50 alignment and positive news sentiment (${sentimentSummary.score > 0 ? '+' : ''}${sentimentSummary.score}%). Target overhead liquidity at R1 (${tp1}).`
+      // If RSI is overbought (> 68), wait for pullback with BUY_LIMIT at support/EMA20
+      if (rsi14 > 68) {
+        orderType = 'BUY_LIMIT'
+        suggestedEntry = roundPrice(supportLevels[0] || Math.max(ema20, currentPrice - atr14 * 0.7))
+        stopLoss = roundPrice(suggestedEntry - atr14 * 0.8)
+        tp1 = roundPrice(resistanceLevels[0] || currentPrice + atr14 * 1.5)
+        tp2 = roundPrice(tp1 + (tp1 - suggestedEntry) * 0.618)
+        rationale = `Strong Bullish trend, but RSI (${rsi14}) is elevated. Recommended BUY LIMIT on pullback to support zone (${suggestedEntry}) to avoid buying local top.`
+      } else {
+        orderType = 'BUY_LIMIT'
+        suggestedEntry = roundPrice(supportLevels[0] || currentPrice * 0.99)
+        const primarySupport = supportLevels[0] || currentPrice * 0.985
+        stopLoss = roundPrice(primarySupport - atr14 * 0.8)
+        const primaryResistance = resistanceLevels[0] || currentPrice * 1.025
+        tp1 = roundPrice(primaryResistance)
+        tp2 = roundPrice(currentPrice + (tp1 - suggestedEntry) * 1.618)
+        rationale = `Bullish continuation supported by EMA20 > EMA50 alignment and positive news sentiment (${sentimentSummary.score > 0 ? '+' : ''}${sentimentSummary.score}%). Target overhead liquidity at R1 (${tp1}).`
+      }
     } else if (trend === 'bearish' || sentimentSummary.score < -20) {
       bias = 'SHORT'
-      suggestedEntry = currentPrice
-      const primaryResistance = resistanceLevels[0] || currentPrice * 1.02
-      stopLoss = Number((primaryResistance + atr14 * 0.8).toFixed(4))
-      const primarySupport = supportLevels[0] || currentPrice * 0.975
-      tp1 = primarySupport
-      tp2 = Number((currentPrice - (suggestedEntry - tp1) * 1.618).toFixed(4))
-      rationale = `Bearish pressure under EMA20 with negative news sentiment (${sentimentSummary.score}%). Watch breakdown targeting key support level S1 (${tp1}).`
+      // If RSI is heavily oversold (< 32), selling at market is dangerous; use SELL_LIMIT on pullback
+      if (rsi14 < 32) {
+        orderType = 'SELL_LIMIT'
+        suggestedEntry = roundPrice(resistanceLevels[0] || Math.min(ema20, currentPrice + atr14 * 0.8))
+        stopLoss = roundPrice(suggestedEntry + atr14 * 0.8)
+        tp1 = roundPrice(supportLevels[0] || currentPrice - atr14 * 1.5)
+        tp2 = roundPrice(tp1 - (suggestedEntry - tp1) * 0.618)
+        rationale = `Bearish market structure, but RSI (${rsi14}) is oversold. Chasing shorts here has high squeeze risk. Recommended SELL LIMIT on technical pullback to resistance (${suggestedEntry}).`
+      } else {
+        orderType = 'SELL_LIMIT'
+        suggestedEntry = roundPrice(resistanceLevels[0] || currentPrice * 1.01)
+        const primaryResistance = resistanceLevels[0] || currentPrice * 1.02
+        stopLoss = roundPrice(primaryResistance + atr14 * 0.8)
+        const primarySupport = supportLevels[0] || currentPrice * 0.975
+        tp1 = roundPrice(primarySupport)
+        tp2 = roundPrice(currentPrice - (suggestedEntry - tp1) * 1.618)
+        rationale = `Bearish pressure under EMA20 with negative news sentiment (${sentimentSummary.score}%). Watch breakdown targeting key support level S1 (${tp1}).`
+      }
     } else {
       bias = 'NEUTRAL'
-      stopLoss = Number((currentPrice - atr14 * 1.2).toFixed(4))
-      tp1 = resistanceLevels[0] || currentPrice * 1.015
-      tp2 = Number((currentPrice + atr14 * 2.0).toFixed(4))
+      orderType = 'BUY_LIMIT'
+      suggestedEntry = roundPrice(supportLevels[0] || currentPrice * 0.99)
+      stopLoss = roundPrice(currentPrice - atr14 * 1.2)
+      tp1 = roundPrice(resistanceLevels[0] || currentPrice * 1.015)
+      tp2 = roundPrice(currentPrice + atr14 * 2.0)
       rationale = `Mean-reverting consolidation between S1 (${supportLevels[0]}) and R1 (${resistanceLevels[0]}). Favour range-bound scalping until clean breakout.`
     }
 
@@ -639,31 +671,33 @@ export class AiMcpEngine {
     return {
       symbol,
       timeframe: tf,
-      currentPrice,
+      currentPrice: roundPrice(currentPrice),
       trend,
       sentimentSummary,
       orderbookSummary: marketSnapshot?.orderbook,
       indicators: {
         rsi14,
-        ema20: Number(ema20.toFixed(4)),
-        ema50: Number(ema50.toFixed(4)),
-        ema200: ema200 ? Number(ema200.toFixed(4)) : undefined,
-        atr14: Number(atr14.toFixed(4))
+        ema20: roundPrice(ema20),
+        ema50: roundPrice(ema50),
+        ema200: ema200 ? roundPrice(ema200) : undefined,
+        atr14: roundPrice(atr14)
       },
       levels: {
-        resistance: resistanceLevels,
-        support: supportLevels,
-        pivot: Number(((resistanceLevels[0] + supportLevels[0] + currentPrice) / 3).toFixed(4))
+        resistance: resistanceLevels.map(roundPrice),
+        support: supportLevels.map(roundPrice),
+        pivot: roundPrice((resistanceLevels[0] + supportLevels[0] + currentPrice) / 3)
       },
       trendlines,
       zones,
       tradePlan: {
         bias,
+        orderType,
         suggestedEntry,
         stopLoss,
         takeProfit1: tp1,
         takeProfit2: tp2,
         riskRewardRatio: rrr,
+        suggestedLotSize: 0.1,
         rationale
       },
       plottedDrawingsCount: 0
@@ -805,14 +839,16 @@ export class AiMcpEngine {
   public static async plotTradePlanLevels(plan: {
     symbol: string
     bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+    orderType?: string
     entry: number
     stopLoss: number
     takeProfit1: number
     takeProfit2?: number
   }): Promise<boolean> {
-    const { symbol, bias, entry, stopLoss, takeProfit1, takeProfit2 } = plan
+    const { symbol, bias, orderType, entry, stopLoss, takeProfit1, takeProfit2 } = plan
     if (!window.api?.drawings?.save) return false
 
+    const entryLabel = orderType ? orderType.replace('_', ' ') : bias
     const items: DrawingItem[] = [
       {
         id: `ai-plan-entry-${Date.now()}`,
@@ -823,7 +859,7 @@ export class AiMcpEngine {
           color: '#3B82F6',
           lineWidth: 2,
           lineStyle: 'solid',
-          text: `AI ENTRY (${bias}) @ ${entry}`
+          text: `AI ENTRY (${entryLabel}) @ ${entry}`
         },
         lock: true,
         visible: true,
