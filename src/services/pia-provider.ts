@@ -880,7 +880,11 @@ export class PiaProvider {
     if (!this.client) return []
 
     const cleanSymbol = params.symbol.trim().toUpperCase()
-    const cacheKey = `${cleanSymbol}:${params.timeframe}:${params.limit || 500}:${params.to || 'latest'}`
+    // ponytail: cap 15m limit to 350 to prevent ClickHouse rollup timeout / Cloudflare 502 Bad Gateway on dense symbols like XAUUSD
+    const effectiveLimit = params.timeframe === '15m'
+      ? Math.min(params.limit ?? 300, 350)
+      : (params.limit || 500)
+    const cacheKey = `${cleanSymbol}:${params.timeframe}:${effectiveLimit}:${params.to || 'latest'}`
     const cached = this.candleCache.get(cacheKey)
     // ponytail: memory cache 120s for active candles (instant 0ms chart switches). Live ticks update via WebSocket.
     const ttl = params.to ? 600_000 : 120_000
@@ -901,7 +905,7 @@ export class PiaProvider {
         >['timeframe']
         res = await this.client.market.getCandles(cleanSymbol, {
           timeframe,
-          limit: params.limit,
+          limit: effectiveLimit,
           since: params.from,
           until: params.to,
           timeoutMs: 8000,
@@ -915,7 +919,7 @@ export class PiaProvider {
               timeframe: '5m',
               from: params.from,
               to: params.to,
-              limit: Math.min((params.limit ?? 500) * 3, 1500)
+              limit: Math.min(effectiveLimit * 3, 600)
             })
             const m15Bars = this.aggregate15mBars(fiveMinBars)
             if (m15Bars.length > 0) {
@@ -957,7 +961,7 @@ export class PiaProvider {
               timeframe: '5m',
               from: params.from,
               to: params.to,
-              limit: Math.min((params.limit ?? 500) * 3, 1500)
+              limit: Math.min(effectiveLimit * 3, 600)
             })
             const m15Bars = this.aggregate15mBars(fiveMinBars)
             if (m15Bars.length > 0) {
@@ -968,7 +972,7 @@ export class PiaProvider {
         }
         if (params.timeframe === '1w') {
           const dailyBars = await this.getCandles({
-            symbol: params.symbol,
+            symbol: cleanSymbol,
             timeframe: '1d',
             from: params.from,
             to: params.to,

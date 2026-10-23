@@ -353,31 +353,41 @@ export const ChartContainer: React.FC = () => {
 
         setIsLoadingCandles(true)
 
-        const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
+        try {
+          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
 
-        // Verify request was not superseded while in flight
-        const latestSymbol = useMarketStore.getState().symbol
-        const latestTf = useMarketStore.getState().timeframe
-        if (sym.ticker !== latestSymbol || tf !== latestTf) {
+          // Verify request was not superseded while in flight
+          const latestSymbol = useMarketStore.getState().symbol
+          const latestTf = useMarketStore.getState().timeframe
+          if (sym.ticker !== latestSymbol || tf !== latestTf) {
+            callback([], false)
+            return
+          }
+
+          const lastError = candleEngine.getLastLoadError()
+          setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
+          setHasHistoricalBars(bars.length > 0)
+          if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
+            useMarketStore.setState({
+              connectionState: {
+                status: 'connected',
+                latencyMs: 35,
+                lastHeartbeat: Date.now()
+              }
+            })
+          }
+          callback(bars, true)
+          await restoreDrawingsForSymbol(sym.ticker)
+        } catch (err: unknown) {
+          console.error('[ChartContainer] Failed to load initial bars:', err)
           callback([], false)
-          return
+        } finally {
+          const latestSymbol = useMarketStore.getState().symbol
+          const latestTf = useMarketStore.getState().timeframe
+          if (sym.ticker === latestSymbol && tf === latestTf) {
+            setIsLoadingCandles(false)
+          }
         }
-
-        const lastError = candleEngine.getLastLoadError()
-        setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
-        setHasHistoricalBars(bars.length > 0)
-        setIsLoadingCandles(false)
-        if (bars.length > 0 && useMarketStore.getState().connectionState.status === 'connecting') {
-          useMarketStore.setState({
-            connectionState: {
-              status: 'connected',
-              latencyMs: 35,
-              lastHeartbeat: Date.now()
-            }
-          })
-        }
-        callback(bars, true)
-        await restoreDrawingsForSymbol(sym.ticker)
       },
       subscribeBar: ({ callback }): void => {
         liveSubscriberRef.current = callback
@@ -391,7 +401,11 @@ export const ChartContainer: React.FC = () => {
     const unsubEngine = candleEngine.addListener({
       onHistoryLoaded: (_genId, bars): void => {
         const curSym = useMarketStore.getState().symbol
+        const curTf = useMarketStore.getState().timeframe
         if (candleEngine.getSymbol() && curSym && candleEngine.getSymbol() !== curSym) {
+          return
+        }
+        if (candleEngine.getTimeframe() && curTf && candleEngine.getTimeframe() !== curTf) {
           return
         }
         setLatestBar(bars.at(-1) ?? null)

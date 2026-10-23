@@ -53,4 +53,42 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     expect(m15[1].timestamp).toBe(t0 + 900000)
     expect(m15[1].high).toBe(106)
   })
+
+  it('caps 15m requested limit to 350 to prevent ClickHouse query timeout', async () => {
+    const mockGetCandles = vi.fn().mockResolvedValue({ candles: [] })
+    ;(provider as any).client = {
+      market: { getCandles: mockGetCandles }
+    }
+
+    await provider.getCandles({ symbol: 'XAUUSD', timeframe: '15m', limit: 500 })
+
+    expect(mockGetCandles).toHaveBeenCalledWith(
+      'XAUUSD',
+      expect.objectContaining({ timeframe: '15m', limit: 350 })
+    )
+  })
+
+  it('limits 5m fallback bars to at most 600 when 15m fails', async () => {
+    const mockGetCandles = vi.fn().mockImplementation((_sym, opts) => {
+      if (opts.timeframe === '15m') {
+        return Promise.reject(new Error('502 Bad Gateway'))
+      }
+      return Promise.resolve({
+        candles: [
+          { time: 1700000000, open: 100, high: 105, low: 95, close: 102, volume: 10 }
+        ]
+      })
+    })
+    ;(provider as any).client = {
+      market: { getCandles: mockGetCandles }
+    }
+
+    const bars = await provider.getCandles({ symbol: 'XAUUSD', timeframe: '15m', limit: 500 })
+
+    expect(mockGetCandles).toHaveBeenCalledWith(
+      'XAUUSD',
+      expect.objectContaining({ timeframe: '5m', limit: 600 })
+    )
+    expect(bars.length).toBeGreaterThan(0)
+  })
 })

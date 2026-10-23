@@ -70,7 +70,9 @@ export class CandleEngine {
     timeframe: Timeframe,
     limit = 500
   ): Promise<KLineData[]> {
-    const reqKey = `${symbol}:${timeframe}:${limit}`
+    // ponytail: cap 15m limit to 350 to prevent ClickHouse rollup timeout / Cloudflare 502 Bad Gateway
+    const effectiveLimit = timeframe === '15m' ? Math.min(limit, 350) : limit
+    const reqKey = `${symbol}:${timeframe}:${effectiveLimit}`
     if (this.inFlightPromise && this.inFlightKey === reqKey) {
       return this.inFlightPromise
     }
@@ -104,7 +106,7 @@ export class CandleEngine {
           const rawBars = await window.api.market.getCandles({
             symbol,
             timeframe,
-            limit
+            limit: effectiveLimit
           })
 
           // If user switched symbol or timeframe while request was in-flight, discard.
