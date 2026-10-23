@@ -1,6 +1,6 @@
 [package]
 name = "pia"
-version = "3.0.10"
+version = "3.0.11"
 description = "A Tauri App"
 authors = ["wign"]
 edition = "2024"
