@@ -71,8 +71,8 @@ export function App(): React.JSX.Element {
     }
   }, [isReady, credentials, isAuthenticated])
 
-  // Standalone centered splash card while initializing or actively downloading updates
-  if (!isReady || credentials === null || updaterStatus.state === 'downloading') {
+  // Standalone centered splash card strictly on cold boot before initial credentials return
+  if (!isReady || credentials === null) {
     let statusText = splashStatus
     let isIndeterminate = true
     let progressPercent: number | undefined

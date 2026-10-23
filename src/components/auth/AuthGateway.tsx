@@ -3,6 +3,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { UpdateNotificationBanner } from '../layout/UpdateNotificationBanner'
+import piaLogo from '../../assets/logo.png'
 
 export function AuthGateway(): React.JSX.Element {
   const [apiKeyInput, setApiKeyInput] = useState('')
@@ -107,16 +108,24 @@ export function AuthGateway(): React.JSX.Element {
               display: 'inline-flex',
               alignItems: 'center',
               gap: 8,
-              padding: '4px 12px',
+              padding: '3px 12px 3px 6px',
               backgroundColor: 'rgba(255, 255, 255, 0.03)',
               border: '1px solid rgba(255, 255, 255, 0.06)',
               borderRadius: 999,
               marginBottom: 10
             }}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 22 12 12 22 2 12" />
-            </svg>
+            <img
+              src={piaLogo}
+              alt="PIA"
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                border: '1px solid rgba(212, 175, 55, 0.5)',
+                objectFit: 'cover'
+              }}
+            />
             <span
               style={{
                 fontWeight: 700,

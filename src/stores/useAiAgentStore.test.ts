@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAiAgentStore, parseLlmResponseBody, parseThinkingAndContent } from './useAiAgentStore'
+import {
+  useAiAgentStore,
+  parseLlmResponseBody,
+  parseThinkingAndContent,
+  hasExplicitTradeIntent
+} from './useAiAgentStore'
 
 describe('useAiAgentStore', () => {
   beforeEach(() => {
@@ -76,5 +81,23 @@ describe('useAiAgentStore', () => {
     const res3 = parseThinkingAndContent('<thinking>Multi-step plan</thinking>Done')
     expect(res3.thought).toBe('Multi-step plan')
     expect(res3.content).toBe('Done')
+  })
+
+  it('correctly discriminates explicit trade setup intent from informational queries', () => {
+    // Informational queries (MUST NOT trigger trade setup intent)
+    expect(hasExplicitTradeIntent('kenapa hari ini emas sangat tertekan')).toBe(false)
+    expect(hasExplicitTradeIntent('mengapa btc turun drastis?')).toBe(false)
+    expect(hasExplicitTradeIntent('analisis fundamental usd')).toBe(false)
+    expect(hasExplicitTradeIntent('what is the market sentiment for gold today?')).toBe(false)
+    expect(hasExplicitTradeIntent('jelaskan struktur pergerakan harga xauusd')).toBe(false)
+
+    // Explicit trade setup requests (MUST trigger trade setup intent)
+    expect(hasExplicitTradeIntent('buatkan trading plan untuk xauusd')).toBe(true)
+    expect(hasExplicitTradeIntent('berikan setup entry untuk gold')).toBe(true)
+    expect(hasExplicitTradeIntent('apakah boleh buy emas sekarang?')).toBe(true)
+    expect(hasExplicitTradeIntent('kapan saatnya sell btc?')).toBe(true)
+    expect(hasExplicitTradeIntent('rekomendasi order limit untuk eth')).toBe(true)
+    expect(hasExplicitTradeIntent('sinyal buy atau sell hari ini')).toBe(true)
+    expect(hasExplicitTradeIntent('pasang posisi buy limit')).toBe(true)
   })
 })

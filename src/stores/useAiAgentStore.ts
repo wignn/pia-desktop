@@ -366,6 +366,21 @@ function extractTradePlanFromText(text: string, defaultSymbol: string): TradePla
   return undefined
 }
 
+/**
+ * Detects whether the user explicitly requested a trade setup, entry parameters, or order placement.
+ * General informational or analytical questions (e.g. "kenapa emas turun") will evaluate to false.
+ */
+export function hasExplicitTradeIntent(text: string): boolean {
+  if (!text) return false
+  const lower = text.toLowerCase()
+  return (
+    /\b(setup|trading plan|trade plan|entry|sinyal|signal|order limit|limit order|stop order|posisi|open position|pasang posisi|pasang order)\b/i.test(lower) ||
+    /\b(rekomendasi (entry|trade|posisi|buy|sell|order))\b/i.test(lower) ||
+    /\b(boleh (buy|sell|entry|long|short)|kapan (buy|sell|entry)|saatnya (buy|sell))\b/i.test(lower) ||
+    /\b(buy|sell|long|short)\s+(limit|stop|now|sekarang)\b/i.test(lower)
+  )
+}
+
 export const useAiAgentStore = create<AiAgentState>((set, get) => ({
   config: loadInitialConfig(),
   messages: [
@@ -612,27 +627,16 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are PIA Agent, an elite autonomous quantitative trading agent (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
+        const systemPrompt = `You are PIA Agent, an elite autonomous quantitative trading & market research agent (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
 Active Chart Symbol: ${currentSymbol}.
 
-AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
-1. Multi-Step Execution Loop:
-   - You operate in an iterative tool-use loop (think -> call tool -> observe telemetry -> think -> call tool ... -> final briefing).
-   - In each turn, first formulate your reasoning and intent inside <thought>...</thought> (or <think>...</think>) tags:
-     * User intent & conversational context
-     * Microstructure hypothesis (orderbook bid/ask imbalance, liquidity walls, spread)
-     * Technical indicators (EMA alignment, RSI momentum/divergence, ATR volatility)
-     * Tactical order selection (Why BUY_LIMIT/SELL_LIMIT is preferred over market execution)
-     * Risk management & position sizing
-   - To inspect real market telemetry or project drawings onto the active chart, call available tools ('get_market_snapshot', 'compute_technical_analysis', 'get_news_sentiment', 'draw_trendline_on_chart', 'draw_level_on_chart', 'execute_full_chart_analysis').
-   - NEVER invent or guess orderbook depth, spreads, or indicator values.
-2. Step-by-Step Refinement:
-   - After tool outputs are returned, evaluate the data in your next step before proceeding.
-   - If further telemetry or chart levels are needed, call additional tools.
-   - Once all telemetry is gathered, synthesize a crisp, high-conviction quantitative briefing.
-3. Explicit Order Types & Trade Plan:
-   - Always recommend explicit order types: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET.
-   - Detail WHY placing a Limit Order at a dynamic demand/supply or retest zone avoids slippage compared to chasing market momentum.
+CORE MISSION & INTENT RECOGNITION:
+Accurately distinguish between informational queries and tactical trade setup requests:
+1. Informational, Macro, & Explanatory Queries (e.g. "kenapa emas tertekan", "what happened to CPI", "jelaskan situasi market", "bagaimana tren XAUUSD?"):
+   - Provide a direct, thorough, articulate analysis explaining fundamental drivers, macro catalysts, orderbook liquidity, and technical context.
+   - DO NOT force an unsolicited trade ticket, trade setup, or order recommendation when the user is simply asking an analytical or educational question.
+2. Tactical Trade Setup Requests (e.g. "analisis dan berikan setup", "apakah boleh buy?", "trading plan XAUUSD", "rekomendasi entry"):
+   - Recommend explicit order types (preferring BUY_LIMIT or SELL_LIMIT at key retest/supply/demand zones over market execution to avoid slippage).
    - Conclude tactical setups with structured trade parameters:
      - Bias: LONG or SHORT
      - Order Type: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET
@@ -642,9 +646,22 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
      - Target 2: [clean price]
      - Risk:Reward: [e.g. 1:2.4]
      - Suggested Lot: [e.g. 0.10 Lot]
-4. Clean Precision & Multilingual:
-   - Always format prices cleanly (e.g. 4,023.60, never raw floats like 4023.6000000001).
-   - Match the user's language (Indonesian if asked in Indonesian, English if asked in English). Do NOT repeat generic boilerplate on follow-up questions.`
+
+AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
+1. Multi-Step Execution Loop:
+   - You operate in an iterative tool-use loop (think -> call tool -> observe telemetry -> think -> call tool ... -> final briefing).
+   - In each turn, first formulate your reasoning and intent inside <thought>...</thought> (or <think>...</think>) tags:
+     * User intent & context (informational query vs tactical trade request)
+     * Microstructure hypothesis (orderbook bid/ask imbalance, liquidity walls, spread)
+     * Technical indicators & macro context (EMA alignment, RSI momentum/divergence, ATR volatility, news sentiment)
+   - To inspect real market telemetry or project drawings onto the active chart, call available tools ('get_market_snapshot', 'compute_technical_analysis', 'get_news_sentiment', 'get_macro_context', 'draw_trendline_on_chart', 'draw_level_on_chart', 'execute_full_chart_analysis').
+   - NEVER invent or guess orderbook depth, spreads, or indicator values.
+2. Step-by-Step Refinement:
+   - After tool outputs are returned, evaluate the data in your next step before proceeding.
+   - Synthesize a crisp, high-conviction quantitative briefing directly answering the user's specific inquiry.
+3. Clean Precision & Multilingual:
+   - Always format prices cleanly (e.g. 2,748.50, never raw floats like 2748.5000000001).
+   - Match the user's language (Indonesian if asked in Indonesian, English if asked in English). Be natural, professional, and directly answer what was asked without unnecessary boilerplate.`
 
         const activeConversation: any[] = [
           { role: 'system', content: systemPrompt },
@@ -812,6 +829,8 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
 
             const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
 
+            const userWantsTrade = hasExplicitTradeIntent(prompt)
+
             set((state) => ({
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
@@ -821,7 +840,7 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
                       toolCalls: allToolCalls,
                       thought: stepThought || m.thought,
                       content: parsed.content || m.content,
-                      tradePlan: detectedTradePlan || m.tradePlan
+                      tradePlan: userWantsTrade ? (detectedTradePlan || m.tradePlan) : undefined
                     }
                   : m
               )
@@ -834,19 +853,31 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
           } else {
             // Final response without tool calls reached
             const stepDuration = Math.round(performance.now() - stepStart)
-            if (stepThought || parsed.content) {
+
+            let finalContent = (parsed.content || '').trim()
+            let finalThought = stepThought
+
+            // If the model emitted all its reasoning/answer inside thought tags or reasoning_content,
+            // and left parsed.content empty, promote that text to finalContent so the answer is never blank or dropped!
+            if (!finalContent && finalThought) {
+              finalContent = finalThought
+              finalThought = undefined
+            }
+
+            if (finalThought) {
               executedSteps.push({
                 step: currentStep,
-                title: 'Synthesis',
-                thought: stepThought,
-                content: parsed.content,
+                title: 'Reasoning',
+                thought: finalThought,
                 durationMs: stepDuration,
                 timestamp: Date.now()
               })
             }
 
             const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
-            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(parsed.content, currentSymbol)
+            const userWantsTrade = hasExplicitTradeIntent(prompt)
+            const textTradePlan = extractTradePlanFromText(finalContent, currentSymbol)
+            const resolvedPlan = textTradePlan || (userWantsTrade ? detectedTradePlan : undefined)
 
             const allThoughts = executedSteps
               .map((s) => s.thought?.trim())
@@ -860,8 +891,8 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
                       ...m,
                       steps: [...executedSteps],
                       toolCalls: allToolCalls,
-                      thought: allThoughts || stepThought,
-                      content: parsed.content || 'Analysis synthesized.',
+                      thought: allThoughts || finalThought,
+                      content: finalContent || 'Analysis completed.',
                       tradePlan: resolvedPlan,
                       isStreaming: false
                     }
@@ -882,21 +913,24 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
           .map((s) => s.thought?.trim())
           .filter(Boolean)
           .join('\n\n')
+        const userWantsTrade = hasExplicitTradeIntent(prompt)
 
         set((state) => ({
-          messages: state.messages.map((m) =>
-            m.id === asstMsgId
-              ? {
-                  ...m,
-                  steps: [...executedSteps],
-                  toolCalls: allToolCalls,
-                  thought: allThoughts || m.thought,
-                  content: m.content || 'Autonomous loop completed.',
-                  tradePlan: detectedTradePlan || m.tradePlan,
-                  isStreaming: false
-                }
-              : m
-          ),
+          messages: state.messages.map((m) => {
+            if (m.id !== asstMsgId) return m
+            const finalContent = m.content || allThoughts || 'Autonomous loop completed.'
+            const textTradePlan = extractTradePlanFromText(finalContent, currentSymbol)
+            const resolvedPlan = textTradePlan || (userWantsTrade ? detectedTradePlan : undefined)
+            return {
+              ...m,
+              steps: [...executedSteps],
+              toolCalls: allToolCalls,
+              thought: allThoughts || m.thought,
+              content: finalContent,
+              tradePlan: resolvedPlan,
+              isStreaming: false
+            }
+          }),
           isBusy: false,
           statusMessage: null,
           activeAbortController: null
