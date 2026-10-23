@@ -21,6 +21,12 @@ describe('normalizeWsUrl & normalizeBaseUrl', () => {
     expect(normalizeWsUrl('wss://custom-host.org/socket')).toBe('wss://custom-host.org/socket')
   })
 
+  it('strips wi_live_ token from wsUrl query string', () => {
+    expect(normalizeWsUrl('wss://api-engine.wign.dev/api/v1/ws?api_key=wi_live_12345')).toBe(
+      'wss://api-engine.wign.dev/api/v1/ws'
+    )
+  })
+
   it('normalizes baseUrl properly', () => {
     expect(normalizeBaseUrl('')).toBe('https://api-engine.wign.dev')
     expect(normalizeBaseUrl(null)).toBe('https://api-engine.wign.dev')
@@ -65,5 +71,22 @@ describe('CredentialManager endpoint resilience', () => {
     await newManager.initialize()
     expect(newManager.getStatus().isLoggedIn).toBe(false)
     expect(newManager.getStatus().hasApiKey).toBe(false)
+  })
+
+  it('falls back to silvia when authenticated via desktopCredential with empty apiKey', async () => {
+    await manager.saveDesktopCredential('wi_live_abc123', { name: 'Tester', email: 'test@example.com' })
+    expect(manager.getStatus().isLoggedIn).toBe(true)
+    expect(manager.getDesktopCredential()).toBe('wi_live_abc123')
+    expect(manager.getApiKey()).toBe('silvia')
+  })
+
+  it('preserves custom apiKey when explicitly configured', async () => {
+    await manager.saveCredentials('custom-secret-key')
+    expect(manager.getApiKey()).toBe('custom-secret-key')
+  })
+
+  it('replaces OAuth token in apiKey with silvia fallback', async () => {
+    await manager.saveCredentials('wi_live_accidentally_saved')
+    expect(manager.getApiKey()).toBe('silvia')
   })
 })

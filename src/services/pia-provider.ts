@@ -161,9 +161,19 @@ export class PiaProvider {
     const baseUrl = this.credManager.getBaseUrl()
     let wsUrl = this.credManager.getWsUrl()
 
-    if (apiKey && !wsUrl.includes('api_key=')) {
-      const sep = wsUrl.includes('?') ? '&' : '?'
-      wsUrl = `${wsUrl}${sep}api_key=${encodeURIComponent(apiKey)}`
+    if (apiKey) {
+      try {
+        const u = new URL(wsUrl)
+        if (!u.searchParams.has('api_key') || u.searchParams.get('api_key')?.startsWith('wi_live_')) {
+          u.searchParams.set('api_key', apiKey)
+          wsUrl = u.toString()
+        }
+      } catch {
+        if (!wsUrl.includes('api_key=')) {
+          const sep = wsUrl.includes('?') ? '&' : '?'
+          wsUrl = `${wsUrl}${sep}api_key=${encodeURIComponent(apiKey)}`
+        }
+      }
     }
 
     this.discoveredSymbols.clear()

@@ -22,6 +22,9 @@ export function normalizeWsUrl(url?: string | null): string {
     if (parsed.pathname === '/' || parsed.pathname === '') {
       parsed.pathname = '/api/v1/ws'
     }
+    if (parsed.searchParams.get('api_key')?.startsWith('wi_live_')) {
+      parsed.searchParams.delete('api_key')
+    }
     return parsed.toString().replace(/\/+$/, '')
   } catch {
     return trimmed
@@ -129,8 +132,20 @@ export class CredentialManager {
     }
   }
 
+  public getDesktopCredential(): string | null {
+    return this.inMemoryCreds?.desktopCredential || null
+  }
+
   public getApiKey(): string | null {
-    return this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey || null
+    const explicitKey = this.inMemoryCreds?.apiKey?.trim()
+    if (explicitKey && !explicitKey.startsWith('wi_live_')) {
+      return explicitKey
+    }
+    // ponytail: fallback to 'silvia' engine key for WebSocket & market data when using OAuth desktopCredential; upgrade when gateway accepts user bearer tokens
+    if (this.inMemoryCreds?.desktopCredential || explicitKey?.startsWith('wi_live_')) {
+      return 'silvia'
+    }
+    return null
   }
 
   public getBaseUrl(): string {

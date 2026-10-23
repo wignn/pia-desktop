@@ -227,7 +227,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         }
 
         // Fallback 2: Sync live profile from backend if missing name or avatar
-        const key = credManager.getApiKey()
+        const key = credManager.getDesktopCredential() || credManager.getApiKey()
         if (status.isLoggedIn && key && (!status.name || !status.avatarUrl)) {
           const baseUrl = credManager.getBaseUrl()
           try {
