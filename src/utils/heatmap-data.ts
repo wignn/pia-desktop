@@ -149,12 +149,96 @@ export const US_STOCKS_DATASET: HeatmapItem[] = [
   { symbol: 'AMZN', name: 'Amazon.com Inc.', category: 'stocks_us', value: 2140, change24hPercent: -0.85, price: 205.2, volume24h: 27000000000, marketCap: 2140 },
   { symbol: 'META', name: 'Meta Platforms Inc.', category: 'stocks_us', value: 1450, change24hPercent: 3.42, price: 588.5, volume24h: 19000000000, marketCap: 1450 },
   { symbol: 'TSLA', name: 'Tesla Inc.', category: 'stocks_us', value: 1120, change24hPercent: 6.85, price: 345.2, volume24h: 38000000000, marketCap: 1120 },
-  { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', category: 'stocks_us', value: 980, change24hPercent: 0.25, price: 465.0, volume24h: 5200000000, marketCap: 980 },
+  { symbol: 'BRKB', name: 'Berkshire Hathaway Inc.', category: 'stocks_us', value: 980, change24hPercent: 0.25, price: 465.0, volume24h: 5200000000, marketCap: 980 },
   { symbol: 'AVGO', name: 'Broadcom Inc.', category: 'stocks_us', value: 780, change24hPercent: 4.12, price: 168.0, volume24h: 12000000000, marketCap: 780 },
   { symbol: 'JPM', name: 'JPMorgan Chase & Co.', category: 'stocks_us', value: 680, change24hPercent: 0.95, price: 242.0, volume24h: 7500000000, marketCap: 680 },
   { symbol: 'LLY', name: 'Eli Lilly and Company', category: 'stocks_us', value: 720, change24hPercent: -1.65, price: 815.0, volume24h: 8100000000, marketCap: 720 },
   { symbol: 'V', name: 'Visa Inc.', category: 'stocks_us', value: 580, change24hPercent: 0.45, price: 312.0, volume24h: 4200000000, marketCap: 580 },
   { symbol: 'COST', name: 'Costco Wholesale Corp.', category: 'stocks_us', value: 420, change24hPercent: 1.20, price: 965.0, volume24h: 3800000000, marketCap: 420 },
   { symbol: 'NFLX', name: 'Netflix Inc.', category: 'stocks_us', value: 390, change24hPercent: 2.15, price: 890.0, volume24h: 5100000000, marketCap: 390 },
-  { symbol: 'AMD', name: 'Advanced Micro Devices', category: 'stocks_us', value: 230, change24hPercent: -2.85, price: 138.5, volume24h: 9500000000, marketCap: 230 }
+  { symbol: 'AMD', name: 'Advanced Micro Devices', category: 'stocks_us', value: 230, change24hPercent: -2.85, price: 138.5, volume24h: 9500000000, marketCap: 230 },
+  { symbol: 'WMT', name: 'Walmart Inc.', category: 'stocks_us', value: 690, change24hPercent: 0.85, price: 92.4, volume24h: 7200000000, marketCap: 690 },
+  { symbol: 'XOM', name: 'Exxon Mobil Corp.', category: 'stocks_us', value: 480, change24hPercent: -0.62, price: 118.2, volume24h: 6800000000, marketCap: 480 },
+  { symbol: 'MA', name: 'Mastercard Inc.', category: 'stocks_us', value: 490, change24hPercent: 0.38, price: 524.0, volume24h: 3900000000, marketCap: 490 },
+  { symbol: 'UNH', name: 'UnitedHealth Group Inc.', category: 'stocks_us', value: 540, change24hPercent: -1.10, price: 588.0, volume24h: 4600000000, marketCap: 540 },
+  { symbol: 'PG', name: 'Procter & Gamble Co.', category: 'stocks_us', value: 410, change24hPercent: 0.15, price: 172.5, volume24h: 3100000000, marketCap: 410 },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', category: 'stocks_us', value: 390, change24hPercent: -0.22, price: 161.4, volume24h: 3400000000, marketCap: 390 },
+  { symbol: 'HD', name: 'Home Depot Inc.', category: 'stocks_us', value: 380, change24hPercent: 0.72, price: 395.0, volume24h: 3800000000, marketCap: 380 },
+  { symbol: 'BAC', name: 'Bank of America Corp.', category: 'stocks_us', value: 360, change24hPercent: 1.45, price: 46.8, volume24h: 6100000000, marketCap: 360 },
+  { symbol: 'ABBV', name: 'AbbVie Inc.', category: 'stocks_us', value: 340, change24hPercent: -0.45, price: 192.5, volume24h: 2900000000, marketCap: 340 },
+  { symbol: 'ORCL', name: 'Oracle Corporation', category: 'stocks_us', value: 360, change24hPercent: 2.10, price: 188.0, volume24h: 5200000000, marketCap: 360 },
+  { symbol: 'CRM', name: 'Salesforce Inc.', category: 'stocks_us', value: 310, change24hPercent: 1.65, price: 328.0, volume24h: 4100000000, marketCap: 310 },
+  { symbol: 'CVX', name: 'Chevron Corporation', category: 'stocks_us', value: 290, change24hPercent: -0.75, price: 156.4, volume24h: 3900000000, marketCap: 290 },
+  { symbol: 'KO', name: 'Coca-Cola Company', category: 'stocks_us', value: 280, change24hPercent: 0.32, price: 65.2, volume24h: 2800000000, marketCap: 280 },
+  { symbol: 'PEP', name: 'PepsiCo Inc.', category: 'stocks_us', value: 220, change24hPercent: 0.18, price: 162.8, volume24h: 2600000000, marketCap: 220 },
+  { symbol: 'CSCO', name: 'Cisco Systems Inc.', category: 'stocks_us', value: 235, change24hPercent: 0.55, price: 59.2, volume24h: 3400000000, marketCap: 235 },
+  { symbol: 'QCOM', name: 'Qualcomm Inc.', category: 'stocks_us', value: 215, change24hPercent: 1.95, price: 168.5, volume24h: 4700000000, marketCap: 215 },
+  { symbol: 'IBM', name: 'International Business Machines', category: 'stocks_us', value: 205, change24hPercent: 0.90, price: 218.0, volume24h: 3100000000, marketCap: 205 },
+  { symbol: 'NOW', name: 'ServiceNow Inc.', category: 'stocks_us', value: 210, change24hPercent: 2.45, price: 1025.0, volume24h: 2900000000, marketCap: 210 },
+  { symbol: 'AMAT', name: 'Applied Materials Inc.', category: 'stocks_us', value: 165, change24hPercent: 3.12, price: 198.4, volume24h: 3800000000, marketCap: 165 },
+  { symbol: 'MU', name: 'Micron Technology Inc.', category: 'stocks_us', value: 125, change24hPercent: 4.25, price: 112.5, volume24h: 5400000000, marketCap: 125 },
+  { symbol: 'PANW', name: 'Palo Alto Networks', category: 'stocks_us', value: 130, change24hPercent: 1.80, price: 395.0, volume24h: 2700000000, marketCap: 130 },
+  { symbol: 'DIS', name: 'Walt Disney Co.', category: 'stocks_us', value: 210, change24hPercent: 1.15, price: 114.5, volume24h: 4200000000, marketCap: 210 },
+  { symbol: 'GS', name: 'Goldman Sachs Group', category: 'stocks_us', value: 185, change24hPercent: 1.60, price: 585.0, volume24h: 3100000000, marketCap: 185 },
+  { symbol: 'MS', name: 'Morgan Stanley', category: 'stocks_us', value: 195, change24hPercent: 1.35, price: 124.0, volume24h: 3600000000, marketCap: 195 },
+  { symbol: 'INTC', name: 'Intel Corporation', category: 'stocks_us', value: 110, change24hPercent: -1.25, price: 24.8, volume24h: 5800000000, marketCap: 110 },
+  { symbol: 'COP', name: 'ConocoPhillips', category: 'stocks_us', value: 135, change24hPercent: -0.82, price: 108.5, volume24h: 2900000000, marketCap: 135 },
+  { symbol: 'OXY', name: 'Occidental Petroleum', category: 'stocks_us', value: 52, change24hPercent: -0.55, price: 54.0, volume24h: 2100000000, marketCap: 52 },
+  { symbol: 'BLK', name: 'BlackRock Inc.', category: 'stocks_us', value: 160, change24hPercent: 0.95, price: 1045.0, volume24h: 1800000000, marketCap: 160 },
+  { symbol: 'AXP', name: 'American Express Co.', category: 'stocks_us', value: 210, change24hPercent: 1.10, price: 292.0, volume24h: 2400000000, marketCap: 210 },
+  { symbol: 'TSM', name: 'Taiwan Semiconductor (ADR)', category: 'stocks_us', value: 920, change24hPercent: 3.65, price: 188.0, volume24h: 14000000000, marketCap: 920 },
+  { symbol: 'ASML', name: 'ASML Holding (ADR)', category: 'stocks_us', value: 290, change24hPercent: 2.40, price: 720.0, volume24h: 4200000000, marketCap: 290 },
+  { symbol: 'NVO', name: 'Novo Nordisk (ADR)', category: 'stocks_us', value: 480, change24hPercent: -1.20, price: 108.0, volume24h: 3900000000, marketCap: 480 }
+]
+
+/**
+ * China & Asia Tech ADRs dataset.
+ * Values are Market Cap in USD Billions.
+ */
+export const CHINA_ADR_DATASET: HeatmapItem[] = [
+  { symbol: 'BABA', name: 'Alibaba Group Holding', category: 'stocks_asia', value: 245, change24hPercent: 3.82, price: 99.8, volume24h: 8900000000, marketCap: 245 },
+  { symbol: 'PDD', name: 'PDD Holdings (Temu/Pinduoduo)', category: 'stocks_asia', value: 165, change24hPercent: 4.15, price: 79.0, volume24h: 6200000000, marketCap: 165 },
+  { symbol: 'NTES', name: 'NetEase Inc.', category: 'stocks_asia', value: 78, change24hPercent: 2.45, price: 118.8, volume24h: 1800000000, marketCap: 78 },
+  { symbol: 'JD', name: 'JD.com Inc.', category: 'stocks_asia', value: 52, change24hPercent: 1.85, price: 25.4, volume24h: 2900000000, marketCap: 52 },
+  { symbol: 'BIDU', name: 'Baidu Inc.', category: 'stocks_asia', value: 38, change24hPercent: 0.95, price: 77.2, volume24h: 2100000000, marketCap: 38 },
+  { symbol: 'LI', name: 'Li Auto Inc.', category: 'stocks_asia', value: 26, change24hPercent: 5.60, price: 11.4, volume24h: 1900000000, marketCap: 26 },
+  { symbol: 'TME', name: 'Tencent Music Entertainment', category: 'stocks_asia', value: 22, change24hPercent: 1.45, price: 8.5, volume24h: 850000000, marketCap: 22 },
+  { symbol: 'BEKE', name: 'KE Holdings Inc.', category: 'stocks_asia', value: 24, change24hPercent: 2.10, price: 17.1, volume24h: 920000000, marketCap: 24 },
+  { symbol: 'ZTO', name: 'ZTO Express Inc.', category: 'stocks_asia', value: 18, change24hPercent: 0.80, price: 20.0, volume24h: 640000000, marketCap: 18 },
+  { symbol: 'YUMC', name: 'Yum China Holdings', category: 'stocks_asia', value: 17, change24hPercent: 0.65, price: 44.6, volume24h: 780000000, marketCap: 17 },
+  { symbol: 'FUTU', name: 'Futu Holdings Ltd.', category: 'stocks_asia', value: 14, change24hPercent: 6.25, price: 99.6, volume24h: 1200000000, marketCap: 14 },
+  { symbol: 'NIO', name: 'NIO Inc.', category: 'stocks_asia', value: 9, change24hPercent: 3.10, price: 3.3, volume24h: 1400000000, marketCap: 9 },
+  { symbol: 'XPEV', name: 'XPeng Inc.', category: 'stocks_asia', value: 11, change24hPercent: 4.80, price: 9.2, volume24h: 1100000000, marketCap: 11 },
+  { symbol: 'BILI', name: 'Bilibili Inc.', category: 'stocks_asia', value: 8, change24hPercent: 2.90, price: 13.5, volume24h: 890000000, marketCap: 8 },
+  { symbol: 'VIPS', name: 'Vipshop Holdings Ltd.', category: 'stocks_asia', value: 7, change24hPercent: 1.15, price: 12.6, volume24h: 450000000, marketCap: 7 },
+  { symbol: 'EDU', name: 'New Oriental Education', category: 'stocks_asia', value: 10, change24hPercent: -1.30, price: 58.4, volume24h: 520000000, marketCap: 10 },
+  { symbol: 'TAL', name: 'TAL Education Group', category: 'stocks_asia', value: 7, change24hPercent: -0.85, price: 10.2, volume24h: 410000000, marketCap: 7 }
+]
+
+/**
+ * World & Regional Indices dataset (Japan, China, Hong Kong, US, Europe, Asia).
+ * Values are Index Representation Weights.
+ */
+export const INDICES_DATASET: HeatmapItem[] = [
+  { symbol: 'N225', name: 'Nikkei 225 (Japan)', category: 'indices', value: 850, change24hPercent: 0.95, price: 62692.94, volume24h: 42000000000, marketCap: 850 },
+  { symbol: 'JP225', name: 'Nikkei 225 CFD (Japan)', category: 'indices', value: 550, change24hPercent: 0.88, price: 62547.45, volume24h: 31000000000, marketCap: 550 },
+  { symbol: 'SSEC', name: 'Shanghai Composite (China)', category: 'indices', value: 920, change24hPercent: 1.42, price: 3690.48, volume24h: 58000000000, marketCap: 920 },
+  { symbol: 'HSI', name: 'Hang Seng Index (Hong Kong)', category: 'indices', value: 760, change24hPercent: 2.15, price: 23093.37, volume24h: 38000000000, marketCap: 760 },
+  { symbol: 'HK50', name: 'Hong Kong 50 CFD', category: 'indices', value: 480, change24hPercent: 2.05, price: 23074.0, volume24h: 24000000000, marketCap: 480 },
+  { symbol: 'SPX', name: 'S&P 500 Index (US)', category: 'indices', value: 1450, change24hPercent: 0.72, price: 5890.25, volume24h: 75000000000, marketCap: 1450 },
+  { symbol: 'NDX', name: 'Nasdaq 100 Index (US)', category: 'indices', value: 1350, change24hPercent: 1.12, price: 20650.8, volume24h: 82000000000, marketCap: 1350 },
+  { symbol: 'DJI', name: 'Dow Jones Industrial (US)', category: 'indices', value: 980, change24hPercent: 0.45, price: 43820.5, volume24h: 35000000000, marketCap: 980 },
+  { symbol: 'US30', name: 'Wall Street 30 CFD', category: 'indices', value: 720, change24hPercent: 0.48, price: 52296.95, volume24h: 45000000000, marketCap: 720 },
+  { symbol: 'US500', name: 'US 500 CFD', category: 'indices', value: 680, change24hPercent: 0.70, price: 7640.77, volume24h: 48000000000, marketCap: 680 },
+  { symbol: 'USTEC', name: 'US Tech 100 CFD', category: 'indices', value: 740, change24hPercent: 1.15, price: 29017.47, volume24h: 52000000000, marketCap: 740 },
+  { symbol: 'DE30', name: 'Germany 40 DAX CFD', category: 'indices', value: 520, change24hPercent: 0.35, price: 25143.75, volume24h: 26000000000, marketCap: 520 },
+  { symbol: 'FTSE', name: 'FTSE 100 Index (UK)', category: 'indices', value: 440, change24hPercent: -0.15, price: 8240.5, volume24h: 19000000000, marketCap: 440 },
+  { symbol: 'UK100', name: 'UK 100 CFD', category: 'indices', value: 380, change24hPercent: -0.12, price: 10693.1, volume24h: 16000000000, marketCap: 380 },
+  { symbol: 'FCHI', name: 'CAC 40 (France)', category: 'indices', value: 390, change24hPercent: 0.22, price: 7540.2, volume24h: 17000000000, marketCap: 390 },
+  { symbol: 'ASX200', name: 'ASX 200 (Australia)', category: 'indices', value: 360, change24hPercent: 0.55, price: 8420.0, volume24h: 14000000000, marketCap: 360 },
+  { symbol: 'KOSPI', name: 'KOSPI Composite (Korea)', category: 'indices', value: 410, change24hPercent: 0.65, price: 2580.4, volume24h: 21000000000, marketCap: 410 },
+  { symbol: 'STI', name: 'Straits Times (Singapore)', category: 'indices', value: 290, change24hPercent: 0.40, price: 3740.1, volume24h: 9500000000, marketCap: 290 },
+  { symbol: 'NIFTY50', name: 'Nifty 50 (India)', category: 'indices', value: 460, change24hPercent: 0.85, price: 24450.0, volume24h: 28000000000, marketCap: 460 },
+  { symbol: 'IHSG', name: 'IHSG Composite (Indonesia)', category: 'indices', value: 340, change24hPercent: -0.42, price: 7280.5, volume24h: 12000000000, marketCap: 340 },
+  { symbol: 'VIX', name: 'CBOE Volatility Index', category: 'indices', value: 250, change24hPercent: -3.20, price: 15.4, volume24h: 18000000000, marketCap: 250 }
 ]

@@ -7,7 +7,7 @@
 export interface HeatmapItem {
   symbol: string
   name: string
-  category: 'crypto' | 'forex' | 'metals' | 'stocks_idx' | 'stocks_us' | 'indices'
+  category: 'crypto' | 'forex' | 'metals' | 'stocks_idx' | 'stocks_us' | 'stocks_asia' | 'indices' | 'commodities' | string
   value: number // Weight/Market Cap/Volume
   change24hPercent: number // e.g. -20.33, +4.5
   price?: number

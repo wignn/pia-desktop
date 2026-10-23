@@ -32,10 +32,12 @@ import {
   IDX_STOCKS_DATASET,
   CRYPTO_HEATMAP_DATASET,
   FOREX_METALS_DATASET,
-  US_STOCKS_DATASET
+  US_STOCKS_DATASET,
+  CHINA_ADR_DATASET,
+  INDICES_DATASET
 } from '../../utils/heatmap-data'
 
-type MarketFilter = 'idx' | 'crypto' | 'forex' | 'us' | 'all' | 'watchlist'
+type MarketFilter = 'all' | 'us' | 'china' | 'indices' | 'idx' | 'crypto' | 'forex' | 'watchlist'
 type SizingMetric = 'marketCap' | 'volume24h'
 type LayoutMode = 'squarified' | 'spiral'
 
@@ -64,7 +66,7 @@ function formatLargeNumber(val?: number): string {
 export const MarketHeatmapView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 1200, height: 750 })
-  const [activeFilter, setActiveFilter] = useState<MarketFilter>('idx')
+  const [activeFilter, setActiveFilter] = useState<MarketFilter>('all')
   const [sizingMetric, setSizingMetric] = useState<SizingMetric>('marketCap')
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('squarified')
   const [searchQuery, setSearchQuery] = useState('')
@@ -102,48 +104,108 @@ export const MarketHeatmapView: React.FC = () => {
 
   // Resolve active raw dataset based on selected market filter
   const baseItems = useMemo((): HeatmapItem[] => {
+    // Seed with comprehensive catalogued items
+    const knownItemMap = new Map<string, HeatmapItem>()
+    const allPredefined: HeatmapItem[] = [
+      ...US_STOCKS_DATASET,
+      ...CHINA_ADR_DATASET,
+      ...INDICES_DATASET,
+      ...IDX_STOCKS_DATASET,
+      ...CRYPTO_HEATMAP_DATASET,
+      ...FOREX_METALS_DATASET
+    ]
+    for (const item of allPredefined) {
+      knownItemMap.set(item.symbol, item)
+    }
+
+    // Dynamic discovery from liveSymbols & livePrices
+    for (const s of liveSymbols) {
+      if (!s.symbol || knownItemMap.has(s.symbol)) continue
+      const quote = livePrices[s.symbol]
+      const price = quote?.price
+      if (!price || price <= 0) continue
+
+      let cat: HeatmapItem['category'] = 'stocks_us'
+      if (s.category === 'indices') cat = 'indices'
+      else if (s.category === 'crypto') cat = 'crypto'
+      else if (s.category === 'forex') cat = 'forex'
+      else if (s.category === 'metals') cat = 'metals'
+      else if (s.category === 'commodities') cat = 'commodities'
+      else if (s.exchange === 'IDX') cat = 'stocks_idx'
+
+      knownItemMap.set(s.symbol, {
+        symbol: s.symbol,
+        name: s.name && s.name !== s.symbol ? s.name : s.symbol,
+        category: cat,
+        value: Math.max(10, Math.min(price * (quote?.volume24h ? Math.log10(quote.volume24h) : 10), 1000)),
+        change24hPercent: quote?.change24hPercent ?? 0,
+        price,
+        volume24h: quote?.volume24h
+      })
+    }
+
     switch (activeFilter) {
+      case 'us': {
+        const items = US_STOCKS_DATASET.map((i) => knownItemMap.get(i.symbol) || i)
+        for (const s of liveSymbols) {
+          if (s.category === 'stocks' && s.exchange === 'US' && !items.some((x) => x.symbol === s.symbol)) {
+            const item = knownItemMap.get(s.symbol)
+            if (item) items.push(item)
+          }
+        }
+        return items
+      }
+      case 'china':
+        return CHINA_ADR_DATASET.map((i) => knownItemMap.get(i.symbol) || i)
+      case 'indices': {
+        const items = [...INDICES_DATASET]
+        for (const s of liveSymbols) {
+          if (s.category === 'indices' && !items.some((x) => x.symbol === s.symbol)) {
+            const item = knownItemMap.get(s.symbol)
+            if (item) items.push(item)
+          }
+        }
+        return items
+      }
       case 'idx':
-        return IDX_STOCKS_DATASET
+        return IDX_STOCKS_DATASET.map((i) => knownItemMap.get(i.symbol) || i)
       case 'crypto':
-        return CRYPTO_HEATMAP_DATASET
+        return CRYPTO_HEATMAP_DATASET.map((i) => knownItemMap.get(i.symbol) || i)
       case 'forex':
-        return FOREX_METALS_DATASET
-      case 'us':
-        return US_STOCKS_DATASET
+        return FOREX_METALS_DATASET.map((i) => knownItemMap.get(i.symbol) || i)
       case 'watchlist': {
         const activeList = watchlists.find((w) => w.id === activeListId)
         if (!activeList || activeList.symbols.length === 0) {
-          return IDX_STOCKS_DATASET.slice(0, 20)
+          return US_STOCKS_DATASET.slice(0, 20)
         }
         return activeList.symbols.map((sym, idx) => {
-          const found =
-            IDX_STOCKS_DATASET.find((i) => i.symbol === sym) ||
-            CRYPTO_HEATMAP_DATASET.find((i) => i.symbol === sym) ||
-            FOREX_METALS_DATASET.find((i) => i.symbol === sym) ||
-            US_STOCKS_DATASET.find((i) => i.symbol === sym)
+          const found = knownItemMap.get(sym)
           if (found) return found
           const info = liveSymbols.find((s) => s.symbol === sym)
+          const quote = livePrices[sym]
           return {
             symbol: sym,
             name: info?.name || sym,
-            category: (info?.category as any) || 'crypto',
+            category: (info?.category as any) || 'stocks_us',
             value: 100 / (idx + 1),
-            change24hPercent: 0
+            change24hPercent: quote?.change24hPercent ?? 0,
+            price: quote?.price
           }
         })
       }
       case 'all':
       default: {
         return [
-          ...IDX_STOCKS_DATASET.slice(0, 30),
-          ...CRYPTO_HEATMAP_DATASET.slice(0, 20),
-          ...US_STOCKS_DATASET.slice(0, 15),
+          ...US_STOCKS_DATASET,
+          ...CHINA_ADR_DATASET,
+          ...INDICES_DATASET,
+          ...IDX_STOCKS_DATASET.filter((i) => livePrices[i.symbol]?.price !== undefined).slice(0, 15),
+          ...CRYPTO_HEATMAP_DATASET.slice(0, 15),
           ...FOREX_METALS_DATASET.slice(0, 8)
         ]
       }
     }
-  }, [activeFilter, watchlists, activeListId, liveSymbols])
+  }, [activeFilter, watchlists, activeListId, liveSymbols, livePrices])
 
   // Merge live price ticks into items and apply sizing metric
   const processedItems = useMemo((): HeatmapItem[] => {
@@ -249,11 +311,13 @@ export const MarketHeatmapView: React.FC = () => {
             }}
           >
             {[
+              { id: 'all', label: 'All Markets' },
+              { id: 'us', label: 'US Stocks' },
+              { id: 'china', label: 'China & Asia' },
+              { id: 'indices', label: 'Indices (JP/CN/US)' },
               { id: 'idx', label: 'IDX Stocks' },
               { id: 'crypto', label: 'Crypto' },
               { id: 'forex', label: 'Forex & Metals' },
-              { id: 'us', label: 'US Stocks' },
-              { id: 'all', label: 'All Markets' },
               { id: 'watchlist', label: 'Watchlist' }
             ].map((f) => {
               const active = activeFilter === f.id

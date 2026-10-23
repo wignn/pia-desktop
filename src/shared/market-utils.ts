@@ -32,6 +32,20 @@ export function capabilitiesForSymbol(symbol: string, category: AssetCategory): 
   }
 }
 
+const KNOWN_INDICES = new Set([
+  'SPX', 'NDX', 'DJI', 'DAX', 'FTSE', 'NIKKEI', 'HSI', 'JCI', 'IHSG', 'SSEC',
+  'RUT', 'N225', 'NIFTY50', 'STI', 'FCHI', 'GDAXI', 'DXY', 'DXYM', 'VIX',
+  'ASX200', 'AUS200', 'AUS200M', 'KOSPI', 'SENSEX', 'HK50', 'HK50M',
+  'US30', 'US30M', 'US30X10', 'US30_X10M', 'US500', 'US500M', 'US500X100', 'US500_X100M',
+  'USTEC', 'USTECM', 'USTECX100', 'USTEC_X100M', 'DE30', 'DE30M', 'FR40', 'FR40M',
+  'UK100', 'UK100M', 'STOXX50', 'STOXX50M', 'JP225', 'JP225M'
+])
+
+const FOREX_CURRENCIES = new Set([
+  'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD', 'SGD', 'HKD', 'SEK', 'NOK',
+  'TRY', 'ZAR', 'MXN', 'PLN', 'CZK', 'HUF', 'ILS', 'DKK', 'CNH', 'THB', 'RUB', 'CNY', 'IDR'
+])
+
 export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): AssetCategory {
   const cleanSym = symbol.toUpperCase()
   const cleanType = (assetType || '').toLowerCase()
@@ -41,8 +55,14 @@ export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): As
     cleanSym.startsWith('XAG') ||
     cleanSym.startsWith('XPT') ||
     cleanSym.startsWith('XPD') ||
+    cleanSym.startsWith('XAL') ||
+    cleanSym.startsWith('XCU') ||
+    cleanSym.startsWith('XNI') ||
+    cleanSym.startsWith('XPB') ||
+    cleanSym.startsWith('XZN') ||
     cleanSym.includes('GOLD') ||
-    cleanSym.includes('SILVER')
+    cleanSym.includes('SILVER') ||
+    cleanSym.includes('COPPER')
   ) {
     return 'metals'
   }
@@ -51,56 +71,38 @@ export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): As
     cleanType === 'commodity' ||
     cleanSym.includes('OIL') ||
     cleanSym.includes('GAS') ||
-    ['WTI', 'BRENT', 'COPPER', 'CORN', 'WHEAT'].includes(cleanSym)
+    cleanSym.startsWith('XNG') ||
+    ['WTI', 'BRENT', 'CORN', 'WHEAT'].includes(cleanSym)
   ) {
     return 'commodities'
   }
 
-  if (
-    cleanType === 'index' ||
-    [
-      'SPX',
-      'NDX',
-      'DJI',
-      'DAX',
-      'FTSE',
-      'NIKKEI',
-      'HSI',
-      'JCI',
-      'IHSG',
-      'SSEC',
-      'RUT',
-      'N225',
-      'NIFTY50',
-      'STI',
-      'FCHI',
-      'GDAXI',
-      'DXY',
-      'VIX',
-      'ASX200',
-      'KOSPI',
-      'SENSEX'
-    ].includes(cleanSym)
-  ) {
+  if (cleanType === 'index' || KNOWN_INDICES.has(cleanSym)) {
     return 'indices'
   }
 
   if (
-    cleanType === 'fx' ||
-    cleanType === 'forex' ||
-    (cleanSym.length === 6 &&
-      (cleanSym.endsWith('USD') ||
-        cleanSym.startsWith('USD') ||
-        cleanSym.startsWith('EUR') ||
-        cleanSym.startsWith('GBP') ||
-        cleanSym.endsWith('JPY') ||
-        cleanSym.endsWith('GBP')))
+    cleanType === 'crypto' ||
+    cleanSym.endsWith('USDT') ||
+    cleanSym.endsWith('BTC') ||
+    cleanSym.startsWith('BTC') ||
+    cleanSym.startsWith('ETH')
   ) {
-    return 'forex'
+    return 'crypto'
+  }
+
+  // Currency pairs (standard 6-letter or micro pairs like EURUSDM)
+  const base = cleanSym.endsWith('M') && cleanSym.length === 7 ? cleanSym.slice(0, 6) : cleanSym
+  if (base.length === 6) {
+    const c1 = base.slice(0, 3)
+    const c2 = base.slice(3, 6)
+    if (FOREX_CURRENCIES.has(c1) && FOREX_CURRENCIES.has(c2)) {
+      return 'forex'
+    }
   }
 
   if (cleanType === 'stock' || cleanType === 'equity') return 'stocks'
-  return 'crypto'
+  return 'stocks'
 }
 
 export function getSymbolPrecision(
