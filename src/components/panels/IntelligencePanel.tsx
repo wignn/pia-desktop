@@ -20,7 +20,8 @@ import {
   TrendingDown,
   Zap,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  Terminal
 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { THEME_TOKENS } from '../../theme/tokens'
@@ -30,7 +31,8 @@ import {
   useAiAgentStore,
   formatCleanPrice,
   type TradePlanData,
-  type ToolCallExecution
+  type ToolCallExecution,
+  type AgentStepTrace
 } from '../../stores/useAiAgentStore'
 
 // ==========================================
@@ -41,6 +43,7 @@ const StructuredContentRenderer: React.FC<{
   content: string
   isStreaming?: boolean
 }> = ({ content, isStreaming }) => {
+  if (!content) return null
   const lines = content.split('\n')
 
   const renderInlineFormatted = (text: string): React.ReactNode[] => {
@@ -49,13 +52,14 @@ const StructuredContentRenderer: React.FC<{
     return parts.map((part, idx) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         const inner = part.slice(2, -2)
-        const isLong = inner === 'LONG' || inner.includes('BULLISH')
-        const isShort = inner === 'SHORT' || inner.includes('BEARISH')
+        const isLong = /LONG|BUY|BULLISH/i.test(inner)
+        const isShort = /SHORT|SELL|BEARISH/i.test(inner)
+        const isOrderType = /LIMIT|STOP|MARKET/i.test(inner)
         return (
           <strong
             key={idx}
             style={{
-              color: isLong ? '#10B981' : isShort ? '#F43F5E' : '#FFFFFF',
+              color: isLong ? '#34D399' : isShort ? '#FB7185' : isOrderType ? '#38BDF8' : '#F8FAFC',
               fontWeight: 700
             }}
           >
@@ -71,7 +75,7 @@ const StructuredContentRenderer: React.FC<{
               fontFamily: THEME_TOKENS.typography.fontMono,
               fontSize: 10,
               backgroundColor: 'rgba(255, 255, 255, 0.08)',
-              padding: '1px 4px',
+              padding: '1px 5px',
               borderRadius: 3,
               color: '#FDE68A'
             }}
@@ -85,39 +89,64 @@ const StructuredContentRenderer: React.FC<{
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, lineHeight: 1.55 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, lineHeight: 1.6 }}>
       {lines.map((line, idx) => {
         const trimmed = line.trim()
         if (!trimmed) {
           return <div key={idx} style={{ height: 4 }} />
         }
 
-        // Heading 3: Major Section Title
-        if (trimmed.startsWith('### ')) {
+        // Horizontal Rule
+        if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
           return (
             <div
               key={idx}
               style={{
-                fontSize: 11,
+                height: 1,
+                backgroundColor: 'rgba(255, 255, 255, 0.07)',
+                margin: '8px 0'
+              }}
+            />
+          )
+        }
+
+        // Section Headers (e.g. "### Heading" or "~ 2. TAKTIK EKSEKUSI" or "2. TAKTIK EKSEKUSI")
+        const isH3 = trimmed.startsWith('### ')
+        const isNumberedSection = /^(?:~|\*|-)?\s*\d+\.\s+[A-Z\s()_?]+/i.test(trimmed) && trimmed.length < 60
+
+        if (isH3 || isNumberedSection) {
+          const title = trimmed.replace(/^###\s+/, '').replace(/^(?:~|\*|-)?\s*/, '')
+          return (
+            <div
+              key={idx}
+              style={{
+                fontSize: 10.5,
                 fontWeight: 700,
-                color: '#D4AF37',
-                letterSpacing: '0.06em',
+                color: '#38BDF8',
+                letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
-                paddingBottom: 3,
-                marginTop: 6,
+                marginTop: 8,
+                marginBottom: 2,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5
+                gap: 6
               }}
             >
-              <Activity size={12} color="#D4AF37" />
-              <span>{trimmed.replace(/^###\s+/, '')}</span>
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  backgroundColor: '#38BDF8'
+                }}
+              />
+              <span>{title}</span>
             </div>
           )
         }
 
-        // Heading 4: Subsection
+        // Subsection Heading (####)
         if (trimmed.startsWith('#### ')) {
           return (
             <div
@@ -125,7 +154,7 @@ const StructuredContentRenderer: React.FC<{
               style={{
                 fontSize: 11,
                 fontWeight: 600,
-                color: '#CBD5E1',
+                color: '#E2E8F0',
                 marginTop: 4
               }}
             >
@@ -135,8 +164,8 @@ const StructuredContentRenderer: React.FC<{
         }
 
         // Bullet list item
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          const itemText = trimmed.replace(/^[-*]\s+/, '')
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+          const itemText = trimmed.replace(/^[-*•]\s+/, '')
           return (
             <div
               key={idx}
@@ -147,7 +176,7 @@ const StructuredContentRenderer: React.FC<{
                 paddingLeft: 4
               }}
             >
-              <span style={{ color: '#D4AF37', fontSize: 10, marginTop: 1, userSelect: 'none' }}>•</span>
+              <span style={{ color: '#64748B', fontSize: 10, marginTop: 1, userSelect: 'none' }}>•</span>
               <div style={{ color: '#E2E8F0', flex: 1 }}>{renderInlineFormatted(itemText)}</div>
             </div>
           )
@@ -166,9 +195,9 @@ const StructuredContentRenderer: React.FC<{
         <span
           style={{
             display: 'inline-block',
-            width: 7,
+            width: 6,
             height: 12,
-            backgroundColor: '#D4AF37',
+            backgroundColor: '#38BDF8',
             marginLeft: 2,
             verticalAlign: 'middle',
             animation: 'pulse 0.8s infinite'
@@ -191,13 +220,15 @@ const ThoughtProcessCard: React.FC<{
 
   if (!thought) return null
 
+  const wordCount = thought.trim().split(/\s+/).filter(Boolean).length
+
   return (
     <div
       style={{
-        marginBottom: 8,
+        margin: '4px 0 6px 0',
         borderRadius: 6,
-        border: '1px solid rgba(168, 85, 247, 0.25)',
-        backgroundColor: 'rgba(168, 85, 247, 0.05)',
+        border: '1px solid rgba(139, 92, 246, 0.2)',
+        backgroundColor: 'rgba(139, 92, 246, 0.04)',
         overflow: 'hidden'
       }}
     >
@@ -209,7 +240,7 @@ const ThoughtProcessCard: React.FC<{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '5px 8px',
+          padding: '4px 8px',
           background: 'transparent',
           border: 'none',
           cursor: 'pointer',
@@ -221,15 +252,13 @@ const ThoughtProcessCard: React.FC<{
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Sparkles size={11} color="#C084FC" />
-          <span>Agent Reasoning Process</span>
-          {isStreaming && (
-            <span style={{ fontSize: 9, color: '#A855F7', animation: 'pulse 1s infinite' }}>
-              (Thinking...)
-            </span>
-          )}
+          <span>Thought Process</span>
+          <span style={{ fontSize: 9, color: '#A78BFA', fontWeight: 400 }}>
+            ({wordCount} words{isStreaming ? ' • thinking...' : ''})
+          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: 9 }}>
-          <span>{isExpanded ? 'Hide' : 'View thought'}</span>
+          <span>{isExpanded ? 'Hide' : 'Expand'}</span>
           {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
         </div>
       </button>
@@ -238,14 +267,15 @@ const ThoughtProcessCard: React.FC<{
         <div
           style={{
             padding: '8px 10px',
-            borderTop: '1px solid rgba(168, 85, 247, 0.15)',
-            backgroundColor: 'rgba(7, 9, 14, 0.85)',
+            borderTop: '1px solid rgba(139, 92, 246, 0.15)',
+            borderLeft: '2px solid #8B5CF6',
+            backgroundColor: '#07090E',
             fontSize: 10,
-            lineHeight: 1.55,
+            lineHeight: 1.6,
             color: '#CBD5E1',
             fontFamily: THEME_TOKENS.typography.fontMono,
             whiteSpace: 'pre-wrap',
-            maxHeight: 220,
+            maxHeight: 260,
             overflowY: 'auto'
           }}
         >
@@ -257,7 +287,7 @@ const ThoughtProcessCard: React.FC<{
 }
 
 // ==========================================
-// Tactical Trade Ticket Component
+// Tactical Trade Ticket Component (Quant HUD)
 // ==========================================
 
 const TacticalTradeTicket: React.FC<{
@@ -326,14 +356,14 @@ SIZE: ${selectedLot} Lot`
     <div
       style={{
         marginTop: 10,
-        backgroundColor: '#07090E',
-        border: `1px solid ${biasColor}40`,
+        backgroundColor: '#070B14',
+        border: `1px solid ${biasColor}35`,
         borderRadius: 8,
-        padding: 10,
+        padding: '10px 12px',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)'
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)'
       }}
     >
       {/* Header Bar */}
@@ -341,13 +371,14 @@ SIZE: ${selectedLot} Lot`
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span
             style={{
-              padding: '2px 7px',
+              padding: '2px 8px',
               borderRadius: 4,
-              backgroundColor: `${biasColor}20`,
+              backgroundColor: `${biasColor}18`,
+              border: `1px solid ${biasColor}35`,
               color: biasColor,
               fontWeight: 800,
               fontSize: 10,
-              letterSpacing: '0.05em',
+              letterSpacing: '0.04em',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4
@@ -359,30 +390,31 @@ SIZE: ${selectedLot} Lot`
 
           <span
             style={{
-              padding: '2px 6px',
+              padding: '2px 7px',
               borderRadius: 4,
-              backgroundColor: isLimit ? 'rgba(6, 182, 212, 0.15)' : 'rgba(212, 175, 55, 0.15)',
-              border: `1px solid ${isLimit ? 'rgba(6, 182, 212, 0.35)' : 'rgba(212, 175, 55, 0.35)'}`,
-              color: isLimit ? '#22D3EE' : '#FDE68A',
+              backgroundColor: isLimit ? 'rgba(56, 189, 248, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+              border: `1px solid ${isLimit ? 'rgba(56, 189, 248, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+              color: isLimit ? '#38BDF8' : '#FDE68A',
               fontWeight: 700,
-              fontSize: 9,
-              letterSpacing: '0.04em'
+              fontSize: 9.5,
+              letterSpacing: '0.03em'
             }}
           >
             {orderTypeLabel}
           </span>
 
-          <span style={{ fontWeight: 700, fontSize: 11, color: '#F4F6FC' }}>
+          <span style={{ fontWeight: 700, fontSize: 11, color: '#F8FAFC', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {plan.symbol}
           </span>
         </div>
 
         <span
           style={{
-            fontSize: 10,
+            fontSize: 9.5,
             fontFamily: THEME_TOKENS.typography.fontMono,
-            color: '#D4AF37',
-            backgroundColor: 'rgba(212, 175, 55, 0.1)',
+            color: '#FDE68A',
+            backgroundColor: 'rgba(253, 230, 138, 0.1)',
+            border: '1px solid rgba(253, 230, 138, 0.2)',
             padding: '2px 6px',
             borderRadius: 4,
             fontWeight: 700
@@ -399,32 +431,32 @@ SIZE: ${selectedLot} Lot`
           gridTemplateColumns: 'repeat(4, 1fr)',
           gap: 6,
           backgroundColor: 'rgba(255, 255, 255, 0.02)',
-          padding: 6,
+          padding: '6px 8px',
           borderRadius: 6,
           border: '1px solid rgba(255, 255, 255, 0.05)'
         }}
       >
         <div>
-          <span style={{ fontSize: 9, color: '#838896', display: 'block' }}>ENTRY</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#F4F6FC', fontFamily: THEME_TOKENS.typography.fontMono }}>
+          <span style={{ fontSize: 8.5, color: '#64748B', display: 'block', fontWeight: 600 }}>ENTRY</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#F8FAFC', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {formatP(plan.entry)}
           </span>
         </div>
         <div>
-          <span style={{ fontSize: 9, color: '#F43F5E', display: 'block' }}>STOP LOSS</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#F43F5E', fontFamily: THEME_TOKENS.typography.fontMono }}>
+          <span style={{ fontSize: 8.5, color: '#FB7185', display: 'block', fontWeight: 600 }}>STOP LOSS</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#FB7185', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {formatP(plan.stopLoss)}
           </span>
         </div>
         <div>
-          <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 1</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
+          <span style={{ fontSize: 8.5, color: '#34D399', display: 'block', fontWeight: 600 }}>TARGET 1</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#34D399', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {formatP(plan.takeProfit1)}
           </span>
         </div>
         <div>
-          <span style={{ fontSize: 9, color: '#10B981', display: 'block' }}>TARGET 2</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981', fontFamily: THEME_TOKENS.typography.fontMono }}>
+          <span style={{ fontSize: 8.5, color: '#34D399', display: 'block', fontWeight: 600 }}>TARGET 2</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#34D399', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {formatP(plan.takeProfit2)}
           </span>
         </div>
@@ -440,7 +472,7 @@ SIZE: ${selectedLot} Lot`
           borderRadius: 4,
           backgroundColor: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.04)',
-          fontSize: 10
+          fontSize: 9.5
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#838896' }}>
@@ -452,10 +484,10 @@ SIZE: ${selectedLot} Lot`
                 type="button"
                 onClick={() => setSelectedLot(val)}
                 style={{
-                  border: selectedLot === val ? '1px solid rgba(212, 175, 55, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  border: selectedLot === val ? '1px solid rgba(212, 175, 55, 0.5)' : '1px solid rgba(255, 255, 255, 0.08)',
                   backgroundColor: selectedLot === val ? 'rgba(212, 175, 55, 0.15)' : 'transparent',
                   color: selectedLot === val ? '#FDE68A' : '#94A3B8',
-                  padding: '1px 5px',
+                  padding: '1px 6px',
                   borderRadius: 3,
                   fontSize: 9,
                   fontWeight: 600,
@@ -468,13 +500,13 @@ SIZE: ${selectedLot} Lot`
           </div>
         </div>
 
-        <span style={{ fontFamily: THEME_TOKENS.typography.fontMono, color: '#F4F6FC', fontWeight: 700 }}>
+        <span style={{ fontFamily: THEME_TOKENS.typography.fontMono, color: '#F8FAFC', fontWeight: 700 }}>
           {selectedLot} Lot
         </span>
       </div>
 
       {/* Actions Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             type="button"
@@ -486,8 +518,8 @@ SIZE: ${selectedLot} Lot`
               gap: 4,
               padding: '4px 8px',
               borderRadius: 4,
-              backgroundColor: 'rgba(212, 175, 55, 0.12)',
-              border: '1px solid rgba(212, 175, 55, 0.3)',
+              backgroundColor: 'rgba(212, 175, 55, 0.1)',
+              border: '1px solid rgba(212, 175, 55, 0.25)',
               color: '#FDE68A',
               fontSize: 10,
               fontWeight: 600,
@@ -510,7 +542,7 @@ SIZE: ${selectedLot} Lot`
               padding: '4px 10px',
               borderRadius: 4,
               backgroundColor: isLong ? 'rgba(16, 185, 129, 0.18)' : 'rgba(244, 63, 94, 0.18)',
-              border: `1px solid ${biasColor}50`,
+              border: `1px solid ${biasColor}45`,
               color: biasColor,
               fontSize: 10,
               fontWeight: 700,
@@ -534,7 +566,7 @@ SIZE: ${selectedLot} Lot`
             padding: '4px 7px',
             borderRadius: 4,
             backgroundColor: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
             color: '#838896',
             fontSize: 10,
             cursor: 'pointer'
@@ -546,7 +578,7 @@ SIZE: ${selectedLot} Lot`
       </div>
 
       {toastMessage && (
-        <div style={{ fontSize: 9, color: '#D4AF37', fontFamily: THEME_TOKENS.typography.fontMono }}>
+        <div style={{ fontSize: 9, color: '#38BDF8', fontFamily: THEME_TOKENS.typography.fontMono }}>
           {toastMessage}
         </div>
       )}
@@ -555,67 +587,212 @@ SIZE: ${selectedLot} Lot`
 }
 
 // ==========================================
-// Tool Execution Telemetry Drawer
+// Tool Execution Telemetry Drawer (CLI Style)
 // ==========================================
 
 const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall }) => {
   const [isOpen, setIsOpen] = useState(false)
 
+  const argsPreview = Object.entries(toolCall.args || {})
+    .slice(0, 2)
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+    .join(', ')
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
-          gap: 5,
-          fontSize: 9,
+          justifyContent: 'space-between',
+          fontSize: 9.5,
           fontFamily: THEME_TOKENS.typography.fontMono,
-          backgroundColor: toolCall.isError ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+          backgroundColor: '#080C14',
           border: toolCall.isError
-            ? '1px solid rgba(244, 63, 94, 0.25)'
-            : '1px solid rgba(16, 185, 129, 0.25)',
-          color: toolCall.isError ? '#F43F5E' : '#10B981',
-          padding: '2px 6px',
+            ? '1px solid rgba(244, 63, 94, 0.3)'
+            : '1px solid rgba(255, 255, 255, 0.08)',
+          color: '#E2E8F0',
+          padding: '3px 8px',
           borderRadius: 4,
-          cursor: 'pointer'
+          cursor: 'pointer',
+          width: '100%',
+          textAlign: 'left',
+          transition: 'border-color 0.15s ease'
         }}
       >
-        {toolCall.isError ? (
-          <AlertCircle size={10} color="#F43F5E" />
-        ) : (
-          <Check size={10} strokeWidth={2.5} />
-        )}
-        <span>{toolCall.name}</span>
-        {toolCall.durationMs !== undefined && (
-          <span style={{ color: '#64748B' }}>({toolCall.durationMs}ms)</span>
-        )}
-        {isOpen ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+          <span style={{ color: toolCall.isError ? '#F43F5E' : '#38BDF8' }}>$</span>
+          <span style={{ fontWeight: 700, color: toolCall.isError ? '#F43F5E' : '#38BDF8' }}>
+            {toolCall.name}
+          </span>
+          <span
+            style={{
+              color: '#64748B',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 240
+            }}
+          >
+            ({argsPreview})
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+          {toolCall.isError ? (
+            <span style={{ color: '#F43F5E', fontSize: 9 }}>error</span>
+          ) : (
+            <span style={{ color: '#10B981', fontSize: 9 }}>
+              {toolCall.durationMs !== undefined ? `${toolCall.durationMs}ms` : 'done'}
+            </span>
+          )}
+          {isOpen ? <ChevronUp size={10} color="#64748B" /> : <ChevronDown size={10} color="#64748B" />}
+        </div>
       </button>
 
       {isOpen && (
         <div
           style={{
-            backgroundColor: '#07090E',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            backgroundColor: '#05070B',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             borderRadius: 4,
-            padding: 6,
+            padding: 8,
             fontSize: 9,
             fontFamily: THEME_TOKENS.typography.fontMono,
             color: '#838896',
-            maxHeight: 140,
+            maxHeight: 180,
             overflowY: 'auto'
           }}
         >
-          <div style={{ color: '#D4AF37', marginBottom: 2 }}>Arguments:</div>
-          <pre style={{ margin: '0 0 6px 0', color: '#CBD5E1' }}>
+          <div style={{ color: '#38BDF8', marginBottom: 2, fontWeight: 700 }}>Arguments:</div>
+          <pre style={{ margin: '0 0 6px 0', color: '#CBD5E1', whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(toolCall.args, null, 2)}
           </pre>
-          <div style={{ color: '#D4AF37', marginBottom: 2 }}>Telemetry Output:</div>
-          <pre style={{ margin: 0, color: '#CBD5E1' }}>
+          <div style={{ color: '#10B981', marginBottom: 2, fontWeight: 700 }}>Output Telemetry:</div>
+          <pre style={{ margin: 0, color: '#CBD5E1', whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(toolCall.result, null, 2)}
           </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================
+// Claude Code Step-by-Step Execution Timeline
+// ==========================================
+
+const ClaudeCodeStepTimeline: React.FC<{
+  steps?: AgentStepTrace[]
+  toolCalls?: ToolCallExecution[]
+  thought?: string
+  isStreaming?: boolean
+}> = ({ steps, toolCalls, thought, isStreaming }) => {
+  if (steps && steps.length > 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, width: '100%' }}>
+        {steps.map((step, idx) => {
+          const isLast = idx === steps.length - 1
+          return (
+            <div
+              key={idx}
+              style={{
+                position: 'relative',
+                paddingLeft: 16,
+                borderLeft:
+                  isLast && !isStreaming
+                    ? '1px dashed rgba(255, 255, 255, 0.12)'
+                    : '1px solid rgba(56, 189, 248, 0.25)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {/* Step Timeline Node Dot */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: -5,
+                  top: 2,
+                  width: 9,
+                  height: 9,
+                  borderRadius: '50%',
+                  backgroundColor: isStreaming && isLast ? '#F59E0B' : '#38BDF8',
+                  border: '2px solid #070B14',
+                  boxShadow:
+                    isStreaming && isLast
+                      ? '0 0 10px rgba(245, 158, 11, 0.7)'
+                      : '0 0 6px rgba(56, 189, 248, 0.4)'
+                }}
+              />
+
+              {/* Step Header Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 4,
+                  fontSize: 10,
+                  fontFamily: THEME_TOKENS.typography.fontMono
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, color: '#F1F5F9' }}>
+                    {step.title || `Step ${step.step}`}
+                  </span>
+                  {isStreaming && isLast && (
+                    <span
+                      style={{
+                        color: '#F59E0B',
+                        fontSize: 9,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        padding: '1px 5px',
+                        borderRadius: 3
+                      }}
+                    >
+                      <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} />
+                      running
+                    </span>
+                  )}
+                </div>
+                {step.durationMs !== undefined && (
+                  <span style={{ color: '#64748B', fontSize: 9 }}>{step.durationMs}ms</span>
+                )}
+              </div>
+
+              {/* Step Reasoning (Thought) */}
+              {step.thought && (
+                <ThoughtProcessCard thought={step.thought} isStreaming={isStreaming && isLast} />
+              )}
+
+              {/* Step Tool Calls */}
+              {step.toolCalls && step.toolCalls.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                  {step.toolCalls.map((tc, tcIdx) => (
+                    <ToolCallDrawer key={tcIdx} toolCall={tc} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Fallback for single-turn messages
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+      {thought && <ThoughtProcessCard thought={thought} isStreaming={isStreaming} />}
+      {toolCalls && toolCalls.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {toolCalls.map((tc, idx) => (
+            <ToolCallDrawer key={idx} toolCall={tc} />
+          ))}
         </div>
       )}
     </div>
@@ -806,12 +983,12 @@ export const IntelligencePanel: React.FC = () => {
               type="button"
               onClick={() => setActiveTab('agent')}
               style={{
-                border: 'none',
-                background: activeTab === 'agent' ? '#D4AF37' : 'transparent',
-                color: activeTab === 'agent' ? '#07090E' : '#838896',
+                border: activeTab === 'agent' ? '1px solid rgba(255, 255, 255, 0.14)' : '1px solid transparent',
+                background: activeTab === 'agent' ? '#1E293B' : 'transparent',
+                color: activeTab === 'agent' ? '#F8FAFC' : '#64748B',
                 fontWeight: 700,
-                fontSize: 11,
-                padding: '3px 8px',
+                fontSize: 10.5,
+                padding: '3px 9px',
                 borderRadius: 4,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
@@ -823,12 +1000,12 @@ export const IntelligencePanel: React.FC = () => {
               type="button"
               onClick={() => setActiveTab('desk')}
               style={{
-                border: 'none',
-                background: activeTab === 'desk' ? '#D4AF37' : 'transparent',
-                color: activeTab === 'desk' ? '#07090E' : '#838896',
+                border: activeTab === 'desk' ? '1px solid rgba(255, 255, 255, 0.14)' : '1px solid transparent',
+                background: activeTab === 'desk' ? '#1E293B' : 'transparent',
+                color: activeTab === 'desk' ? '#F8FAFC' : '#64748B',
                 fontWeight: 700,
-                fontSize: 11,
-                padding: '3px 8px',
+                fontSize: 10.5,
+                padding: '3px 9px',
                 borderRadius: 4,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
@@ -840,11 +1017,13 @@ export const IntelligencePanel: React.FC = () => {
 
           <span
             style={{
-              fontSize: 10,
-              padding: '2px 6px',
+              fontSize: 9.5,
+              padding: '2px 7px',
               borderRadius: 4,
-              backgroundColor: 'rgba(212, 175, 55, 0.12)',
-              color: '#D4AF37',
+              backgroundColor: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.22)',
+              color: '#38BDF8',
+              fontFamily: THEME_TOKENS.typography.fontMono,
               fontWeight: 700
             }}
           >
@@ -863,17 +1042,19 @@ export const IntelligencePanel: React.FC = () => {
               alignItems: 'center',
               gap: 5,
               padding: '3px 8px',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: 4,
-              color: '#F4F6FC',
+              color: '#CBD5E1',
               fontSize: 10,
               fontWeight: 600,
               cursor: 'pointer'
             }}
           >
-            <Settings size={11} color="#D4AF37" />
-            <span>{config.provider === 'openai' ? config.model : 'Built-in'}</span>
+            <Settings size={11} color="#64748B" />
+            <span style={{ fontFamily: THEME_TOKENS.typography.fontMono, fontSize: 9.5 }}>
+              {config.provider === 'openai' ? config.model : 'Built-in'}
+            </span>
           </button>
         </div>
       </div>
@@ -927,39 +1108,30 @@ export const IntelligencePanel: React.FC = () => {
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           marginBottom: 8,
+                          paddingBottom: 6,
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
                           fontSize: 10,
                           fontWeight: 700,
-                          color: '#D4AF37'
+                          color: '#38BDF8'
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <Bot size={12} color="#D4AF37" />
-                          <span>PIA AGENT</span>
-                          <span style={{ color: '#64748B', fontWeight: 400 }}>
-                            ({config.provider === 'openai' ? config.model : 'Quant Engine'})
+                          <Terminal size={12} color="#38BDF8" />
+                          <span style={{ letterSpacing: '0.04em' }}>PIA AGENT</span>
+                          <span style={{ color: '#64748B', fontWeight: 400, fontFamily: THEME_TOKENS.typography.fontMono, fontSize: 9 }}>
+                            [{config.provider === 'openai' ? config.model : 'Quant Engine'}]
                           </span>
                         </div>
                       </div>
                     )}
 
-                    {/* Chain-of-Thought Reasoning Card */}
-                    <ThoughtProcessCard thought={m.thought} isStreaming={m.isStreaming} />
-
-                    {/* Render tool calls drawer if any */}
-                    {m.toolCalls && m.toolCalls.length > 0 && (
-                      <div
-                        style={{
-                          marginBottom: 8,
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 5
-                        }}
-                      >
-                        {m.toolCalls.map((tc, idx) => (
-                          <ToolCallDrawer key={idx} toolCall={tc} />
-                        ))}
-                      </div>
-                    )}
+                    {/* Claude Code Style Iterative Step Execution Timeline */}
+                    <ClaudeCodeStepTimeline
+                      steps={m.steps}
+                      toolCalls={m.toolCalls}
+                      thought={m.thought}
+                      isStreaming={m.isStreaming}
+                    />
 
                     {/* Formatted Content */}
                     <StructuredContentRenderer content={m.content} isStreaming={m.isStreaming} />
@@ -978,17 +1150,18 @@ export const IntelligencePanel: React.FC = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  backgroundColor: 'rgba(212, 175, 55, 0.08)',
-                  border: '1px solid rgba(212, 175, 55, 0.2)',
+                  padding: '7px 12px',
+                  backgroundColor: 'rgba(56, 189, 248, 0.06)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
                   borderRadius: 6,
-                  color: '#D4AF37',
-                  fontSize: 11,
+                  color: '#38BDF8',
+                  fontSize: 10.5,
+                  fontFamily: THEME_TOKENS.typography.fontMono,
                   maxWidth: '94%'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
                   <span>{statusMessage || 'Processing telemetry...'}</span>
                 </div>
 
@@ -1000,13 +1173,13 @@ export const IntelligencePanel: React.FC = () => {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    padding: '2px 6px',
+                    padding: '2px 8px',
                     borderRadius: 4,
                     backgroundColor: 'rgba(244, 63, 94, 0.15)',
                     border: '1px solid rgba(244, 63, 94, 0.3)',
-                    color: '#F43F5E',
-                    fontSize: 9,
-                    fontWeight: 600,
+                    color: '#FB7185',
+                    fontSize: 9.5,
+                    fontWeight: 700,
                     cursor: 'pointer'
                   }}
                 >
@@ -1042,9 +1215,9 @@ export const IntelligencePanel: React.FC = () => {
                 whiteSpace: 'nowrap',
                 fontSize: 10,
                 fontWeight: 600,
-                backgroundColor: 'rgba(212, 175, 55, 0.1)',
-                border: '1px solid rgba(212, 175, 55, 0.25)',
-                color: '#FDE68A',
+                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.22)',
+                color: '#38BDF8',
                 borderRadius: 4,
                 padding: '3px 8px',
                 cursor: 'pointer',
@@ -1053,7 +1226,7 @@ export const IntelligencePanel: React.FC = () => {
                 gap: 5
               }}
             >
-              <LineChart size={11} color="#D4AF37" />
+              <LineChart size={11} color="#38BDF8" />
               <span>Auto-Draw Chart</span>
             </button>
             <button
@@ -1213,14 +1386,15 @@ export const IntelligencePanel: React.FC = () => {
                 disabled={!inputPrompt.trim()}
                 style={{
                   padding: '8px 14px',
-                  backgroundColor: '#D4AF37',
-                  color: '#07090E',
+                  backgroundColor: !inputPrompt.trim() ? 'rgba(56, 189, 248, 0.2)' : '#38BDF8',
+                  color: !inputPrompt.trim() ? '#64748B' : '#070B14',
                   border: 'none',
                   borderRadius: 6,
                   fontWeight: 700,
                   fontSize: 11,
+                  letterSpacing: '0.02em',
                   cursor: !inputPrompt.trim() ? 'not-allowed' : 'pointer',
-                  opacity: !inputPrompt.trim() ? 0.6 : 1
+                  transition: 'all 0.15s ease'
                 }}
               >
                 Send

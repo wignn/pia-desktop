@@ -45,11 +45,22 @@ export interface ToolCallExecution {
   isError?: boolean
 }
 
+export interface AgentStepTrace {
+  step: number
+  title?: string
+  thought?: string
+  toolCalls?: ToolCallExecution[]
+  content?: string
+  durationMs?: number
+  timestamp: number
+}
+
 export interface AiAgentMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
   thought?: string
+  steps?: AgentStepTrace[]
   toolCalls?: ToolCallExecution[]
   tradePlan?: TradePlanData
   timestamp: number
@@ -69,19 +80,20 @@ export function formatCleanPrice(val?: number, precision = 2): string {
 }
 
 /**
- * Parses <thought>...</thought> blocks out of raw text (Claude Code / OpenCode / Hermes style).
+ * Parses <thought>...</thought>, <thinking>...</thinking>, or <think>...</think> blocks out of raw text (Claude Code / OpenCode / DeepSeek style).
  */
 export function parseThinkingAndContent(raw: string): { thought?: string; content: string } {
   if (!raw) return { content: '' }
 
-  const thoughtMatch = raw.match(/<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/i)
-  if (thoughtMatch) {
-    const thought = thoughtMatch[1].trim()
-    const content = raw.replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>/i, '').trim()
+  const thoughtTagsRegex = /<(?:thought|thinking|think)>([\s\S]*?)<\/(?:thought|thinking|think)>/gi
+  const matches = [...raw.matchAll(thoughtTagsRegex)]
+  if (matches.length > 0) {
+    const thought = matches.map((m) => m[1].trim()).join('\n\n')
+    const content = raw.replace(thoughtTagsRegex, '').trim()
     return { thought, content }
   }
 
-  const openMatch = raw.match(/<(?:thought|thinking)>([\s\S]*)$/i)
+  const openMatch = raw.match(/<(?:thought|thinking|think)>([\s\S]*)$/i)
   if (openMatch) {
     return { thought: openMatch[1].trim(), content: '' }
   }
@@ -135,7 +147,18 @@ export function parseLlmResponseBody(raw: string): any {
   // If standard JSON, parse directly
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
-      return JSON.parse(trimmed)
+      const parsed = JSON.parse(trimmed)
+      const choice = parsed?.choices?.[0]
+      if (
+        choice?.message?.reasoning_content &&
+        !choice.message.content?.includes('<thought>') &&
+        !choice.message.content?.includes('<think>')
+      ) {
+        choice.message.content = `<thought>\n${choice.message.reasoning_content.trim()}\n</thought>\n\n${
+          choice.message.content || ''
+        }`
+      }
+      return parsed
     } catch {}
   }
 
@@ -589,33 +612,43 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are PIA Agent, an elite agentic quantitative trader and market assistant (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
+        const systemPrompt = `You are PIA Agent, an elite autonomous quantitative trading agent (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
 Active Chart Symbol: ${currentSymbol}.
 
-AGENTIC PROTOCOLS:
-1. Deep Chain-of-Thought: Before providing your response, formulate your step-by-step reasoning inside <thought>...</thought> tags:
-   - User intent & conversational context
-   - Market microstructure (orderbook bid/ask imbalance, liquidity walls, spread)
-   - Technical indicators (EMA alignment, RSI momentum/divergence, ATR volatility)
-   - Tactical order selection (Why BUY_LIMIT/SELL_LIMIT is preferred over market execution)
-   - Risk management & position sizing
-2. Conversational & Multilingual: Speak naturally, concisely, and insightfully. If the user writes in Indonesian, respond fluently in Indonesian. If in English, respond in English. Do NOT repeat a static generic template on follow-ups (e.g. "ok sekarang bagaimana"). Answer directly what they asked.
-3. Explicit Order Types: Always recommend explicit order types: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET. Explain WHY placing a Limit Order at a retest/demand zone avoids slippage and prevents chasing tops/bottoms.
-4. Clean Precision: Never quote unrounded raw floating points (quote 82,220.00, not 82221.95999999999).
-5. Tool Usage: Use available tools ('execute_full_chart_analysis', 'compute_technical_analysis', 'get_news_sentiment', 'get_market_snapshot', 'draw_trendline_on_chart', 'draw_level_on_chart') when fresh telemetry or chart drawings are needed.
-6. Structured Trade Plan: Whenever you recommend a tactical setup, provide:
-   - Bias: LONG or SHORT
-   - Order Type: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET
-   - Entry: [clean price]
-   - Stop Loss: [clean price]
-   - Target 1: [clean price]
-   - Target 2: [clean price]
-   - Risk:Reward: [e.g. 1:2.4]
-   - Suggested Lot: [e.g. 0.10 Lot]`
+AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
+1. Multi-Step Execution Loop:
+   - You operate in an iterative tool-use loop (think -> call tool -> observe telemetry -> think -> call tool ... -> final briefing).
+   - In each turn, first formulate your reasoning and intent inside <thought>...</thought> (or <think>...</think>) tags:
+     * User intent & conversational context
+     * Microstructure hypothesis (orderbook bid/ask imbalance, liquidity walls, spread)
+     * Technical indicators (EMA alignment, RSI momentum/divergence, ATR volatility)
+     * Tactical order selection (Why BUY_LIMIT/SELL_LIMIT is preferred over market execution)
+     * Risk management & position sizing
+   - To inspect real market telemetry or project drawings onto the active chart, call available tools ('get_market_snapshot', 'compute_technical_analysis', 'get_news_sentiment', 'draw_trendline_on_chart', 'draw_level_on_chart', 'execute_full_chart_analysis').
+   - NEVER invent or guess orderbook depth, spreads, or indicator values.
+2. Step-by-Step Refinement:
+   - After tool outputs are returned, evaluate the data in your next step before proceeding.
+   - If further telemetry or chart levels are needed, call additional tools.
+   - Once all telemetry is gathered, synthesize a crisp, high-conviction quantitative briefing.
+3. Explicit Order Types & Trade Plan:
+   - Always recommend explicit order types: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET.
+   - Detail WHY placing a Limit Order at a dynamic demand/supply or retest zone avoids slippage compared to chasing market momentum.
+   - Conclude tactical setups with structured trade parameters:
+     - Bias: LONG or SHORT
+     - Order Type: BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP, or MARKET
+     - Entry: [clean price]
+     - Stop Loss: [clean price]
+     - Target 1: [clean price]
+     - Target 2: [clean price]
+     - Risk:Reward: [e.g. 1:2.4]
+     - Suggested Lot: [e.g. 0.10 Lot]
+4. Clean Precision & Multilingual:
+   - Always format prices cleanly (e.g. 4,023.60, never raw floats like 4023.6000000001).
+   - Match the user's language (Indonesian if asked in Indonesian, English if asked in English). Do NOT repeat generic boilerplate on follow-up questions.`
 
-        const conversationHistory = [
+        const activeConversation: any[] = [
           { role: 'system', content: systemPrompt },
-          ...messages.slice(-6).map((m) => ({
+          ...messages.slice(-8).map((m) => ({
             role: m.role,
             content: m.content
           })),
@@ -634,206 +667,240 @@ AGENTIC PROTOCOLS:
         const normalizedBaseUrl = config.baseUrl.replace(/\/+$/, '')
         const endpoint = `${normalizedBaseUrl}/chat/completions`
 
-        const initialRes = await universalFetch(endpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: config.model,
-            messages: conversationHistory,
-            tools: AiMcpEngine.getOpenAiTools(),
-            tool_choice: 'auto',
-            temperature: config.temperature ?? 0.1,
-            stream: false
-          }),
-          signal: abortController.signal
-        })
+        const asstMsgId = `asst-${Date.now()}`
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            {
+              id: asstMsgId,
+              role: 'assistant',
+              content: '',
+              steps: [],
+              toolCalls: [],
+              isStreaming: true,
+              timestamp: Date.now()
+            }
+          ]
+        }))
 
-        if (!initialRes.ok) {
-          const errText = await initialRes.text()
-          throw new Error(`API error (${initialRes.status}): ${errText.slice(0, 200)}`)
-        }
-
-        const data = await initialRes.json()
-        const choice = data.choices?.[0]
-        const assistantMsg = choice?.message
-
-        if (!assistantMsg) {
-          throw new Error('No response returned by provider')
-        }
-
+        const MAX_STEPS = 6
+        let currentStep = 1
+        const executedSteps: AgentStepTrace[] = []
         let detectedTradePlan: TradePlanData | undefined
 
-        // Process Tool Calls
-        // ponytail: 1-turn tool execution loop. Upgrade to multi-turn reasoning graph when nested autonomous task delegation is needed.
-        if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
-          const executedToolCalls: ToolCallExecution[] = []
-          const toolMessages: any[] = []
+        // ponytail: autonomous multi-turn tool execution loop. Upgrade to DAG task graph when parallel agent sub-delegation is needed.
+        while (currentStep <= MAX_STEPS) {
+          if (abortController.signal.aborted) break
+          const isLastStep = currentStep === MAX_STEPS
+          set({ statusMessage: `Step ${currentStep}/${MAX_STEPS} • Reasoning with ${config.model}...` })
+          const stepStart = performance.now()
 
-          for (const tc of assistantMsg.tool_calls) {
-            const toolName = tc.function.name
-            let toolArgs: Record<string, any> = {}
-            try {
-              toolArgs = JSON.parse(tc.function.arguments || '{}')
-            } catch {}
-
-            if (!toolArgs.symbol) {
-              toolArgs.symbol = currentSymbol
-            }
-
-            set({ statusMessage: `Executing tool: ${toolName}...` })
-            const toolStart = performance.now()
-
-            try {
-              const result = await AiMcpEngine.executeTool(toolName, toolArgs)
-              const durationMs = Math.round(performance.now() - toolStart)
-
-              if (result?.tradePlan) {
-                detectedTradePlan = {
-                  symbol: toolArgs.symbol || currentSymbol,
-                  bias: result.tradePlan.bias,
-                  entry: result.tradePlan.suggestedEntry,
-                  stopLoss: result.tradePlan.stopLoss,
-                  takeProfit1: result.tradePlan.takeProfit1,
-                  takeProfit2: result.tradePlan.takeProfit2,
-                  riskRewardRatio: result.tradePlan.riskRewardRatio,
-                  rationale: result.tradePlan.rationale
-                }
-              }
-
-              executedToolCalls.push({
-                id: tc.id,
-                name: toolName,
-                args: toolArgs,
-                result,
-                durationMs,
-                isError: false
-              })
-              toolMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                name: toolName,
-                content: JSON.stringify(result)
-              })
-            } catch (err: any) {
-              const durationMs = Math.round(performance.now() - toolStart)
-              executedToolCalls.push({
-                id: tc.id,
-                name: toolName,
-                args: toolArgs,
-                result: { error: err?.message || 'Tool execution failed' },
-                durationMs,
-                isError: true
-              })
-              toolMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                name: toolName,
-                content: JSON.stringify({ error: err?.message || 'Tool execution failed' })
-              })
-            }
-          }
-
-          // Follow-up request with tool results
-          set({ statusMessage: 'Synthesizing quantitative plan...' })
-          const asstMsgId = `asst-${Date.now()}`
-
-          set((state) => ({
-            statusMessage: null,
-            messages: [
-              ...state.messages,
-              {
-                id: asstMsgId,
-                role: 'assistant',
-                content: '',
-                toolCalls: executedToolCalls,
-                tradePlan: detectedTradePlan,
-                isStreaming: true,
-                timestamp: Date.now()
-              }
-            ]
-          }))
-
-          const followUpRes = await universalFetch(endpoint, {
+          const stepRes = await universalFetch(endpoint, {
             method: 'POST',
             headers,
             body: JSON.stringify({
               model: config.model,
-              messages: [
-                ...conversationHistory,
-                assistantMsg,
-                ...toolMessages
-              ],
+              messages: activeConversation,
+              tools: isLastStep ? undefined : AiMcpEngine.getOpenAiTools(),
+              tool_choice: isLastStep ? 'none' : 'auto',
               temperature: config.temperature ?? 0.1,
               stream: false
             }),
             signal: abortController.signal
           })
 
-          if (followUpRes.ok) {
-            let finalRaw = ''
-            try {
-              const followUpData = await followUpRes.json()
-              finalRaw = followUpData.choices?.[0]?.message?.content || ''
-            } catch {
-              finalRaw = await followUpRes.text()
+          if (!stepRes.ok) {
+            const errText = await stepRes.text()
+            throw new Error(`API error (${stepRes.status}): ${errText.slice(0, 200)}`)
+          }
+
+          const stepData = await stepRes.json()
+          const choice = stepData.choices?.[0]
+          const assistantMsg = choice?.message
+
+          if (!assistantMsg) {
+            break
+          }
+
+          const rawContent = assistantMsg.content || ''
+          const parsed = parseThinkingAndContent(rawContent)
+          const stepThought = parsed.thought || assistantMsg.reasoning_content || ''
+          const hasToolCalls = assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0 && !isLastStep
+
+          if (hasToolCalls) {
+            const stepToolExecutions: ToolCallExecution[] = []
+            const toolMessages: any[] = []
+
+            for (const tc of assistantMsg.tool_calls) {
+              if (abortController.signal.aborted) break
+              const toolName = tc.function.name
+              let toolArgs: Record<string, any> = {}
+              try {
+                toolArgs = JSON.parse(tc.function.arguments || '{}')
+              } catch {}
+
+              if (!toolArgs.symbol) {
+                toolArgs.symbol = currentSymbol
+              }
+
+              set({ statusMessage: `Step ${currentStep}/${MAX_STEPS} • Running ${toolName}...` })
+              const toolStart = performance.now()
+
+              try {
+                const result = await AiMcpEngine.executeTool(toolName, toolArgs)
+                const durationMs = Math.round(performance.now() - toolStart)
+
+                if (result?.tradePlan) {
+                  detectedTradePlan = {
+                    symbol: toolArgs.symbol || currentSymbol,
+                    bias: result.tradePlan.bias,
+                    orderType: result.tradePlan.orderType,
+                    entry: result.tradePlan.suggestedEntry,
+                    stopLoss: result.tradePlan.stopLoss,
+                    takeProfit1: result.tradePlan.takeProfit1,
+                    takeProfit2: result.tradePlan.takeProfit2,
+                    riskRewardRatio: result.tradePlan.riskRewardRatio,
+                    suggestedLotSize: result.tradePlan.suggestedLotSize,
+                    rationale: result.tradePlan.rationale
+                  }
+                }
+
+                stepToolExecutions.push({
+                  id: tc.id,
+                  name: toolName,
+                  args: toolArgs,
+                  result,
+                  durationMs,
+                  isError: false
+                })
+                toolMessages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  name: toolName,
+                  content: typeof result === 'string' ? result : JSON.stringify(result)
+                })
+              } catch (err: any) {
+                const durationMs = Math.round(performance.now() - toolStart)
+                stepToolExecutions.push({
+                  id: tc.id,
+                  name: toolName,
+                  args: toolArgs,
+                  result: { error: err?.message || 'Tool execution failed' },
+                  durationMs,
+                  isError: true
+                })
+                toolMessages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  name: toolName,
+                  content: JSON.stringify({ error: err?.message || 'Tool execution failed' })
+                })
+              }
             }
-            const finalParsed = parseThinkingAndContent(finalRaw)
-            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(finalParsed.content, currentSymbol)
+
+            const stepDuration = Math.round(performance.now() - stepStart)
+            const stepTrace: AgentStepTrace = {
+              step: currentStep,
+              title: `Step ${currentStep}: ${stepToolExecutions.map((t) => t.name).join(', ')}`,
+              thought: stepThought,
+              toolCalls: stepToolExecutions,
+              content: parsed.content,
+              durationMs: stepDuration,
+              timestamp: Date.now()
+            }
+            executedSteps.push(stepTrace)
+
+            const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
 
             set((state) => ({
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
                   ? {
                       ...m,
-                      thought: finalParsed.thought,
-                      content: finalParsed.content || 'Technical overlays and tactical plan executed.',
+                      steps: [...executedSteps],
+                      toolCalls: allToolCalls,
+                      thought: stepThought || m.thought,
+                      content: parsed.content || m.content,
+                      tradePlan: detectedTradePlan || m.tradePlan
+                    }
+                  : m
+              )
+            }))
+
+            activeConversation.push(assistantMsg)
+            activeConversation.push(...toolMessages)
+
+            currentStep++
+          } else {
+            // Final response without tool calls reached
+            const stepDuration = Math.round(performance.now() - stepStart)
+            if (stepThought || parsed.content) {
+              executedSteps.push({
+                step: currentStep,
+                title: 'Synthesis',
+                thought: stepThought,
+                content: parsed.content,
+                durationMs: stepDuration,
+                timestamp: Date.now()
+              })
+            }
+
+            const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
+            const resolvedPlan = detectedTradePlan || extractTradePlanFromText(parsed.content, currentSymbol)
+
+            const allThoughts = executedSteps
+              .map((s) => s.thought?.trim())
+              .filter(Boolean)
+              .join('\n\n')
+
+            set((state) => ({
+              messages: state.messages.map((m) =>
+                m.id === asstMsgId
+                  ? {
+                      ...m,
+                      steps: [...executedSteps],
+                      toolCalls: allToolCalls,
+                      thought: allThoughts || stepThought,
+                      content: parsed.content || 'Analysis synthesized.',
                       tradePlan: resolvedPlan,
                       isStreaming: false
                     }
                   : m
-              )
+              ),
+              isBusy: false,
+              statusMessage: null,
+              activeAbortController: null
             }))
-          } else {
-            set((state) => ({
-              messages: state.messages.map((m) =>
-                m.id === asstMsgId
-                  ? {
-                      ...m,
-                      content: 'Technical analysis and chart overlays successfully executed.',
-                      tradePlan: detectedTradePlan,
-                      isStreaming: false
-                    }
-                  : m
-              )
-            }))
-          }
 
-          set({ isBusy: false, statusMessage: null, activeAbortController: null })
-          return
+            return
+          }
         }
 
-        // Direct response without tool calls
-        const asstMsgId = `asst-${Date.now()}`
-        const fullContent = assistantMsg.content || 'Instruction processed.'
-        const parsedDirect = parseThinkingAndContent(fullContent)
-        const resolvedPlan = detectedTradePlan || extractTradePlanFromText(parsedDirect.content, currentSymbol)
+        // Loop concluded after MAX_STEPS
+        const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
+        const allThoughts = executedSteps
+          .map((s) => s.thought?.trim())
+          .filter(Boolean)
+          .join('\n\n')
 
         set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === asstMsgId
+              ? {
+                  ...m,
+                  steps: [...executedSteps],
+                  toolCalls: allToolCalls,
+                  thought: allThoughts || m.thought,
+                  content: m.content || 'Autonomous loop completed.',
+                  tradePlan: detectedTradePlan || m.tradePlan,
+                  isStreaming: false
+                }
+              : m
+          ),
+          isBusy: false,
           statusMessage: null,
-          messages: [
-            ...state.messages,
-            {
-              id: asstMsgId,
-              role: 'assistant',
-              thought: parsedDirect.thought,
-              content: parsedDirect.content || 'Instruction processed.',
-              tradePlan: resolvedPlan,
-              timestamp: Date.now()
-            }
-          ]
+          activeAbortController: null
         }))
-
-        set({ isBusy: false, statusMessage: null, activeAbortController: null })
         return
       } catch (err: any) {
         if (err?.name === 'AbortError' || abortController.signal.aborted) {
@@ -1264,6 +1331,39 @@ ${rationale}
 *Chart levels projected onto active canvas. Click below to place order into paper account.*`
       }
 
+      const builtinSteps: AgentStepTrace[] = [
+        {
+          step: 1,
+          title: 'Step 1: get_news_sentiment',
+          thought: `Aggregating news headlines and sentiment velocity for ${currentSymbol}...`,
+          toolCalls: [
+            { id: 'tc-1', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: analysis.sentimentSummary, durationMs: 28 }
+          ],
+          durationMs: 28,
+          timestamp: Date.now()
+        },
+        {
+          step: 2,
+          title: 'Step 2: compute_technical_analysis',
+          thought: `Computing multi-timeframe EMA alignment, RSI (14), and ATR volatility band...`,
+          toolCalls: [
+            { id: 'tc-2', name: 'compute_technical_analysis', args: { symbol: currentSymbol }, result: analysis.indicators, durationMs: 44 }
+          ],
+          durationMs: 44,
+          timestamp: Date.now()
+        },
+        {
+          step: 3,
+          title: 'Step 3: execute_full_chart_analysis',
+          thought: `Projecting dynamic support/resistance zones and drawing overlay levels on chart canvas...`,
+          toolCalls: [
+            { id: 'tc-3', name: 'execute_full_chart_analysis', args: { symbol: currentSymbol }, result: { plotted: analysis.plottedDrawingsCount }, durationMs: 65 }
+          ],
+          durationMs: 65,
+          timestamp: Date.now()
+        }
+      ]
+
       set((state) => ({
         isBusy: false,
         statusMessage: null,
@@ -1275,6 +1375,7 @@ ${rationale}
             role: 'assistant',
             thought,
             content,
+            steps: builtinSteps,
             tradePlan: tradePlanToAttach,
             toolCalls: [
               { id: 'tc-1', name: 'get_news_sentiment', args: { symbol: currentSymbol }, result: analysis.sentimentSummary, durationMs: 28 },

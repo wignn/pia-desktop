@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAiAgentStore, parseLlmResponseBody } from './useAiAgentStore'
+import { useAiAgentStore, parseLlmResponseBody, parseThinkingAndContent } from './useAiAgentStore'
 
 describe('useAiAgentStore', () => {
   beforeEach(() => {
@@ -51,5 +51,30 @@ describe('useAiAgentStore', () => {
     const parsedReasoning = parseLlmResponseBody(sseReasoning)
     expect(parsedReasoning.choices[0].message.content).toContain('<thought>\nthinking...\n</thought>')
     expect(parsedReasoning.choices[0].message.content).toContain('result')
+
+    // 4. JSON with reasoning_content (DeepSeek / Gemini style)
+    const jsonReasoning = JSON.stringify({
+      choices: [{ message: { role: 'assistant', reasoning_content: 'Deep step reasoning', content: 'Final answer' } }]
+    })
+    const parsedJsonReasoning = parseLlmResponseBody(jsonReasoning)
+    expect(parsedJsonReasoning.choices[0].message.content).toContain('<thought>\nDeep step reasoning\n</thought>')
+    expect(parsedJsonReasoning.choices[0].message.content).toContain('Final answer')
+  })
+
+  it('parses <thought>, <thinking>, and <think> tags correctly', () => {
+    // Claude / Hermes <thought>
+    const res1 = parseThinkingAndContent('<thought>Step 1 reasoning</thought>Execution result')
+    expect(res1.thought).toBe('Step 1 reasoning')
+    expect(res1.content).toBe('Execution result')
+
+    // DeepSeek / Qwen <think>
+    const res2 = parseThinkingAndContent('<think>DeepSeek internal thinking</think>Trade recommendation')
+    expect(res2.thought).toBe('DeepSeek internal thinking')
+    expect(res2.content).toBe('Trade recommendation')
+
+    // Claude alternative <thinking>
+    const res3 = parseThinkingAndContent('<thinking>Multi-step plan</thinking>Done')
+    expect(res3.thought).toBe('Multi-step plan')
+    expect(res3.content).toBe('Done')
   })
 })
