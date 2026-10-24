@@ -3,7 +3,7 @@ import { useWatchlistStore } from '../../stores/useWatchlistStore'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS } from '../../theme/tokens'
-import type { AssetCategory, SymbolInfo } from '@shared/types'
+import type { AssetCategory, SymbolInfo, PriceQuote } from '@shared/types'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
 
@@ -94,13 +94,33 @@ export const WatchlistPanel: React.FC = () => {
     )
   }, [activeGroup, catalogMap, searchQuery])
 
-  // ponytail: subscribes only currently displayed watchlist symbols to WS; upgrade to server-side batch subscription if list exceeds 100 items.
+  // ponytail: subscribes displayed symbols to WS and hydrates last known snapshot prices for closed-market assets
   useEffect(() => {
     const symbolsToSub = displayedSymbols.map((item) => item.symbol).filter(Boolean)
     if (symbolsToSub.length === 0) return
 
     for (const sym of symbolsToSub) {
       void window.api.market.subscribePrice(sym)
+    }
+
+    // Hydrate snapshot prices for symbols missing from market store (e.g. weekend / closed market)
+    const currentPrices = useMarketStore.getState().prices
+    const missing = symbolsToSub.filter((sym) => !currentPrices[sym])
+    if (missing.length > 0) {
+      window.api.market
+        .getPrices({ symbols: missing })
+        .then((quotes) => {
+          if (quotes && quotes.length > 0) {
+            const updates: Record<string, PriceQuote> = {}
+            for (const q of quotes) {
+              updates[q.symbol] = q
+            }
+            useMarketStore.setState((s) => ({ prices: { ...s.prices, ...updates } }))
+          }
+        })
+        .catch((err) => {
+          console.warn('[WatchlistPanel] Failed to hydrate snapshot prices:', err)
+        })
     }
 
     return () => {

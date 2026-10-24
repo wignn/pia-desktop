@@ -54,17 +54,22 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     expect(m15[1].high).toBe(106)
   })
 
-  it('caps 15m requested limit to 350 to prevent ClickHouse query timeout', async () => {
+  it('caps 15m and 1h requested limits to 300 to prevent ClickHouse query timeout', async () => {
     const mockGetCandles = vi.fn().mockResolvedValue({ candles: [] })
     ;(provider as any).client = {
       market: { getCandles: mockGetCandles }
     }
 
     await provider.getCandles({ symbol: 'XAUUSD', timeframe: '15m', limit: 500 })
-
     expect(mockGetCandles).toHaveBeenCalledWith(
       'XAUUSD',
-      expect.objectContaining({ timeframe: '15m', limit: 350 })
+      expect.objectContaining({ timeframe: '15m', limit: 300 })
+    )
+
+    await provider.getCandles({ symbol: 'XAUUSD', timeframe: '1h', limit: 500 })
+    expect(mockGetCandles).toHaveBeenCalledWith(
+      'XAUUSD',
+      expect.objectContaining({ timeframe: '1h', limit: 300 })
     )
   })
 

@@ -473,7 +473,7 @@ export class PiaProvider {
     return undefined
   }
 
-  private normalizeMarketPrice(raw: MarketPrice): PriceQuote | null {
+  private normalizeMarketPrice(raw: MarketPrice, fetchDayOpen = true): PriceQuote | null {
     if (!raw || !raw.symbol) return null
     const rawValue = raw as MarketPrice & {
       volume?: number
@@ -512,7 +512,9 @@ export class PiaProvider {
       if (cached && cached.open > 0) {
         baseline = cached.open
       } else {
-        void this.requestDayOpen(cleanSymbol)
+        if (fetchDayOpen) {
+          void this.requestDayOpen(cleanSymbol)
+        }
         if (!this.sessionBaselinePrices.has(cleanSymbol)) {
           this.sessionBaselinePrices.set(cleanSymbol, price)
         }
@@ -854,8 +856,9 @@ export class PiaProvider {
         }
       }
 
+      const shouldFetchDayOpen = Boolean(symbols && symbols.length <= 30)
       let quotes = res.items
-        .map((item) => this.normalizeMarketPrice(item))
+        .map((item) => this.normalizeMarketPrice(item, shouldFetchDayOpen))
         .filter((item): item is PriceQuote => item !== null)
 
       if (symbols && symbols.length > 0) {
@@ -880,10 +883,11 @@ export class PiaProvider {
     if (!this.client) return []
 
     const cleanSymbol = params.symbol.trim().toUpperCase()
-    // ponytail: cap 15m limit to 350 to prevent ClickHouse rollup timeout / Cloudflare 502 Bad Gateway on dense symbols like XAUUSD
-    const effectiveLimit = params.timeframe === '15m'
-      ? Math.min(params.limit ?? 300, 350)
-      : (params.limit || 500)
+    // ponytail: cap 15m and 1h limits to 300 to prevent ClickHouse rollup timeout / 502 Bad Gateway on dense symbols like XAUUSD
+    const effectiveLimit =
+      params.timeframe === '15m' || params.timeframe === '1h'
+        ? Math.min(params.limit ?? 300, 300)
+        : Math.min(params.limit ?? 300, 1000)
     const cacheKey = `${cleanSymbol}:${params.timeframe}:${effectiveLimit}:${params.to || 'latest'}`
     const cached = this.candleCache.get(cacheKey)
     // ponytail: memory cache 120s for active candles (instant 0ms chart switches). Live ticks update via WebSocket.

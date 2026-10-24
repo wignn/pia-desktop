@@ -68,10 +68,11 @@ export class CandleEngine {
   public async setSymbolAndTimeframe(
     symbol: string,
     timeframe: Timeframe,
-    limit = 500
+    limit = 300
   ): Promise<KLineData[]> {
-    // ponytail: cap 15m limit to 350 to prevent ClickHouse rollup timeout / Cloudflare 502 Bad Gateway
-    const effectiveLimit = timeframe === '15m' ? Math.min(limit, 350) : limit
+    // ponytail: cap 15m and 1h limits to 300 to prevent ClickHouse rollup timeout / 502 Bad Gateway
+    const effectiveLimit =
+      timeframe === '15m' || timeframe === '1h' ? Math.min(limit, 300) : Math.min(limit, 500)
     const reqKey = `${symbol}:${timeframe}:${effectiveLimit}`
     if (this.inFlightPromise && this.inFlightKey === reqKey) {
       return this.inFlightPromise

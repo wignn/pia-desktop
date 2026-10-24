@@ -184,18 +184,26 @@ describe('CandleEngine', () => {
     }
   })
 
-  it('caps 15m limit to 350 to prevent ClickHouse query timeouts', async () => {
+  it('caps 15m and 1h limit to 300 to prevent ClickHouse query timeouts', async () => {
     const mock = vi.fn().mockResolvedValue(history)
     vi.stubGlobal('window', { api: { market: { getCandles: mock } } })
     const engine = new CandleEngine()
 
     await engine.setSymbolAndTimeframe('XAUUSD', '15m', 500)
-
     expect(mock).toHaveBeenCalledWith(
       expect.objectContaining({
         symbol: 'XAUUSD',
         timeframe: '15m',
-        limit: 350
+        limit: 300
+      })
+    )
+
+    await engine.setSymbolAndTimeframe('XAUUSD', '1h', 500)
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: 'XAUUSD',
+        timeframe: '1h',
+        limit: 300
       })
     )
   })

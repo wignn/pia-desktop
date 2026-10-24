@@ -261,7 +261,7 @@ export const ChartContainer: React.FC = () => {
     setHasHistoricalBars(true)
 
     try {
-      const bars = await candleEngine.setSymbolAndTimeframe(sym, tf, 500)
+      const bars = await candleEngine.setSymbolAndTimeframe(sym, tf, 300)
       if (bars.length > 0) {
         setHasHistoricalBars(true)
         setLoadError(null)
@@ -354,7 +354,7 @@ export const ChartContainer: React.FC = () => {
         setIsLoadingCandles(true)
 
         try {
-          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 500)
+          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 300)
 
           // Verify request was not superseded while in flight
           const latestSymbol = useMarketStore.getState().symbol

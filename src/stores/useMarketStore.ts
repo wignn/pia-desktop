@@ -160,7 +160,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       for (const p of pricesList) {
         priceMap[p.symbol] = p
       }
-      set({ prices: priceMap })
+      set((state) => ({ prices: { ...priceMap, ...state.prices } }))
 
       if (
         (symbols.length > 0 || pricesList.length > 0) &&
