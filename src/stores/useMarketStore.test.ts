@@ -172,4 +172,26 @@ describe('useMarketStore candle display state', () => {
     expect(window.api.market.subscribePrice).not.toHaveBeenCalled()
     expect(useMarketStore.getState().symbol).toBeNull()
   })
+
+  it('fetchSymbols fetches symbols and initial prices concurrently and hydrates price store', async () => {
+    const mockSymbols = [
+      { symbol: 'XAUUSD', name: 'Gold', category: 'metals' as const },
+      { symbol: 'EURUSD', name: 'Euro', category: 'forex' as const }
+    ]
+    const mockPrices: PriceQuote[] = [
+      { symbol: 'XAUUSD', price: 2750.5, timestamp: 1000, change24hPercent: 0.5 },
+      { symbol: 'EURUSD', price: 1.085, timestamp: 1000, change24hPercent: -0.1 }
+    ]
+
+    window.api.market.getSymbols = vi.fn().mockResolvedValue(mockSymbols)
+    window.api.market.getPrices = vi.fn().mockResolvedValue(mockPrices)
+
+    await useMarketStore.getState().fetchSymbols()
+
+    expect(window.api.market.getSymbols).toHaveBeenCalled()
+    expect(window.api.market.getPrices).toHaveBeenCalled()
+    expect(useMarketStore.getState().symbols).toEqual(mockSymbols)
+    expect(useMarketStore.getState().prices['XAUUSD']).toEqual(mockPrices[0])
+    expect(useMarketStore.getState().prices['EURUSD']).toEqual(mockPrices[1])
+  })
 })

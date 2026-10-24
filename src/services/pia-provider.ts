@@ -145,9 +145,10 @@ export class PiaProvider {
   private listeners = new Map<string, Set<(data: any) => void>>()
   // ponytail: 30m in-memory day-open cache prevents redundant rollup queries; upgrade to server 24h ticker feed when backend exposes it.
   private dayOpenCache = new Map<string, { open: number; cachedAt: number }>()
-  private dayOpenPending = new Set<string>()
   private sessionBaselinePrices = new Map<string, number>()
   private latestQuotes = new Map<string, PriceQuote>()
+  private inFlightPricesPromise: Promise<PriceQuote[]> | null = null
+  private latestPricesAt = 0
   private watchdogTimer: ReturnType<typeof setInterval> | null = null
   private lastActivityAt = 0
 
@@ -473,7 +474,7 @@ export class PiaProvider {
     return undefined
   }
 
-  private normalizeMarketPrice(raw: MarketPrice, fetchDayOpen = true): PriceQuote | null {
+  private normalizeMarketPrice(raw: MarketPrice): PriceQuote | null {
     if (!raw || !raw.symbol) return null
     const rawValue = raw as MarketPrice & {
       volume?: number
@@ -512,9 +513,6 @@ export class PiaProvider {
       if (cached && cached.open > 0) {
         baseline = cached.open
       } else {
-        if (fetchDayOpen) {
-          void this.requestDayOpen(cleanSymbol)
-        }
         if (!this.sessionBaselinePrices.has(cleanSymbol)) {
           this.sessionBaselinePrices.set(cleanSymbol, price)
         }
@@ -561,66 +559,6 @@ export class PiaProvider {
 
     this.latestQuotes.set(cleanSymbol, quote)
     return quote
-  }
-
-  private async requestDayOpen(symbol: string): Promise<void> {
-    const clean = symbol.trim().toUpperCase()
-    if (!this.client || this.dayOpenPending.has(clean)) return
-
-    const cached = this.dayOpenCache.get(clean)
-    if (cached && Date.now() - cached.cachedAt < 30 * 60 * 1000) {
-      return
-    }
-
-    this.dayOpenPending.add(clean)
-    try {
-      const res = await this.client.market.getCandles(clean, {
-        timeframe: '1d',
-        limit: 1
-      })
-      if (res && Array.isArray(res.candles) && res.candles.length > 0) {
-        const lastCandle = res.candles[res.candles.length - 1]
-        const open = Number(lastCandle.open)
-        if (!isNaN(open) && open > 0) {
-          this.dayOpenCache.set(clean, { open, cachedAt: Date.now() })
-          const existing = this.latestQuotes.get(clean)
-          if (existing) {
-            const change24h = existing.price - open
-            const change24hPercent = ((existing.price - open) / open) * 100
-            const updated: PriceQuote = {
-              ...existing,
-              change24h,
-              change24hPercent
-            }
-            this.latestQuotes.set(clean, updated)
-            this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, updated)
-          }
-        }
-      }
-    } catch {
-      // keep silent on error
-    } finally {
-      this.dayOpenPending.delete(clean)
-    }
-  }
-
-  private preloadMajorDayOpens(): void {
-    const majors = [
-      'EURUSD',
-      'BTCUSDT',
-      'XAUUSD',
-      'USDJPY',
-      'GBPUSD',
-      'AUDUSD',
-      'USDCAD',
-      'USDCHF',
-      'NZDUSD',
-      'ETHUSDT',
-      'US30'
-    ]
-    for (const sym of majors) {
-      void this.requestDayOpen(sym)
-    }
   }
 
   // --- Public APIs called by IPC handlers ---
@@ -777,10 +715,11 @@ export class PiaProvider {
         if (pricesRes && Array.isArray(pricesRes.items)) {
           for (const item of pricesRes.items) {
             if (!item.symbol) continue
-            const price = Number(item.price)
-            if (!isNaN(price) && price > 0) {
-              // The quote is used only to derive provider-supplied symbol precision.
+            const quote = this.normalizeMarketPrice(item)
+            if (quote) {
+              this.latestQuotes.set(quote.symbol, quote)
             }
+            const price = Number(item.price)
             const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
             const session = (item as unknown as { session?: { exchange?: string } }).session
             const exchange = session?.exchange || ''
@@ -799,6 +738,7 @@ export class PiaProvider {
               minMove: precision.minMove
             })
           }
+          this.latestPricesAt = Date.now()
         }
       } catch (err: unknown) {
         console.warn('Failed to refresh symbols from getPrices:', err)
@@ -827,50 +767,76 @@ export class PiaProvider {
   public async getPrices(symbols?: string[]): Promise<PriceQuote[]> {
     if (!this.client) return []
 
-    try {
-      const res = await this.client.market.getPrices()
-      if (!res || !Array.isArray(res.items)) return []
-
-      // Dynamically discover any assets returned by the provider
-      for (const item of res.items) {
-        if (!item.symbol) continue
-        const price = Number(item.price)
-        if (!isNaN(price) && price > 0) {
-          // The quote is used only to derive provider-supplied symbol precision.
-        }
-        if (!this.discoveredSymbols.has(item.symbol)) {
-          const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
-          const session = (item as unknown as { session?: { exchange?: string } }).session
-          const exchange = session?.exchange || ''
-          const displayName = exchange ? `${item.symbol} · ${exchange}` : item.symbol
-          const precision = getSymbolPrecision(item.symbol, category, price)
-          this.discoveredSymbols.set(item.symbol, {
-            symbol: item.symbol,
-            name: displayName,
-            category,
-            pricePrecision: precision.pricePrecision,
-            volumePrecision: precision.volumePrecision,
-            capabilities: capabilitiesForSymbol(item.symbol, category),
-            minMove: precision.minMove
-          })
-        }
-      }
-
-      const shouldFetchDayOpen = Boolean(symbols && symbols.length <= 30)
-      let quotes = res.items
-        .map((item) => this.normalizeMarketPrice(item, shouldFetchDayOpen))
-        .filter((item): item is PriceQuote => item !== null)
-
+    // 1. Instant in-memory cache hit (< 15 seconds)
+    const isFresh = this.latestQuotes.size > 0 && Date.now() - this.latestPricesAt < 15_000
+    if (isFresh) {
+      let quotes = Array.from(this.latestQuotes.values())
       if (symbols && symbols.length > 0) {
-        const set = new Set(symbols)
+        const set = new Set(symbols.map((s) => s.trim().toUpperCase()))
         quotes = quotes.filter((q) => set.has(q.symbol))
       }
-
       return quotes
-    } catch (err) {
-      console.warn('getPrices unavailable:', this.formatProviderError(err))
-      return []
     }
+
+    // 2. Single-flight deduplication: return shared in-flight promise
+    if (this.inFlightPricesPromise) {
+      const all = await this.inFlightPricesPromise
+      if (symbols && symbols.length > 0) {
+        const set = new Set(symbols.map((s) => s.trim().toUpperCase()))
+        return all.filter((q) => set.has(q.symbol))
+      }
+      return all
+    }
+
+    // 3. Network fetch
+    this.inFlightPricesPromise = (async () => {
+      try {
+        const res = await this.client!.market.getPrices()
+        if (!res || !Array.isArray(res.items)) return Array.from(this.latestQuotes.values())
+
+        const quotes: PriceQuote[] = []
+        for (const item of res.items) {
+          if (!item.symbol) continue
+          const quote = this.normalizeMarketPrice(item)
+          if (quote) {
+            this.latestQuotes.set(quote.symbol, quote)
+            quotes.push(quote)
+          }
+
+          if (!this.discoveredSymbols.has(item.symbol)) {
+            const price = Number(item.price)
+            const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
+            const session = (item as unknown as { session?: { exchange?: string } }).session
+            const exchange = session?.exchange || ''
+            const displayName = exchange ? `${item.symbol} · ${exchange}` : item.symbol
+            const precision = getSymbolPrecision(item.symbol, category, price)
+            this.discoveredSymbols.set(item.symbol, {
+              symbol: item.symbol,
+              name: displayName,
+              category,
+              pricePrecision: precision.pricePrecision,
+              volumePrecision: precision.volumePrecision,
+              capabilities: capabilitiesForSymbol(item.symbol, category),
+              minMove: precision.minMove
+            })
+          }
+        }
+        this.latestPricesAt = Date.now()
+        return quotes
+      } catch (err) {
+        console.warn('getPrices unavailable:', this.formatProviderError(err))
+        return Array.from(this.latestQuotes.values())
+      } finally {
+        this.inFlightPricesPromise = null
+      }
+    })()
+
+    const all = await this.inFlightPricesPromise
+    if (symbols && symbols.length > 0) {
+      const set = new Set(symbols.map((s) => s.trim().toUpperCase()))
+      return all.filter((q) => set.has(q.symbol))
+    }
+    return all
   }
 
   public async getCandles(params: {
@@ -1117,7 +1083,6 @@ export class PiaProvider {
     if (!clean) return false
     const current = this.subscriptionCounts.get(clean) || 0
     this.subscriptionCounts.set(clean, current + 1)
-    void this.requestDayOpen(clean)
 
     if (this.client) {
       const state = this.client.realtime.getState()

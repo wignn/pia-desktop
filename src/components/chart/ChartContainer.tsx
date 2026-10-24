@@ -250,6 +250,17 @@ export const ChartContainer: React.FC = () => {
     }
   }, [])
 
+  // Watchdog timer: automatically clear candle loading overlay if stuck for more than 10 seconds
+  // ponytail: 10s watchdog guarantees chart loading overlay never gets stuck permanently on network stalls or race conditions
+  useEffect(() => {
+    if (!isLoadingCandles) return
+    const timer = setTimeout(() => {
+      console.warn('[ChartContainer] Candle loading watchdog triggered after 10s timeout, forcing isLoadingCandles=false')
+      setIsLoadingCandles(false)
+    }, 10_000)
+    return () => clearTimeout(timer)
+  }, [isLoadingCandles, setIsLoadingCandles])
+
   const handleRetryCandles = useCallback(async () => {
     const chart = chartRef.current
     const sym = useMarketStore.getState().symbol
@@ -326,6 +337,9 @@ export const ChartContainer: React.FC = () => {
         // Guard against initial empty symbol or superseded/mismatched requests
         if (type === 'init' && (!sym.ticker || sym.ticker !== currentActiveSymbol || tf !== currentActiveTf)) {
           callback([], false)
+          if (!sym.ticker) {
+            setIsLoadingCandles(false)
+          }
           return
         }
 
@@ -348,6 +362,7 @@ export const ChartContainer: React.FC = () => {
         // Initial load (type === 'init')
         if (candleEngine.getReplayState().isReplayMode) {
           callback(candleEngine.getActiveBars(), false)
+          setIsLoadingCandles(false)
           return
         }
 
@@ -513,7 +528,8 @@ export const ChartContainer: React.FC = () => {
 
     const targetPeriod = timeframeToPeriod(timeframe)
     const currentPeriod = chart.getPeriod()
-    if (!isSamePeriod(currentPeriod, targetPeriod)) {
+    const periodChanged = !isSamePeriod(currentPeriod, targetPeriod)
+    if (periodChanged) {
       chart.setPeriod(targetPeriod)
     }
 
@@ -527,19 +543,25 @@ export const ChartContainer: React.FC = () => {
     )
 
     const currentSym = chart.getSymbol()
-    if (
+    const symbolChanged =
       !currentSym ||
       currentSym.ticker !== activeSymbol ||
       currentSym.pricePrecision !== pricePrecision ||
       currentSym.volumePrecision !== volumePrecision
-    ) {
+
+    if (symbolChanged) {
       chart.setSymbol({
         ticker: activeSymbol,
         pricePrecision,
         volumePrecision
       })
     }
-  }, [symbol, timeframe])
+
+    // ponytail: if neither period nor symbol changed on chart instance, clear loading overlay immediately since klinecharts will not invoke getBars
+    if (!periodChanged && !symbolChanged && useMarketStore.getState().isLoadingCandles) {
+      setIsLoadingCandles(false)
+    }
+  }, [symbol, timeframe, setIsLoadingCandles])
 
   // Synchronize dynamic dark/light theme styles
   useEffect(() => {

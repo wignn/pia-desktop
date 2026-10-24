@@ -96,4 +96,51 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     )
     expect(bars.length).toBeGreaterThan(0)
   })
+
+  it('deduplicates concurrent getPrices calls via single-flight promise and caches for 15s', async () => {
+    let callCount = 0
+    const mockGetPrices = vi.fn().mockImplementation(async () => {
+      callCount++
+      await new Promise((r) => setTimeout(r, 20))
+      return {
+        items: [
+          { symbol: 'XAUUSD', price: 2750.5, asset_type: 'commodity', change_24h_pct: 0.8 },
+          { symbol: 'EURUSD', price: 1.085, asset_type: 'forex', change_24h_pct: -0.2 }
+        ]
+      }
+    })
+    ;(provider as any).client = {
+      market: { getPrices: mockGetPrices }
+    }
+
+    // Fire 3 simultaneous getPrices requests
+    const [p1, p2, p3] = await Promise.all([
+      provider.getPrices(),
+      provider.getPrices(['XAUUSD']),
+      provider.getPrices(['EURUSD'])
+    ])
+
+    expect(callCount).toBe(1)
+    expect(p1.length).toBe(2)
+    expect(p2).toEqual([expect.objectContaining({ symbol: 'XAUUSD', price: 2750.5 })])
+    expect(p3).toEqual([expect.objectContaining({ symbol: 'EURUSD', price: 1.085 })])
+
+    // Immediate subsequent call should hit in-memory cache without calling API again
+    const p4 = await provider.getPrices()
+    expect(callCount).toBe(1)
+    expect(p4.length).toBe(2)
+  })
+
+  it('subscribePrice does not trigger day open queries or throw', () => {
+    ;(provider as any).client = {
+      realtime: {
+        getState: () => 'AUTHENTICATED',
+        subscribe: vi.fn(),
+        connect: vi.fn()
+      }
+    }
+    const ok = provider.subscribePrice('XAUUSD')
+    expect(ok).toBe(true)
+    expect((provider as any).client.realtime.subscribe).toHaveBeenCalledWith('XAUUSD')
+  })
 })

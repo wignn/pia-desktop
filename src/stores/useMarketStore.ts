@@ -145,22 +145,24 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
   fetchSymbols: async () => {
     try {
-      const symbols = await window.api.market.getSymbols()
+      const [symbols, pricesList] = await Promise.all([
+        window.api.market.getSymbols(),
+        window.api.market.getPrices()
+      ])
+
+      const priceMap: Record<string, PriceQuote> = {}
+      for (const p of pricesList) {
+        priceMap[p.symbol] = p
+      }
+
       set((state) => ({
         symbols,
         symbol:
           state.symbol && symbols.some((item) => item.symbol === state.symbol)
             ? state.symbol
-            : symbols[0]?.symbol || null
+            : symbols[0]?.symbol || null,
+        prices: { ...priceMap, ...state.prices }
       }))
-
-      // Fetch initial price snapshot
-      const pricesList = await window.api.market.getPrices()
-      const priceMap: Record<string, PriceQuote> = {}
-      for (const p of pricesList) {
-        priceMap[p.symbol] = p
-      }
-      set((state) => ({ prices: { ...priceMap, ...state.prices } }))
 
       if (
         (symbols.length > 0 || pricesList.length > 0) &&
