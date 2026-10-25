@@ -50,16 +50,10 @@ export class CredentialManager {
 
   private async persist(content: string): Promise<boolean> {
     try {
-      if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
-        await invoke('save_credentials', { content })
+      if (typeof window === 'undefined' || !Boolean((window as any).__TAURI_INTERNALS__)) {
+        return false
       }
-      if (typeof localStorage !== 'undefined') {
-        if (content && content.trim()) {
-          localStorage.setItem('pia_cached_session', content)
-        } else {
-          localStorage.removeItem('pia_cached_session')
-        }
-      }
+      await invoke('save_credentials', { content })
       return true
     } catch {
       return false
@@ -81,31 +75,12 @@ export class CredentialManager {
     if (envBaseUrl) this.defaultBaseUrl = normalizeBaseUrl(envBaseUrl)
     if (envWsUrl) this.defaultWsUrl = normalizeWsUrl(envWsUrl)
 
-    const isExplicitlyLoggedOut =
-      typeof localStorage !== 'undefined' && localStorage.getItem('pia_logged_out') === 'true'
-
-    if (!isExplicitlyLoggedOut) {
-      try {
-        if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
-          const content = await invoke<string | null>('load_credentials')
-          if (content && content.trim()) {
-            this.inMemoryCreds = JSON.parse(content)
-          }
-        }
-      } catch {
-        this.inMemoryCreds = null
+    try {
+      if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+        const content = await invoke<string | null>('load_credentials')
+        if (content && content.trim()) this.inMemoryCreds = JSON.parse(content)
       }
-
-      // High-reliability local fallback: restore cached session if load_credentials was empty
-      if (!this.inMemoryCreds && typeof localStorage !== 'undefined') {
-        try {
-          const cached = localStorage.getItem('pia_cached_session')
-          if (cached && cached.trim()) {
-            this.inMemoryCreds = JSON.parse(cached)
-          }
-        } catch {}
-      }
-    } else {
+    } catch {
       this.inMemoryCreds = null
     }
 
@@ -165,9 +140,6 @@ export class CredentialManager {
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('pia_logged_out')
-    }
     return true
   }
 
@@ -187,9 +159,6 @@ export class CredentialManager {
     }
     if (!(await this.persist(JSON.stringify(next)))) return false
     this.inMemoryCreds = next
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('pia_logged_out')
-    }
     return true
   }
 
@@ -213,13 +182,8 @@ export class CredentialManager {
   }
 
   public async clearCredentials(): Promise<boolean> {
+    if (!(await this.persist(''))) return false
     this.inMemoryCreds = null
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('pia_logged_out', 'true')
-      localStorage.removeItem('pia_cached_session')
-      localStorage.removeItem('pia_user_profile')
-    }
-    await this.persist('')
     return true
   }
 

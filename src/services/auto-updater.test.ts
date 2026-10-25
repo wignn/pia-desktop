@@ -76,6 +76,13 @@ describe('auto-updater service', () => {
     expect(status.availableVersion).toBeUndefined()
   })
 
+  it('keeps the update install mode as a quiet Windows installer via Tauri configuration', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), 'src-tauri/tauri.conf.json'), 'utf8'))
+    expect(config.plugins.updater.windows.installMode).toBe('quiet')
+  })
+
   it('downloads update package with progress events and applies installation', async () => {
     let progressCalls: number[] = []
     const mockDownload = vi.fn(async (onEvent: any) => {

@@ -1,5 +1,6 @@
 import React from 'react'
 import { useWorkspaceStore, type RightPanelTab } from '../../stores/useWorkspaceStore'
+import { useAiAgentStore } from '../../stores/useAiAgentStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 
 interface RailItem {
@@ -169,6 +170,7 @@ const RAIL_ITEMS: RailItem[] = [
 
 export const RightIconRail: React.FC = () => {
   const { activeTab, isRightPanelOpen, setActiveTab, setSettingsModalOpen } = useWorkspaceStore()
+  const isAiBusy = useAiAgentStore((state) => state.isBusy)
 
   const handleTabClick = (tabId: RightPanelTab): void => {
     setActiveTab(tabId)
@@ -203,6 +205,7 @@ export const RightIconRail: React.FC = () => {
             className={`tv-btn ${isSelected ? 'active' : ''}`}
             title={item.title}
             style={{
+              position: 'relative',
               width: 32,
               height: 30,
               padding: 0,
@@ -214,6 +217,9 @@ export const RightIconRail: React.FC = () => {
             }}
           >
             {item.icon}
+            {item.id === 'intelligence' && isAiBusy && (
+              <span aria-label="AI agent running" style={{ position: 'absolute', width: 6, height: 6, borderRadius: '50%', background: THEME_TOKENS.colors.gold, boxShadow: '0 0 7px var(--gold)', right: 3, top: 3 }} />
+            )}
           </button>
         )
       })}

@@ -72,9 +72,14 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
 
   installUpdate: async () => {
     try {
-      return await window.api.updater.install()
+      const installed = await window.api.updater.install()
+      if (!installed && get().status.state === 'installing') {
+        set({ status: { ...get().status, state: 'error', error: 'Update installation did not start.' } })
+      }
+      return installed
     } catch (err) {
       console.error('[useUpdaterStore] Failed to trigger install:', err)
+      set({ status: { ...get().status, state: 'error', error: err instanceof Error ? err.message : String(err) } })
       return false
     }
   }

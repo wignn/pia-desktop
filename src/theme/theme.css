@@ -228,6 +228,13 @@ button:focus {
   animation: tv-spin 0.9s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .tv-spin,
+  .live-beacon {
+    animation: none;
+  }
+}
+
 /* Frosted glass utility */
 .glass-panel {
   background-color: rgba(17, 21, 31, 0.82) !important;

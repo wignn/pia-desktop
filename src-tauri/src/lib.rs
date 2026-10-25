@@ -3,7 +3,7 @@ mod piascript;
 use piascript::{PiaCandle, PiaScriptEngine, PiaScriptResult};
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{IpAddr, SocketAddr, TcpListener, ToSocketAddrs};
 use std::sync::mpsc;
 use std::time::Duration;
 use tauri::Manager;
@@ -14,6 +14,9 @@ fn execute_piascript(
     candles: Vec<PiaCandle>,
     initial_capital: Option<f64>,
 ) -> Result<PiaScriptResult, String> {
+    if script.len() > 200_000 || candles.len() > 20_000 {
+        return Err("PiaScript input exceeds the execution limits".to_string());
+    }
     let mut engine = PiaScriptEngine::new(&candles);
     Ok(engine.execute(&script, initial_capital))
 }
@@ -33,31 +36,126 @@ pub struct NativeHttpResponse {
     pub body: String,
 }
 
+const MAX_NATIVE_HTTP_BYTES: usize = 10_000_000;
+
+fn append_bounded_response_chunk(body: &mut Vec<u8>, chunk: &[u8]) -> Result<(), String> {
+    if body.len().saturating_add(chunk.len()) > MAX_NATIVE_HTTP_BYTES {
+        return Err("Native HTTP response exceeds 10 MB".to_string());
+    }
+    body.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn is_safe_http_ip(ip: IpAddr, allow_loopback: bool) -> bool {
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(IpAddr::V6(v6)),
+        other => other,
+    };
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, c, _] = ip.octets();
+            (allow_loopback && ip.is_loopback()) || (!ip.is_loopback()
+                && !ip.is_private()
+                && !ip.is_link_local()
+                && !ip.is_broadcast()
+                && a != 0
+                && a < 224
+                && !(a == 100 && (64..=127).contains(&b))
+                && !(a == 192 && (b == 0 || (b == 88 && c == 99)))
+                && !(a == 198 && ((b == 18 || b == 19) || (b == 51 && c == 100)))
+                && !(a == 203 && b == 0 && c == 113))
+        }
+        IpAddr::V6(ip) => {
+            if let Some(mapped_v4) = ip.to_ipv4() {
+                return is_safe_http_ip(IpAddr::V4(mapped_v4), allow_loopback);
+            }
+            let s = ip.segments();
+            (allow_loopback && ip.is_loopback()) || (!ip.is_loopback()
+                && !ip.is_unspecified()
+                && !ip.is_multicast()
+                && !ip.is_unique_local()
+                && !ip.is_unicast_link_local()
+                && !((s[0] & 0xffc0) == 0xfec0)
+                && (s[0] & 0xe000) == 0x2000
+                && !(s[0] == 0x2001 && (s[1] & 0xfe00) == 0)
+                && !(s[0] == 0x2001 && s[1] == 0x0db8)
+                && !(s[0] == 0x2001 && s[1] == 0x0002)
+                && !(s[0] == 0x2001 && s[1] == 0x0000)
+                && !(s[0] == 0x3fff && (s[1] & 0xfff0) == 0)
+                && s[0] != 0x2002
+                && !(s[0] == 0x0064 && s[1] == 0xff9b && (s[2] == 0 || s[2] == 1)))
+        }
+    }
+}
+
+fn resolve_native_http_target(url: &url::Url) -> Result<Vec<SocketAddr>, String> {
+    let raw_host = url.host_str().ok_or_else(|| "Native HTTP URL is not permitted".to_string())?;
+    let host = raw_host.trim_start_matches('[').trim_end_matches(']');
+    let port = url.port_or_known_default().ok_or_else(|| "Native HTTP URL has no valid port".to_string())?;
+    let local_ollama = port == 11434 && matches!(raw_host, "localhost" | "127.0.0.1" | "[::1]");
+    if (host.eq_ignore_ascii_case("localhost") || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())) && !local_ollama {
+        return Err("Local HTTP access is limited to Ollama on port 11434".to_string());
+    }
+
+    let addrs: Vec<_> = if local_ollama && host.eq_ignore_ascii_case("localhost") {
+        vec![SocketAddr::from(([127, 0, 0, 1], port))]
+    } else {
+        (host, port).to_socket_addrs().map_err(|e| e.to_string())?.collect()
+    };
+    if addrs.is_empty() || addrs.iter().any(|addr| !is_safe_http_ip(addr.ip(), local_ollama)) {
+        return Err("Native HTTP target resolves to a restricted network address".to_string());
+    }
+    Ok(addrs)
+}
+
 #[tauri::command]
 async fn native_http_request(req: NativeHttpRequest) -> Result<NativeHttpResponse, String> {
+    let url = url::Url::parse(&req.url).map_err(|e| e.to_string())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.as_str().len() > 8_192
+    {
+        return Err("Native HTTP URL is not permitted".to_string());
+    }
+    let host = url.host_str().unwrap().trim_start_matches('[').trim_end_matches(']');
+    let addrs = resolve_native_http_target(&url)?;
+    if req.body.as_ref().map_or(0, String::len) > MAX_NATIVE_HTTP_BYTES {
+        return Err("Native HTTP request body exceeds 10 MB".to_string());
+    }
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve_to_addrs(host, &addrs)
         .build()
         .map_err(|e| e.to_string())?;
 
     let method = match req.method.to_uppercase().as_str() {
+        "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
         "PUT" => reqwest::Method::PUT,
         "DELETE" => reqwest::Method::DELETE,
-        _ => reqwest::Method::GET,
+        _ => return Err("Native HTTP method is not permitted".to_string()),
     };
 
-    let mut request = client.request(method, &req.url);
+    let mut request = client.request(method, url);
     for (k, v) in req.headers {
+        if matches!(k.to_ascii_lowercase().as_str(), "host" | "connection" | "proxy-authorization" | "proxy-connection" | "transfer-encoding" | "upgrade") {
+            return Err("Native HTTP request contains a restricted header".to_string());
+        }
         request = request.header(k, v);
     }
     if let Some(b) = req.body {
         request = request.body(b);
     }
 
-    let res = request.send().await.map_err(|e| e.to_string())?;
+    let mut res = request.send().await.map_err(|e| e.to_string())?;
+    if res.content_length().is_some_and(|len| len > MAX_NATIVE_HTTP_BYTES as u64) {
+        return Err("Native HTTP response exceeds 10 MB".to_string());
+    }
     let status = res.status().as_u16();
-
     let mut resp_headers = std::collections::HashMap::new();
     for (k, v) in res.headers() {
         if let Ok(val) = v.to_str() {
@@ -65,13 +163,45 @@ async fn native_http_request(req: NativeHttpRequest) -> Result<NativeHttpRespons
         }
     }
 
-    let body = res.text().await.map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = res.chunk().await.map_err(|e| e.to_string())? {
+        append_bounded_response_chunk(&mut bytes, &chunk)?;
+    }
+    let body = String::from_utf8_lossy(&bytes).into_owned();
 
-    Ok(NativeHttpResponse {
-        status,
-        headers: resp_headers,
-        body,
-    })
+    Ok(NativeHttpResponse { status, headers: resp_headers, body })
+}
+
+#[cfg(test)]
+mod native_http_tests {
+    use super::*;
+
+    #[test]
+    fn caps_response_body_while_appending_chunks() {
+        let mut body = vec![0; MAX_NATIVE_HTTP_BYTES - 1];
+        assert!(append_bounded_response_chunk(&mut body, b"x").is_ok());
+        assert!(append_bounded_response_chunk(&mut body, b"x").is_err());
+        assert_eq!(body.len(), MAX_NATIVE_HTTP_BYTES);
+    }
+
+    #[test]
+    fn restricts_private_and_special_address_ranges() {
+        for ip in ["10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.1.2.3", "224.0.0.1", "255.255.255.255", "192.0.0.1", "192.0.2.1", "198.18.0.1", "198.51.100.1", "203.0.113.1", "::", "fc00::1", "fe80::1", "fec0::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254", "2001:db8::1", "2001:2::1", "2002::1", "3fff::1", "fd00:ec2::254"] {
+            assert!(!is_safe_http_ip(ip.parse().unwrap(), false), "unexpectedly allowed {ip}");
+        }
+        assert!(is_safe_http_ip("1.1.1.1".parse().unwrap(), false));
+        assert!(is_safe_http_ip("2606:4700:4700::1111".parse().unwrap(), false));
+    }
+
+    #[test]
+    fn only_allows_loopback_for_ollama_port() {
+        assert!(resolve_native_http_target(&url::Url::parse("http://localhost:11434/v1").unwrap()).is_ok());
+        assert!(resolve_native_http_target(&url::Url::parse("http://127.0.0.1:11434/v1").unwrap()).is_ok());
+        assert!(resolve_native_http_target(&url::Url::parse("http://localhost:8080/").unwrap()).is_err());
+        assert!(resolve_native_http_target(&url::Url::parse("http://127.0.0.1:8080/").unwrap()).is_err());
+        assert!(!is_safe_http_ip("127.0.0.1".parse().unwrap(), false));
+        assert!(is_safe_http_ip("127.0.0.1".parse().unwrap(), true));
+    }
 }
 
 #[tauri::command]
@@ -125,65 +255,57 @@ fn load_db(app: tauri::AppHandle) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 fn save_db(app: tauri::AppHandle, data: Vec<u8>) -> Result<(), String> {
-    let mut dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    if data.len() < 16 || !data.starts_with(b"SQLite format 3\0") {
+        return Err("Refusing to persist invalid SQLite database bytes".to_string());
+    }
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    dir.push("pia-terminal.db");
-    fs::write(dir, data).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn load_credentials(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    // 1. Primary secure store: OS Keyring
-    if let Ok(entry) = keyring::Entry::new("dev.wign.pia", "credentials") {
-        if let Ok(content) = entry.get_password() {
-            if !content.trim().is_empty() {
-                return Ok(Some(content));
-            }
+    let db_path = dir.join("pia-terminal.db");
+    let tmp_path = dir.join("pia-terminal.db.tmp");
+    fs::write(&tmp_path, data).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    if db_path.exists() {
+        let backup_path = dir.join("pia-terminal.db.previous");
+        if backup_path.exists() {
+            fs::remove_file(&backup_path).map_err(|e| e.to_string())?;
         }
+        fs::rename(&db_path, &backup_path).map_err(|e| e.to_string())?;
     }
-
-    // 2. High-reliability fallback: encrypted/isolated session.vault in local app_data_dir
-    if let Ok(mut dir) = app.path().app_data_dir() {
-        dir.push("session.vault");
-        if dir.exists() {
-            if let Ok(bytes) = fs::read(&dir) {
-                if let Ok(decoded) = String::from_utf8(bytes) {
-                    if !decoded.trim().is_empty() {
-                        return Ok(Some(decoded));
-                    }
-                }
-            }
+    if let Err(error) = fs::rename(&tmp_path, &db_path) {
+        #[cfg(windows)]
+        if db_path.exists() {
+            let _ = fs::remove_file(&db_path);
         }
+        #[cfg(windows)]
+        let _ = fs::rename(dir.join("pia-terminal.db.previous"), &db_path);
+        return Err(error.to_string());
     }
-
-    Ok(None)
-}
-
-#[tauri::command]
-fn save_credentials(app: tauri::AppHandle, content: String) -> Result<(), String> {
-    let trimmed = content.trim();
-
-    // 1. Primary secure store: OS Keyring
-    if let Ok(entry) = keyring::Entry::new("dev.wign.pia", "credentials") {
-        if trimmed.is_empty() {
-            let _ = entry.delete_credential();
-        } else {
-            let _ = entry.set_password(trimmed);
-        }
-    }
-
-    // 2. High-reliability fallback file in local app_data_dir
-    if let Ok(mut dir) = app.path().app_data_dir() {
-        let _ = fs::create_dir_all(&dir);
-        dir.push("session.vault");
-        if trimmed.is_empty() {
-            let _ = fs::remove_file(dir);
-        } else {
-            let _ = fs::write(dir, trimmed.as_bytes());
-        }
-    }
-
     Ok(())
+}
+
+#[tauri::command]
+async fn load_credentials() -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new("dev.wign.pia", "credentials").map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(content) if !content.trim().is_empty() => Ok(Some(content)),
+        Ok(_) => Ok(None),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_credentials(content: String) -> Result<(), String> {
+    let entry = keyring::Entry::new("dev.wign.pia", "credentials").map_err(|e| e.to_string())?;
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
+    } else {
+        entry.set_password(trimmed).map_err(|e| e.to_string())
+    }
 }
 
 fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, description: &str) -> Vec<u8> {

@@ -1,7 +1,7 @@
 # PIA Terminal
 
 [![Release](https://img.shields.io/github/v/release/wignn/pia-desktop?color=2962ff&label=Release)](https://github.com/wignn/pia-desktop/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-205%20passed-26a69a)](https://github.com/wignn/pia-desktop/actions)
+[![CI](https://github.com/wignn/pia-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/wignn/pia-desktop/actions/workflows/release.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-1e222d)](https://github.com/wignn/pia-desktop/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%20v2%20%2B%20Rust-e06c75)](https://tauri.app)
 
@@ -82,7 +82,7 @@ if crossunder(macd_val, macd_sig):
 | **State Management** | Zustand 5 with selector-level memoization |
 | **Charting Engine** | KLineCharts v10 |
 | **Geospatial Engine** | MapLibre GL v6 |
-| **Local Database** | SQLite via `sql.js` (AES-GCM encrypted persistence) |
+| **Local Database** | SQLite via `sql.js` (local persistence; not encrypted at rest) |
 | **Styling & HUD** | Custom design tokens optimized for dark-mode trading terminals |
 
 ---
@@ -180,7 +180,7 @@ Installers will be generated under `pia/src-tauri/target/release/bundle/`:
 
 * All production release bundles are cryptographically signed using `minisign`.
 * The public key configured in `tauri.conf.json` verifies update artifacts before any binary replacement occurs on disk.
-* Market credentials and API keys are stored in encrypted application data storage and are never committed or exposed over unsecured channels.
+* PIA market credentials are stored in the operating system keyring. Local database files and AI-provider keys stored by the frontend are not encrypted at rest; protect the device account and avoid entering secrets on untrusted systems.
 
 ---
 

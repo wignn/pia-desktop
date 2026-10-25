@@ -36,6 +36,19 @@ export interface TradePlanData {
   rationale?: string
 }
 
+export interface CompactAnalysisSnapshot {
+  id: string
+  symbol: string
+  timeframe: string
+  capturedAt: number
+  summary: string
+  bias?: 'LONG' | 'SHORT' | 'NEUTRAL'
+  levels?: { entry?: number; stopLoss?: number; takeProfit1?: number; takeProfit2?: number }
+  evidence: Record<string, number | string | null>
+  unavailable: string[]
+  tools: Array<{ name: string; durationMs?: number; status: 'ok' | 'error' }>
+}
+
 export interface ToolCallExecution {
   id: string
   name: string
@@ -43,6 +56,7 @@ export interface ToolCallExecution {
   result?: any
   durationMs?: number
   isError?: boolean
+  isRunning?: boolean
 }
 
 export interface AgentStepTrace {
@@ -65,6 +79,7 @@ export interface AiAgentMessage {
   tradePlan?: TradePlanData
   timestamp: number
   isStreaming?: boolean
+  analysis?: CompactAnalysisSnapshot
 }
 
 /**
@@ -104,6 +119,7 @@ export function parseThinkingAndContent(raw: string): { thought?: string; conten
 interface AiAgentState {
   config: AiAgentConfig
   messages: AiAgentMessage[]
+  analysisSnapshots: CompactAnalysisSnapshot[]
   isBusy: boolean
   statusMessage: string | null
   isConfigOpen: boolean
@@ -118,6 +134,111 @@ interface AiAgentState {
   testConnection: (overrideConfig?: Partial<AiAgentConfig>) => Promise<{ success: boolean; latencyMs?: number; error?: string }>
   executePaperOrderFromPlan: (plan: TradePlanData, lotSize?: number) => Promise<{ success: boolean; error?: string }>
   replotTradePlan: (planOrSymbol: TradePlanData | string) => Promise<boolean>
+}
+
+const ANALYSIS_SNAPSHOT_KEY = 'pia_ai_snapshots_v1'
+const ANALYSIS_SNAPSHOT_LIMIT = 20
+
+export function loadAnalysisSnapshots(): CompactAnalysisSnapshot[] {
+  try {
+    const raw = localStorage.getItem(ANALYSIS_SNAPSHOT_KEY)
+    if (!raw || raw.length > 50_000) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is CompactAnalysisSnapshot =>
+      Boolean(item && typeof item === 'object' &&
+        typeof item.id === 'string' && item.id.length <= 80 &&
+        typeof item.symbol === 'string' && item.symbol.length <= 32 &&
+        typeof item.timeframe === 'string' && item.timeframe.length <= 16 &&
+        Number.isFinite(item.capturedAt) && typeof item.summary === 'string' && item.summary.length <= 500 &&
+        (item.bias === undefined || ['LONG', 'SHORT', 'NEUTRAL'].includes(item.bias)) &&
+        item.evidence && typeof item.evidence === 'object' && !Array.isArray(item.evidence) &&
+        Object.keys(item.evidence).length <= 40 &&
+        Object.values(item.evidence as Record<string, unknown>).every((value: unknown) => value === null || (typeof value === 'string' && value.length <= 120) || (typeof value === 'number' && Number.isFinite(value))) &&
+        Array.isArray(item.unavailable) && item.unavailable.length <= 40 &&
+        item.unavailable.every((value: unknown) => typeof value === 'string' && value.length <= 80) &&
+        Array.isArray(item.tools) && item.tools.length <= 24 &&
+        item.tools.every((tool: unknown) => {
+          if (!tool || typeof tool !== 'object') return false
+          const record = tool as Record<string, unknown>
+          return typeof record.name === 'string' && record.name.length <= 100 &&
+            (record.durationMs === undefined || (typeof record.durationMs === 'number' && Number.isFinite(record.durationMs) && record.durationMs >= 0)) &&
+            (record.status === 'ok' || record.status === 'error')
+        })
+      )
+    ).slice(0, ANALYSIS_SNAPSHOT_LIMIT)
+  } catch {
+    return []
+  }
+}
+
+export function createCompactAnalysisSnapshot(
+  symbol: string,
+  timeframe: string,
+  summary: string,
+  steps: AgentStepTrace[],
+  tradePlan?: TradePlanData
+): CompactAnalysisSnapshot {
+  const tools = steps.flatMap((step) => step.toolCalls || [])
+  const evidence: CompactAnalysisSnapshot['evidence'] = {}
+  const unavailable: string[] = []
+  for (const tool of tools) {
+    const result = tool.result && typeof tool.result === 'object' ? tool.result : {}
+    if (tool.name === 'compute_technical_analysis' || tool.name === 'execute_full_chart_analysis') {
+      for (const key of ['currentPrice', 'trend', 'indicators', 'levels', 'timeframe']) {
+        const value = result[key]
+        if (typeof value === 'number' || typeof value === 'string') evidence[key] = value
+        else if (value && typeof value === 'object') {
+          for (const [nestedKey, nestedValue] of Object.entries(value)) {
+            if (typeof nestedValue === 'number' || typeof nestedValue === 'string') evidence[nestedKey] = nestedValue
+          }
+        }
+      }
+    } else if (tool.name === 'get_market_snapshot') {
+      for (const key of ['price', 'change24h', 'volume24h']) {
+        if (typeof result[key] === 'number' && Number.isFinite(result[key])) evidence[key] = result[key]
+        else unavailable.push(key)
+      }
+      if (result.orderbook) {
+        for (const key of ['spread', 'imbalanceRatio']) {
+          const value = result.orderbook[key]
+          if (typeof value === 'number' && Number.isFinite(value)) evidence[key] = value
+          else unavailable.push(key)
+        }
+      } else unavailable.push('orderbook')
+    } else if (tool.name === 'get_news_sentiment') {
+      if (result.available === true && typeof result.score === 'number') evidence.newsScore = result.score
+      else unavailable.push('news sentiment')
+    }
+  }
+  if (!('rsi14' in evidence)) unavailable.push('RSI')
+  if (!('atr14' in evidence)) unavailable.push('ATR')
+  return {
+    id: `analysis-${Date.now()}`,
+    symbol,
+    timeframe,
+    capturedAt: Date.now(),
+    summary: summary.slice(0, 500),
+    bias: tradePlan?.bias,
+    levels: tradePlan ? { entry: tradePlan.entry, stopLoss: tradePlan.stopLoss, takeProfit1: tradePlan.takeProfit1, takeProfit2: tradePlan.takeProfit2 } : undefined,
+    evidence,
+    unavailable: [...new Set(unavailable)],
+    tools: tools.map(({ name, durationMs, isError }) => ({ name, durationMs, status: isError ? 'error' : 'ok' }))
+  }
+}
+
+export function persistAnalysisSnapshot(
+  snapshot: CompactAnalysisSnapshot,
+  existing: CompactAnalysisSnapshot[]
+): CompactAnalysisSnapshot[] {
+  const snapshots = [snapshot, ...existing.filter((item) => item.id !== snapshot.id)]
+    .slice(0, ANALYSIS_SNAPSHOT_LIMIT)
+  try {
+    localStorage.setItem(ANALYSIS_SNAPSHOT_KEY, JSON.stringify(snapshots))
+  } catch {
+    // Optional history must not block analysis.
+  }
+  return snapshots
 }
 
 const DEFAULT_CONFIG: AiAgentConfig = {
@@ -383,6 +504,7 @@ export function hasExplicitTradeIntent(text: string): boolean {
 
 export const useAiAgentStore = create<AiAgentState>((set, get) => ({
   config: loadInitialConfig(),
+  analysisSnapshots: loadAnalysisSnapshots(),
   messages: [
     {
       id: 'init-msg',
@@ -456,14 +578,15 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
 
   abortGeneration: () => {
     const { activeAbortController } = get()
-    if (activeAbortController) {
-      activeAbortController.abort()
-    }
-    set({
+    if (activeAbortController) activeAbortController.abort()
+    set((state) => ({
+      messages: state.messages.map((message) => message.isStreaming
+        ? { ...message, isStreaming: false, content: message.content || 'Generation stopped.' }
+        : message),
       isBusy: false,
       statusMessage: null,
       activeAbortController: null
-    })
+    }))
   },
 
   clearChat: () => {
@@ -537,6 +660,14 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       plan.orderType === 'BUY_STOP' ||
       plan.orderType === 'SELL_STOP'
 
+    const finitePositive = [plan.entry, plan.stopLoss, plan.takeProfit1, size].every((value) => Number.isFinite(value) && value > 0)
+    const validDirection = plan.bias === 'LONG'
+      ? plan.stopLoss < plan.entry && plan.takeProfit1 > plan.entry
+      : plan.bias === 'SHORT'
+        ? plan.stopLoss > plan.entry && plan.takeProfit1 < plan.entry
+        : false
+    if (!finitePositive || !validDirection) return { success: false, error: 'Invalid trade plan levels or direction' }
+
     if (isLimitOrStop && plan.orderType) {
       const paperType = plan.orderType.toLowerCase() as 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop'
       return await placeOrder({
@@ -551,11 +682,15 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     }
 
     const side = plan.bias === 'LONG' ? 'buy' : 'sell'
+    const livePrice = useMarketStore.getState().prices[plan.symbol]?.price
+    if (plan.orderType === 'MARKET' && (!Number.isFinite(livePrice) || livePrice! <= 0)) {
+      return { success: false, error: 'Live market price is unavailable; refresh the analysis before placing a market order' }
+    }
     return await openPosition({
       symbol: plan.symbol,
       side,
       size,
-      price: plan.entry,
+      price: plan.orderType === 'MARKET' ? livePrice! : plan.entry,
       stopLoss: plan.stopLoss,
       takeProfit: plan.takeProfit1,
       comment: `PIA Agent Market (${plan.riskRewardRatio})`,
@@ -762,6 +897,17 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
 
               set({ statusMessage: `Step ${currentStep}/${MAX_STEPS} • Running ${toolName}...` })
               const toolStart = performance.now()
+              const pendingTool: ToolCallExecution = { id: tc.id, name: toolName, args: toolArgs, isRunning: true }
+              stepToolExecutions.push(pendingTool)
+              const publishRunningTool = () => {
+                const allToolCalls = executedSteps.flatMap((step) => step.toolCalls || []).concat(stepToolExecutions)
+                set((state) => ({
+                  messages: state.messages.map((message) => message.id === asstMsgId
+                    ? { ...message, steps: [...executedSteps, { step: currentStep, title: `Step ${currentStep}: ${toolName}`, toolCalls: [...stepToolExecutions], timestamp: Date.now() }], toolCalls: allToolCalls }
+                    : message)
+                }))
+              }
+              publishRunningTool()
 
               try {
                 const result = await AiMcpEngine.executeTool(toolName, toolArgs)
@@ -782,15 +928,15 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
                   }
                 }
 
-                stepToolExecutions.push({
-                  id: tc.id,
-                  name: toolName,
-                  args: toolArgs,
-                  result,
-                  durationMs,
-                  isError: false
-                })
-                toolMessages.push({
+                stepToolExecutions[stepToolExecutions.length - 1] = {
+                ...pendingTool,
+                result,
+                durationMs,
+                isRunning: false,
+                isError: false
+              }
+              publishRunningTool()
+              toolMessages.push({
                   role: 'tool',
                   tool_call_id: tc.id,
                   name: toolName,
@@ -798,14 +944,14 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
                 })
               } catch (err: any) {
                 const durationMs = Math.round(performance.now() - toolStart)
-                stepToolExecutions.push({
-                  id: tc.id,
-                  name: toolName,
-                  args: toolArgs,
+                stepToolExecutions[stepToolExecutions.length - 1] = {
+                  ...pendingTool,
                   result: { error: err?.message || 'Tool execution failed' },
                   durationMs,
+                  isRunning: false,
                   isError: true
-                })
+                }
+                publishRunningTool()
                 toolMessages.push({
                   role: 'tool',
                   tool_call_id: tc.id,
@@ -883,8 +1029,17 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
               .map((s) => s.thought?.trim())
               .filter(Boolean)
               .join('\n\n')
+            const analysis = createCompactAnalysisSnapshot(
+              currentSymbol,
+              useMarketStore.getState().timeframe,
+              finalContent,
+              executedSteps,
+              resolvedPlan
+            )
+            const analysisSnapshots = persistAnalysisSnapshot(analysis, get().analysisSnapshots)
 
             set((state) => ({
+              analysisSnapshots,
               messages: state.messages.map((m) =>
                 m.id === asstMsgId
                   ? {
@@ -894,6 +1049,7 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
                       thought: allThoughts || finalThought,
                       content: finalContent || 'Analysis completed.',
                       tradePlan: resolvedPlan,
+                      analysis,
                       isStreaming: false
                     }
                   : m
@@ -931,6 +1087,10 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
               isStreaming: false
             }
           }),
+          analysisSnapshots: persistAnalysisSnapshot(
+            createCompactAnalysisSnapshot(currentSymbol, useMarketStore.getState().timeframe, allThoughts, executedSteps),
+            state.analysisSnapshots
+          ),
           isBusy: false,
           statusMessage: null,
           activeAbortController: null
@@ -938,7 +1098,14 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
         return
       } catch (err: any) {
         if (err?.name === 'AbortError' || abortController.signal.aborted) {
-          set({ isBusy: false, statusMessage: null, activeAbortController: null })
+          set((state) => ({
+            messages: state.messages.map((message) => message.isStreaming
+              ? { ...message, isStreaming: false, content: message.content || 'Generation stopped.' }
+              : message),
+            isBusy: false,
+            statusMessage: null,
+            activeAbortController: null
+          }))
           return
         }
 

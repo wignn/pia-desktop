@@ -14,6 +14,12 @@ if (!vi.stubGlobal) {
 }
 
 beforeEach(() => {
+  const store: Record<string, string> = {}
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value },
+    removeItem: (key: string) => { delete store[key] }
+  })
   vi.stubGlobal('window', {
     api: {
       market: {
@@ -34,6 +40,70 @@ describe('CandleEngine', () => {
     expect(bars).toHaveLength(2)
     expect(bars.at(-1)).toMatchObject({ open: 103, high: 108, low: 102, close: 107 })
     expect(onHistoryLoaded).toHaveBeenCalledWith(engine.getGenerationId(), bars)
+  })
+
+  it('hydrates matching saved candles immediately and refreshes the snapshot from network', async () => {
+    const refreshed = [
+      ...history,
+      { timestamp: 1_700_002_000, open: 107, high: 110, low: 106, close: 109, volume: 60 }
+    ]
+    const getCandles = vi.fn().mockResolvedValue(refreshed)
+    vi.stubGlobal('window', { api: { market: { getCandles } } })
+    localStorage.setItem('pia_chart_snapshot_v1', JSON.stringify({
+      symbol: 'XAUUSD', timeframe: '1m', bars: history
+    }))
+    const engine = new CandleEngine()
+    const onCachedBars = vi.fn()
+    const onBarUpdate = vi.fn()
+    engine.addListener({ onHistoryLoaded: vi.fn(), onBarUpdate })
+    const loaded = engine.setSymbolAndTimeframe('XAUUSD', '1m', 300, onCachedBars)
+
+    expect(onCachedBars).toHaveBeenCalledOnce()
+    expect(onCachedBars.mock.calls[0][0]).toHaveLength(2)
+    expect(getCandles).toHaveBeenCalledOnce()
+
+    const bars = await loaded
+    expect(bars).toHaveLength(3)
+    expect(onBarUpdate).toHaveBeenCalledWith(engine.getGenerationId(), expect.objectContaining({
+      timestamp: 1_700_001_000_000,
+      close: 107
+    }))
+    expect(onBarUpdate).toHaveBeenCalledWith(engine.getGenerationId(), expect.objectContaining({
+      timestamp: 1_700_002_000_000,
+      close: 109
+    }))
+    expect(JSON.parse(localStorage.getItem('pia_chart_snapshot_v1')!).bars).toHaveLength(3)
+  })
+
+  it('ignores malformed or mismatched snapshots and fetches from network', async () => {
+    localStorage.setItem('pia_chart_snapshot_v1', '{bad json')
+    const onCachedBars = vi.fn()
+    const engine = new CandleEngine()
+    const bars = await engine.setSymbolAndTimeframe('BTCUSDT', '1m', 300, onCachedBars)
+
+    expect(onCachedBars).not.toHaveBeenCalled()
+    expect(bars).toHaveLength(2)
+  })
+
+  it('does not render cached bars after the active pair changed', async () => {
+    let resolveRequest!: (bars: CandleBar[]) => void
+    const getCandles = vi.fn()
+      .mockImplementationOnce(() => new Promise<CandleBar[]>((resolve) => {
+        resolveRequest = resolve
+      }))
+      .mockResolvedValue(history)
+    vi.stubGlobal('window', { api: { market: { getCandles } } })
+    localStorage.setItem('pia_chart_snapshot_v1', JSON.stringify({
+      symbol: 'XAUUSD', timeframe: '1m', bars: history
+    }))
+    const engine = new CandleEngine()
+    const cached = vi.fn()
+    const pending = engine.setSymbolAndTimeframe('XAUUSD', '1m', 300, cached)
+    await engine.setSymbolAndTimeframe('BTCUSDT', '1m')
+    expect(cached).toHaveBeenCalledOnce()
+    resolveRequest(history)
+    await pending
+    expect(engine.getSymbol()).toBe('BTCUSDT')
   })
 
   it('updates OHLC while preserving historical volume for the active bucket', async () => {

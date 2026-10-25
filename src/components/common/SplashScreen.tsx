@@ -22,19 +22,30 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   const percent = Math.min(100, Math.max(0, progressPercent ?? 0))
   const isDownloading = state === 'downloading'
   const isDownloaded = state === 'downloaded'
+  const isInstalling = state === 'installing'
+  const hasError = state === 'error'
 
-  let cardTitle = 'Initializing Terminal'
+  let cardTitle = 'Preparing Terminal'
   if (isDownloading) {
     cardTitle = `Downloading v${availableVersion || 'Update'}`
+  } else if (isInstalling) {
+    cardTitle = 'Installing Update'
   } else if (isDownloaded) {
     cardTitle = 'Update Ready to Install'
   } else if (state === 'available') {
     cardTitle = `Update Available (v${availableVersion})`
+  } else if (state === 'checking') {
+    cardTitle = 'Checking for Updates'
+  } else if (hasError) {
+    cardTitle = 'Starting Current Version'
   }
 
   return (
     <div
       data-tauri-drag-region
+      role="status"
+      aria-live="polite"
+      aria-busy={isIndeterminate || isDownloading || isInstalling}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -63,6 +74,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
             transform: scale(1.04);
             filter: drop-shadow(0 0 26px rgba(212, 175, 55, 0.55));
           }
+        }
+        .pia-splash-motion { animation: piaLogoPulse 2.8s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .pia-splash-motion, .pia-splash-progress { animation: none !important; }
         }
         @keyframes piaIndeterminateBar {
           0% {
@@ -169,14 +184,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           <img
             src={piaLogo}
             alt="PIA Terminal"
+            className="pia-splash-motion"
             style={{
               width: 72,
               height: 72,
               borderRadius: '50%',
               border: '2px solid rgba(212, 175, 55, 0.65)',
               boxShadow: '0 0 20px rgba(212, 175, 55, 0.35)',
-              objectFit: 'cover',
-              animation: 'piaLogoPulse 2.8s ease-in-out infinite'
+              objectFit: 'cover'
             }}
           />
         </div>
@@ -241,7 +256,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           <p
             style={{
               fontSize: 11,
-              color: isDownloading ? '#10B981' : '#838896',
+              color: isDownloading ? '#10B981' : hasError ? '#F59E0B' : '#838896',
               margin: 0,
               lineHeight: 1.4,
               minHeight: 18
@@ -265,6 +280,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           >
             {isIndeterminate && !isDownloading ? (
               <div
+                className="pia-splash-progress"
                 style={{
                   position: 'absolute',
                   top: 0,

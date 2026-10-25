@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { TerminalWorkspace } from './components/layout/TerminalWorkspace'
 import { AuthGateway } from './components/auth/AuthGateway'
@@ -13,50 +13,55 @@ export function App(): React.JSX.Element {
   const updaterStatus = useUpdaterStore((state) => state.status)
 
   const [isReady, setIsReady] = useState(false)
-  const [splashStatus, setSplashStatus] = useState('Checking for updates...')
+  const [splashStatus, setSplashStatus] = useState('Preparing your terminal…')
+  const installStarted = useRef(false)
 
   useEffect(() => {
     let isMounted = true
+    const unsubscribe = initUpdaterListener()
 
-    const boot = async (): Promise<(() => void) | undefined> => {
-      const unsub = initUpdaterListener()
-
-      // Ensure clean compact dialog on initial launch / splash loader
-      if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
-        invoke('set_window_mode', { mode: 'auth' }).catch(() => {})
-      }
-
-      try {
-        setSplashStatus('Checking for updates...')
-        await Promise.allSettled([
-          loadCredentials(),
-          useUpdaterStore.getState().checkForUpdates()
-        ])
-
-        if (!isMounted) return unsub
-        setSplashStatus('Connecting to real-time engine...')
-
-        // Smooth visual pacing (600ms) matching TradingView / Discord desktop app splash
-        await new Promise((r) => setTimeout(r, 600))
-
-        if (isMounted) {
-          setIsReady(true)
-        }
-      } catch {
-        if (isMounted) setIsReady(true)
-      }
-
-      return unsub
+    // Keep the compact startup window until credentials and any update are ready.
+    if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+      invoke('set_window_mode', { mode: 'auth' }).catch(() => {})
     }
 
-    let cleanupFn: (() => void) | undefined
-    boot().then((fn) => {
-      cleanupFn = fn
+    const boot = async (): Promise<void> => {
+      setSplashStatus('Checking for updates…')
+      const [, updateResult] = await Promise.allSettled([
+        loadCredentials(),
+        useUpdaterStore.getState().checkForUpdates()
+      ])
+      if (!isMounted) return
+
+      const updateStatus = useUpdaterStore.getState().status
+      if (updateResult.status === 'fulfilled' && updateStatus.state === 'downloaded') {
+        setSplashStatus('Installing update and restarting… Windows may request permission.')
+        if (!installStarted.current) {
+          installStarted.current = true
+          const installed = await useUpdaterStore.getState().installUpdate()
+          if (!installed && isMounted) {
+            setSplashStatus('Update could not be installed. Starting current version…')
+          } else if (installed) {
+            return
+          }
+        }
+      } else if (updateStatus.state === 'error') {
+        setSplashStatus('Update check failed. Starting current version…')
+      } else {
+        setSplashStatus('Starting your terminal…')
+      }
+
+      if (isMounted) setIsReady(true)
+    }
+
+    void boot().catch((error: unknown) => {
+      console.warn('[App] Startup checks failed; continuing with current version:', error)
+      if (isMounted) setIsReady(true)
     })
 
     return () => {
       isMounted = false
-      cleanupFn?.()
+      unsubscribe()
     }
   }, [loadCredentials, initUpdaterListener])
 

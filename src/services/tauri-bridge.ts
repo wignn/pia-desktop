@@ -5,6 +5,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { CredentialManager } from './credentials'
 import { DatabaseService } from './database'
@@ -52,11 +53,27 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
   const piaProvider = new PiaProvider(credManager)
 
+  if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+    let allowClose = false
+    await getCurrentWindow().onCloseRequested(async (event) => {
+      if (allowClose) return
+      event.preventDefault()
+      try {
+        await dbService.flushSync()
+        allowClose = true
+        await getCurrentWindow().close()
+      } catch (err) {
+        console.error('Unable to persist local database before closing:', err)
+      }
+    })
+  }
+
   let currentUpdaterStatus: UpdaterStatus = {
     state: 'idle',
     currentVersion: '3.0.18'
   }
   const updaterListeners = new Set<(status: UpdaterStatus) => void>()
+  let updaterCheckPromise: Promise<UpdaterStatus> | null = null
   const notifyUpdaterListeners = (s: UpdaterStatus): void => {
     updaterListeners.forEach((fn) => {
       try {
@@ -407,68 +424,54 @@ export async function createTauriApi(): Promise<TerminalAPI> {
 
     updater: {
       check: async () => {
-        currentUpdaterStatus = { ...currentUpdaterStatus, state: 'checking' }
-        notifyUpdaterListeners(currentUpdaterStatus)
-        const res = await checkForAppUpdates()
-        if (res.state === 'available') {
-          currentUpdaterStatus = {
-            state: 'available',
-            currentVersion: res.currentVersion || '3.0.18',
-            availableVersion: res.availableVersion,
-            progressPercent: 0
-          }
-          notifyUpdaterListeners(currentUpdaterStatus)
+        if (updaterCheckPromise) return updaterCheckPromise
 
-          // Auto-start download in background with live progress updates
-          currentUpdaterStatus = {
-            ...currentUpdaterStatus,
-            state: 'downloading',
-            progressPercent: 1
-          }
+        updaterCheckPromise = (async (): Promise<UpdaterStatus> => {
+          currentUpdaterStatus = { ...currentUpdaterStatus, state: 'checking', error: undefined }
           notifyUpdaterListeners(currentUpdaterStatus)
-
-          void downloadUpdatePackage((percent) => {
+          const res = await checkForAppUpdates()
+          if (res.state === 'available') {
             currentUpdaterStatus = {
-              ...currentUpdaterStatus,
-              state: 'downloading',
-              progressPercent: percent
+              state: 'available',
+              currentVersion: res.currentVersion || '3.0.18',
+              availableVersion: res.availableVersion,
+              progressPercent: 0
             }
             notifyUpdaterListeners(currentUpdaterStatus)
-          }).then((ok) => {
-            if (ok) {
-              currentUpdaterStatus = {
-                ...currentUpdaterStatus,
-                state: 'downloaded',
-                progressPercent: 100
-              }
+
+            currentUpdaterStatus = { ...currentUpdaterStatus, state: 'downloading', progressPercent: 1 }
+            notifyUpdaterListeners(currentUpdaterStatus)
+            const ok = await downloadUpdatePackage((percent) => {
+              currentUpdaterStatus = { ...currentUpdaterStatus, state: 'downloading', progressPercent: percent }
               notifyUpdaterListeners(currentUpdaterStatus)
-            } else {
-              currentUpdaterStatus = {
-                ...currentUpdaterStatus,
-                state: 'error',
-                error: 'Update download failed or timed out. Please retry.'
-              }
-              notifyUpdaterListeners(currentUpdaterStatus)
+            })
+            currentUpdaterStatus = ok
+              ? { ...currentUpdaterStatus, state: 'downloaded', progressPercent: 100 }
+              : { ...currentUpdaterStatus, state: 'error', error: 'Update download failed or timed out. Please retry.' }
+          } else if (res.state === 'up-to-date') {
+            currentUpdaterStatus = {
+              state: 'not-available',
+              currentVersion: res.currentVersion || '3.0.18'
             }
-          })
-        } else if (res.state === 'up-to-date') {
-          currentUpdaterStatus = {
-            state: 'not-available',
-            currentVersion: res.currentVersion || '3.0.18'
+          } else {
+            currentUpdaterStatus = {
+              state: 'error',
+              currentVersion: '3.0.18',
+              error: res.error
+            }
           }
-        } else {
-          currentUpdaterStatus = {
-            state: 'error',
-            currentVersion: '3.0.18',
-            error: res.error
-          }
-        }
-        notifyUpdaterListeners(currentUpdaterStatus)
-        return currentUpdaterStatus
+          notifyUpdaterListeners(currentUpdaterStatus)
+          return currentUpdaterStatus
+        })().finally(() => {
+          updaterCheckPromise = null
+        })
+        return updaterCheckPromise
       },
       getStatus: () => Promise.resolve(currentUpdaterStatus),
       install: async () => {
         if (currentUpdaterStatus.state === 'downloaded') {
+          currentUpdaterStatus = { ...currentUpdaterStatus, state: 'installing' }
+          notifyUpdaterListeners(currentUpdaterStatus)
           const applied = await applyDownloadedUpdate()
           if (!applied) {
             currentUpdaterStatus = {

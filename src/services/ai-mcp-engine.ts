@@ -8,7 +8,7 @@
 
 import { candleEngine } from './candle-engine'
 import { useMarketStore } from '../stores/useMarketStore'
-import type { DrawingItem } from '@shared/types'
+import type { DrawingItem, OrderBookData } from '@shared/types'
 import { getSymbolPrecision } from '@shared/market-utils'
 
 export interface McpToolDefinition {
@@ -338,21 +338,45 @@ export class AiMcpEngine {
    * Execute an MCP tool by name
    */
   public static async executeTool(name: string, args: Record<string, any>): Promise<any> {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be an object')
+    if (name !== 'get_macro_context') {
+      if (typeof args.symbol !== 'string' || !args.symbol.trim() || args.symbol.length > 32) {
+        throw new Error('A valid symbol is required')
+      }
+      args = { ...args, symbol: args.symbol.trim() }
+    }
+    const finitePositive = (key: string): number => {
+      const value = typeof args[key] === 'string' ? Number(args[key]) : args[key]
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`Invalid ${key}`)
+      return value
+    }
     switch (name) {
       case 'get_market_snapshot':
         return this.getMarketSnapshot(args.symbol)
-      case 'get_news_sentiment':
-        return this.getNewsSentiment(args.symbol, args.limit)
+      case 'get_news_sentiment': {
+        const limit = args.limit === undefined ? 8 : Number(args.limit)
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid news limit')
+        return this.getNewsSentiment(args.symbol, limit)
+      }
       case 'get_macro_context':
         return this.getMacroContext()
       case 'compute_technical_analysis':
         return this.computeTechnicalAnalysis(args.symbol, args.timeframe)
-      case 'draw_trendline_on_chart':
-        return this.drawTrendline(args.symbol, args.timestamp1, args.price1, args.timestamp2, args.price2, args.label, args.color)
+      case 'draw_trendline_on_chart': {
+        const timestamp1 = finitePositive('timestamp1')
+        const timestamp2 = finitePositive('timestamp2')
+        if (timestamp1 === timestamp2) throw new Error('Trendline timestamps must differ')
+        return this.drawTrendline(args.symbol, timestamp1, finitePositive('price1'), timestamp2, finitePositive('price2'), args.label, args.color)
+      }
       case 'draw_level_on_chart':
-        return this.drawLevel(args.symbol, args.price, args.type, args.label)
-      case 'draw_zone_on_chart':
-        return this.drawZone(args.symbol, args.type, args.timestamp1, args.price1, args.timestamp2, args.price2, args.label)
+        if (!['support', 'resistance', 'pivot'].includes(args.type)) throw new Error('Invalid level type')
+        return this.drawLevel(args.symbol, finitePositive('price'), args.type, args.label)
+      case 'draw_zone_on_chart': {
+        const timestamp1 = finitePositive('timestamp1')
+        const timestamp2 = finitePositive('timestamp2')
+        if (timestamp1 === timestamp2 || !['demand', 'supply'].includes(args.type)) throw new Error('Invalid drawing zone')
+        return this.drawZone(args.symbol, args.type, timestamp1, finitePositive('price1'), timestamp2, finitePositive('price2'), args.label)
+      }
       case 'clear_chart_drawings':
         return this.clearDrawings(args.symbol)
       case 'execute_full_chart_analysis':
@@ -369,38 +393,30 @@ export class AiMcpEngine {
   public static async getMarketSnapshot(symbol: string): Promise<any> {
     const marketState = useMarketStore.getState()
     const liveTicker = marketState.prices[symbol]
-    let orderbook: any = null
+    let orderbook: OrderBookData | null = null
 
     try {
-      if ((window.api?.market as any)?.getOrderbook) {
-        orderbook = await (window.api.market as any).getOrderbook(symbol)
-      }
+      orderbook = await window.api?.orderbook?.get(symbol) ?? null
     } catch {}
 
-    let bidVol = 0
-    let askVol = 0
-    let spread = 0
-    if (orderbook && orderbook.bids?.length && orderbook.asks?.length) {
-      bidVol = orderbook.bids.slice(0, 10).reduce((acc: number, b: any) => acc + (b.size || b[1] || 0), 0)
-      askVol = orderbook.asks.slice(0, 10).reduce((acc: number, a: any) => acc + (a.size || a[1] || 0), 0)
-      const bestBid = orderbook.bids[0].price || orderbook.bids[0][0] || 0
-      const bestAsk = orderbook.asks[0].price || orderbook.asks[0][0] || 0
-      spread = Math.abs(bestAsk - bestBid)
-    }
-
+    const bidVol = orderbook?.bids?.slice(0, 10).reduce((sum, level) => sum + level.size, 0)
+    const askVol = orderbook?.asks?.slice(0, 10).reduce((sum, level) => sum + level.size, 0)
     return {
       symbol,
-      price: liveTicker?.price ?? 0,
-      change24h: liveTicker?.change24h ?? 0,
-      high24h: liveTicker?.high24h ?? 0,
-      low24h: liveTicker?.low24h ?? 0,
-      volume24h: liveTicker?.volume24h ?? 0,
-      orderbook: {
+      capturedAt: Date.now(),
+      price: liveTicker?.price,
+      priceTimestamp: liveTicker?.receivedAt ?? liveTicker?.timestamp,
+      change24h: liveTicker?.change24h,
+      high24h: liveTicker?.high24h,
+      low24h: liveTicker?.low24h,
+      volume24h: liveTicker?.volume24h,
+      orderbook: orderbook ? {
+        timestamp: orderbook.timestamp,
         bidVolumeTop10: bidVol,
         askVolumeTop10: askVol,
-        imbalanceRatio: askVol > 0 ? Number((bidVol / askVol).toFixed(2)) : 1.0,
-        spread
-      }
+        imbalanceRatio: askVol && askVol > 0 ? Number(((bidVol ?? 0) / askVol).toFixed(2)) : undefined,
+        spread: orderbook.spread
+      } : null
     }
   }
 
@@ -410,7 +426,9 @@ export class AiMcpEngine {
 
     try {
       if (window.api?.news?.get) {
-        articles = await (window.api.news.get as any)({ symbol, limit })
+        const received = await window.api.news.get({ limit })
+        // Provider fallback headlines are illustrative, not live evidence for sentiment.
+        articles = received.filter((article) => !article.id.startsWith('news-sample-'))
       }
     } catch {}
 
@@ -455,6 +473,8 @@ export class AiMcpEngine {
 
     return {
       symbol: symbol || 'GLOBAL',
+      capturedAt: Date.now(),
+      available: articles.length > 0 || socialPosts.length > 0,
       score,
       sentiment,
       bullishSignals: bullishCount,
@@ -471,11 +491,17 @@ export class AiMcpEngine {
       }
     } catch {}
 
+    let centralBanks: unknown[] = []
+    try {
+      centralBanks = await window.api?.macro?.getCentralBanks() ?? []
+    } catch {}
+
     return {
-      fearGreedIndex: fearGreed?.value ?? 55,
-      fearGreedLabel: fearGreed?.sentiment ?? 'Neutral',
-      macroRegime: 'Risk-On Liquidity Expansion',
-      centralBankPolicy: 'Accommodative / Selective Rate Adjustments'
+      capturedAt: Date.now(),
+      fearGreedIndex: fearGreed?.value,
+      fearGreedLabel: fearGreed?.sentiment,
+      centralBanks,
+      available: fearGreed !== null || centralBanks.length > 0
     }
   }
 
@@ -823,12 +849,14 @@ export class AiMcpEngine {
   }
 
   public static async clearDrawings(symbol: string): Promise<boolean> {
-    if (window.api?.drawings?.clear) {
-      await window.api.drawings.clear({ symbol })
+    if (!symbol || !window.api?.drawings?.get || !window.api.drawings.delete) return false
+    const drawings = await window.api.drawings.get({ symbol })
+    const aiDrawings = drawings.filter((drawing) => drawing.id.startsWith('ai-'))
+    for (const drawing of aiDrawings) await window.api.drawings.delete(drawing.id)
+    if (aiDrawings.length > 0) {
       window.dispatchEvent(new CustomEvent('pia:reload-drawings', { detail: { symbol } }))
-      return true
     }
-    return false
+    return true
   }
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useId, useState, useEffect, useRef } from 'react'
 import {
   Settings,
   Bot,
@@ -24,6 +24,8 @@ import {
   Terminal
 } from 'lucide-react'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { AnalysisSnapshotCard } from './AnalysisSnapshotCard'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import type { IntelligenceAnalyzeResult, MarketInsightResult } from '@shared/types'
@@ -217,6 +219,7 @@ const ThoughtProcessCard: React.FC<{
   isStreaming?: boolean
 }> = ({ thought, isStreaming }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const contentId = useId()
 
   if (!thought) return null
 
@@ -235,6 +238,8 @@ const ThoughtProcessCard: React.FC<{
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        aria-controls={contentId}
         style={{
           width: '100%',
           display: 'flex',
@@ -265,6 +270,7 @@ const ThoughtProcessCard: React.FC<{
 
       {isExpanded && (
         <div
+          id={contentId}
           style={{
             padding: '8px 10px',
             borderTop: '1px solid rgba(139, 92, 246, 0.15)',
@@ -590,8 +596,14 @@ SIZE: ${selectedLot} Lot`
 // Tool Execution Telemetry Drawer (CLI Style)
 // ==========================================
 
-const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall }) => {
+const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution; onOpenDesk?: () => void }> = ({ toolCall, onOpenDesk }) => {
   const [isOpen, setIsOpen] = useState(false)
+  const contentId = useId()
+  const targetTab = toolCall.name === 'get_market_snapshot' ? 'orderbook'
+    : toolCall.name === 'get_news_sentiment' ? 'news'
+      : toolCall.name === 'get_macro_context' ? 'macro'
+        : toolCall.name === 'compute_technical_analysis' || toolCall.name === 'execute_full_chart_analysis' ? 'desk'
+          : undefined
 
   const argsPreview = Object.entries(toolCall.args || {})
     .slice(0, 2)
@@ -603,6 +615,9 @@ const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall })
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        aria-label={`${isOpen ? 'Hide' : 'Show'} ${toolCall.name} details`}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -641,10 +656,12 @@ const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall })
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-          {toolCall.isError ? (
-            <span style={{ color: '#F43F5E', fontSize: 9 }}>error</span>
+          {toolCall.isRunning ? (
+            <span style={{ color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Loader2 size={10} className="tv-spin" />running</span>
+          ) : toolCall.isError ? (
+            <span style={{ color: 'var(--bearish)', fontSize: 9 }}>error</span>
           ) : (
-            <span style={{ color: '#10B981', fontSize: 9 }}>
+            <span style={{ color: 'var(--bullish)', fontSize: 9 }}>
               {toolCall.durationMs !== undefined ? `${toolCall.durationMs}ms` : 'done'}
             </span>
           )}
@@ -654,8 +671,9 @@ const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall })
 
       {isOpen && (
         <div
+          id={contentId}
           style={{
-            backgroundColor: '#05070B',
+            backgroundColor: 'var(--bg-app)',
             border: '1px solid rgba(255, 255, 255, 0.06)',
             borderRadius: 4,
             padding: 8,
@@ -671,9 +689,14 @@ const ToolCallDrawer: React.FC<{ toolCall: ToolCallExecution }> = ({ toolCall })
             {JSON.stringify(toolCall.args, null, 2)}
           </pre>
           <div style={{ color: '#10B981', marginBottom: 2, fontWeight: 700 }}>Output Telemetry:</div>
-          <pre style={{ margin: 0, color: '#CBD5E1', whiteSpace: 'pre-wrap' }}>
+          <pre style={{ margin: 0, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(toolCall.result, null, 2)}
           </pre>
+          {targetTab && (
+            <button type="button" onClick={() => targetTab === 'desk' ? onOpenDesk?.() : useWorkspaceStore.getState().setActiveTab(targetTab)} style={{ marginTop: 7, color: 'var(--accent)', background: 'transparent', border: 0, cursor: 'pointer', fontSize: 10 }}>
+              View related panel →
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -689,7 +712,8 @@ const ClaudeCodeStepTimeline: React.FC<{
   toolCalls?: ToolCallExecution[]
   thought?: string
   isStreaming?: boolean
-}> = ({ steps, toolCalls, thought, isStreaming }) => {
+  onOpenDesk?: () => void
+}> = ({ steps, toolCalls, thought, isStreaming, onOpenDesk }) => {
   if (steps && steps.length > 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, width: '100%' }}>
@@ -754,7 +778,7 @@ const ClaudeCodeStepTimeline: React.FC<{
                         borderRadius: 3
                       }}
                     >
-                      <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} />
+                      <Loader2 size={9} className="tv-spin" />
                       running
                     </span>
                   )}
@@ -773,7 +797,7 @@ const ClaudeCodeStepTimeline: React.FC<{
               {step.toolCalls && step.toolCalls.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
                   {step.toolCalls.map((tc, tcIdx) => (
-                    <ToolCallDrawer key={tcIdx} toolCall={tc} />
+                    <ToolCallDrawer key={tcIdx} toolCall={tc} onOpenDesk={onOpenDesk} />
                   ))}
                 </div>
               )}
@@ -817,11 +841,13 @@ export const IntelligencePanel: React.FC = () => {
   const [insight, setInsight] = useState<MarketInsightResult | null>(null)
   const [deskLoading, setDeskLoading] = useState<boolean>(false)
   const [inputPrompt, setInputPrompt] = useState<string>('')
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('')
 
   // AI Agent Store
   const {
     config,
     messages,
+    analysisSnapshots,
     isBusy,
     statusMessage,
     isConfigOpen,
@@ -833,6 +859,11 @@ export const IntelligencePanel: React.FC = () => {
     clearChat,
     testConnection
   } = useAiAgentStore()
+  const selectedSnapshot = analysisSnapshots.find((snapshot) => snapshot.id === selectedSnapshotId)
+  const latestSnapshot = analysisSnapshots[0] ?? null
+  const comparisonSnapshot = selectedSnapshot && latestSnapshot?.id !== selectedSnapshot.id && latestSnapshot?.symbol === selectedSnapshot.symbol
+    ? latestSnapshot
+    : null
 
   // Local draft for settings modal
   const [draftBaseUrl, setDraftBaseUrl] = useState(config.baseUrl)
@@ -1073,6 +1104,33 @@ export const IntelligencePanel: React.FC = () => {
               gap: 12
             }}
           >
+            {analysisSnapshots.length > 0 && (
+              <section aria-label="Recent analysis history" style={{ padding: 8, border: '1px solid var(--border-subtle)', borderRadius: 6, background: 'var(--bg-surface)' }}>
+                <label htmlFor="ai-analysis-history" style={{ display: 'block', marginBottom: 5, color: 'var(--text-secondary)', fontSize: 10, fontWeight: 700 }}>
+                  Recent saved analyses · {analysisSnapshots.length}
+                </label>
+                <select
+                  id="ai-analysis-history"
+                  value={selectedSnapshotId || latestSnapshot?.id || ''}
+                  onChange={(event) => setSelectedSnapshotId(event.target.value)}
+                  style={{ width: '100%', padding: '5px 7px', borderRadius: 4, border: '1px solid var(--border-subtle)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 10 }}
+                >
+                  {analysisSnapshots.map((snapshot) => (
+                    <option key={snapshot.id} value={snapshot.id}>
+                      {snapshot.symbol} · {snapshot.timeframe} · {new Date(snapshot.capturedAt).toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+                {selectedSnapshot && <AnalysisSnapshotCard snapshot={selectedSnapshot} />}
+                {comparisonSnapshot && (
+                  <details style={{ marginTop: 5, color: 'var(--text-secondary)', fontSize: 10 }}>
+                    <summary style={{ cursor: 'pointer' }}>Compare with latest ({new Date(comparisonSnapshot.capturedAt).toLocaleString()})</summary>
+                    <AnalysisSnapshotCard snapshot={comparisonSnapshot} />
+                  </details>
+                )}
+              </section>
+            )}
+
             {messages.map((m) => {
               const isUser = m.role === 'user'
               return (
@@ -1126,11 +1184,13 @@ export const IntelligencePanel: React.FC = () => {
                     )}
 
                     {/* Claude Code Style Iterative Step Execution Timeline */}
+                    {m.analysis && <AnalysisSnapshotCard snapshot={m.analysis} />}
                     <ClaudeCodeStepTimeline
                       steps={m.steps}
                       toolCalls={m.toolCalls}
                       thought={m.thought}
                       isStreaming={m.isStreaming}
+                      onOpenDesk={() => setActiveTab('desk')}
                     />
 
                     {/* Formatted Content */}
@@ -1146,6 +1206,8 @@ export const IntelligencePanel: React.FC = () => {
             {/* Active Execution State with Abort Button */}
             {isBusy && (
               <div
+                role="status"
+                aria-live="polite"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1161,7 +1223,7 @@ export const IntelligencePanel: React.FC = () => {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                  <Loader2 size={12} className="tv-spin" />
                   <span>{statusMessage || 'Processing telemetry...'}</span>
                 </div>
 

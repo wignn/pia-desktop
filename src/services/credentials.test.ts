@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { CredentialManager, normalizeWsUrl, normalizeBaseUrl } from './credentials'
+
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
 describe('normalizeWsUrl & normalizeBaseUrl', () => {
   it('normalizes missing or empty wsUrl to standard default', () => {
@@ -39,13 +42,30 @@ describe('CredentialManager endpoint resilience', () => {
   let manager: CredentialManager
 
   beforeEach(() => {
+    invokeMock.mockReset()
+    invokeMock.mockImplementation(async (command: string, args?: { content?: string }) => {
+      if (command === 'load_credentials') return null
+      if (command === 'save_credentials') return undefined
+      throw new Error(`Unexpected invoke: ${command}`)
+    })
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
     manager = new CredentialManager()
   })
 
   it('sanitizes bare domain wsUrl during saveCredentials', async () => {
+    await manager.initialize()
     await manager.saveCredentials('test-key', 'https://api-engine.wign.dev/', 'wss://api-engine.wign.dev')
     expect(manager.getWsUrl()).toBe('wss://api-engine.wign.dev/api/v1/ws')
     expect(manager.getBaseUrl()).toBe('https://api-engine.wign.dev')
+  })
+
+  it('stores credentials only through the native credential command', async () => {
+    await manager.initialize()
+    expect(await manager.saveCredentials('native-secret')).toBe(true)
+    expect(invokeMock).toHaveBeenCalledWith('save_credentials', {
+      content: expect.stringContaining('native-secret')
+    })
+    expect(invokeMock).not.toHaveBeenCalledWith('save_credentials', expect.objectContaining({ key: 'pia_cached_session' }))
   })
 
   it('keeps user logged out after clearCredentials across initialization', async () => {
@@ -59,13 +79,14 @@ describe('CredentialManager endpoint resilience', () => {
       }
     }
 
+    await manager.initialize()
     await manager.saveCredentials('my-key')
     expect(manager.getStatus().isLoggedIn).toBe(true)
 
     await manager.clearCredentials()
     expect(manager.getStatus().isLoggedIn).toBe(false)
     expect(manager.getStatus().hasApiKey).toBe(false)
-    expect(localStorage.getItem('pia_logged_out')).toBe('true')
+    expect(localStorage.getItem('pia_cached_session')).toBeNull()
 
     const newManager = new CredentialManager()
     await newManager.initialize()

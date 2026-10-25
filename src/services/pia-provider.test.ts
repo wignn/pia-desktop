@@ -14,6 +14,39 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     provider = new PiaProvider(mockCredManager)
   })
 
+  it('backs off repeated reconnects and resets after authentication', () => {
+    vi.useFakeTimers()
+    try {
+      const listeners = new Map<string, (value?: unknown) => void>()
+      const realtime = {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        on: vi.fn((event: string, listener: (value?: unknown) => void) => listeners.set(event, listener)),
+        subscribe: vi.fn(),
+        getState: () => 'AUTHENTICATED'
+      }
+      ;(provider as any).client = { realtime }
+      ;(provider as any).setupRealtimeListeners()
+
+      provider.reconnectRealtime('test-1')
+      vi.advanceTimersByTime(500)
+      expect(realtime.connect).toHaveBeenCalledTimes(1)
+
+      provider.reconnectRealtime('test-2')
+      vi.advanceTimersByTime(999)
+      expect(realtime.connect).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(1)
+      expect(realtime.connect).toHaveBeenCalledTimes(2)
+
+      listeners.get('authenticated')?.()
+      provider.reconnectRealtime('test-after-auth')
+      vi.advanceTimersByTime(500)
+      expect(realtime.connect).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('correctly aggregates three 5m bars into one 15m candle', () => {
     const aggregateFn = (provider as any).aggregate15mBars.bind(provider)
     const baseTime = 1700000000000 // Multiple of 15m or aligned

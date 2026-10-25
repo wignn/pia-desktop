@@ -22,8 +22,8 @@ describe('AiMcpEngine (AI & MCP Tool Execution)', () => {
         },
         news: {
           get: vi.fn().mockResolvedValue([
-            { title: 'Bitcoin surges past resistance in institutional rally', sentiment: 'bullish' },
-            { title: 'Crypto markets breakout to new weekly highs', sentiment: 'bullish' }
+            { id: 'news-live-1', title: 'Bitcoin surges past resistance in institutional rally', sentiment: 'bullish' },
+            { id: 'news-live-2', title: 'Crypto markets breakout to new weekly highs', sentiment: 'bullish' }
           ])
         },
         social: {
@@ -70,6 +70,7 @@ describe('AiMcpEngine (AI & MCP Tool Execution)', () => {
     const sentiment = await AiMcpEngine.getNewsSentiment('BTCUSDT', 5)
     expect(sentiment.sentiment).toBe('bullish')
     expect(sentiment.score).toBeGreaterThan(0)
+    expect(sentiment.available).toBe(true)
     expect(sentiment.topHeadlines.length).toBeGreaterThan(0)
   })
 

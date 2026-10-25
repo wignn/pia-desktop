@@ -369,13 +369,21 @@ export const ChartContainer: React.FC = () => {
         setIsLoadingCandles(true)
 
         try {
-          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 300)
+          const renderedCachedBars: KLineData[] = []
+          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 300, (cachedBars) => {
+            const latestSymbol = useMarketStore.getState().symbol
+            const latestTf = useMarketStore.getState().timeframe
+            if (sym.ticker === latestSymbol && tf === latestTf) {
+              renderedCachedBars.splice(0, renderedCachedBars.length, ...cachedBars)
+              callback(cachedBars, true)
+            }
+          })
 
           // Verify request was not superseded while in flight
           const latestSymbol = useMarketStore.getState().symbol
           const latestTf = useMarketStore.getState().timeframe
           if (sym.ticker !== latestSymbol || tf !== latestTf) {
-            callback([], false)
+            if (renderedCachedBars.length === 0) callback([], false)
             return
           }
 
@@ -391,7 +399,6 @@ export const ChartContainer: React.FC = () => {
               }
             })
           }
-          callback(bars, true)
           await restoreDrawingsForSymbol(sym.ticker)
         } catch (err: unknown) {
           console.error('[ChartContainer] Failed to load initial bars:', err)

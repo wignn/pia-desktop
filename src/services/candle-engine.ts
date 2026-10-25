@@ -24,6 +24,11 @@ export class CandleEngine {
   private inFlightPromise: Promise<KLineData[]> | null = null
   private lastLoadError: unknown = null
 
+  // ponytail: retain only one recent chart snapshot; expand to a small LRU if users need multi-pair cold-start hydration.
+  private readonly snapshotKey = 'pia_chart_snapshot_v1'
+  private readonly snapshotBarLimit = 300
+  private snapshotStorageUnavailable = false
+
   // Replay mode state
   private isReplayMode = false
   private replayBars: KLineData[] = []
@@ -61,6 +66,77 @@ export class CandleEngine {
     return this.lastLoadError
   }
 
+  private readSnapshot(symbol: string, timeframe: Timeframe): KLineData[] {
+    if (this.snapshotStorageUnavailable || typeof localStorage === 'undefined') return []
+    let raw: string | null
+    try {
+      raw = localStorage.getItem(this.snapshotKey)
+    } catch {
+      this.snapshotStorageUnavailable = true
+      return []
+    }
+    if (!raw || raw.length > 200_000) return []
+
+    try {
+      const snapshot = JSON.parse(raw) as {
+        symbol?: unknown
+        timeframe?: unknown
+        bars?: unknown
+      } | null
+      if (
+        !snapshot ||
+        snapshot.symbol !== symbol ||
+        snapshot.timeframe !== timeframe ||
+        !Array.isArray(snapshot.bars) ||
+        snapshot.bars.length === 0 ||
+        snapshot.bars.length > this.snapshotBarLimit
+      ) {
+        return []
+      }
+
+      const bars = snapshot.bars as CandleBar[]
+      if (
+        bars.some(
+          (bar) =>
+            !bar ||
+            !Number.isFinite(bar.timestamp) ||
+            !Number.isFinite(bar.open) ||
+            !Number.isFinite(bar.high) ||
+            !Number.isFinite(bar.low) ||
+            !Number.isFinite(bar.close)
+        )
+      ) {
+        return []
+      }
+      return this.normalizeAndSortBars(bars)
+    } catch {
+      return []
+    }
+  }
+
+  private writeSnapshot(symbol: string, timeframe: Timeframe, bars: KLineData[]): void {
+    if (this.snapshotStorageUnavailable || typeof localStorage === 'undefined') return
+    try {
+      const snapshot = {
+        symbol,
+        timeframe,
+        bars: bars.slice(-this.snapshotBarLimit).map((bar) => ({
+          timestamp: bar.timestamp,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume
+        }))
+      }
+      const serialized = JSON.stringify(snapshot)
+      if (serialized.length <= 200_000) localStorage.setItem(this.snapshotKey, serialized)
+    } catch {
+      this.snapshotStorageUnavailable = true
+      // Cache is optional; storage quota or privacy settings must not block chart loading.
+    }
+  }
+
   /**
    * Switch active symbol and timeframe, incrementing generation ID to discard
    * in-flight requests from prior view states.
@@ -68,7 +144,8 @@ export class CandleEngine {
   public async setSymbolAndTimeframe(
     symbol: string,
     timeframe: Timeframe,
-    limit = 300
+    limit = 300,
+    onCachedBars?: (bars: KLineData[]) => void
   ): Promise<KLineData[]> {
     // ponytail: cap 15m and 1h limits to 300 to prevent ClickHouse rollup timeout / 502 Bad Gateway
     const effectiveLimit =
@@ -94,6 +171,12 @@ export class CandleEngine {
       this.isReplayMode = false
       this.replayBars = []
       this.replayIndex = 0
+
+      const cachedBars = this.readSnapshot(symbol, timeframe)
+      if (cachedBars.length > 0) {
+        this.activeBars = cachedBars
+        onCachedBars?.([...cachedBars])
+      }
 
       let normalizedBars: KLineData[] = []
       let lastError: unknown
@@ -136,6 +219,8 @@ export class CandleEngine {
       if (normalizedBars.length === 0) {
         this.isLoading = false
         this.lastLoadError = lastError ?? null
+        this.tickBuffer = []
+        if (cachedBars.length > 0) return cachedBars
         if (lastError) {
           console.error(
             `[CandleEngine] Failed to load candles for ${symbol} [${timeframe}]:`,
@@ -149,6 +234,7 @@ export class CandleEngine {
         return []
       }
 
+      const cachedLatestTimestamp = cachedBars.length > 0 ? cachedBars[cachedBars.length - 1].timestamp : 0
       this.activeBars = normalizedBars
       this.lastLoadError = null
 
@@ -157,9 +243,18 @@ export class CandleEngine {
         if (tick.symbol === this.currentSymbol) this.reconcileTick(tick, false)
       }
       this.tickBuffer = []
+      if (cachedBars.length > 0) {
+        const refreshedBars = this.activeBars.filter((bar) => bar.timestamp >= cachedLatestTimestamp)
+        if (refreshedBars.length > 0 && refreshedBars[0].timestamp <= cachedLatestTimestamp) {
+          for (const bar of refreshedBars) {
+            for (const listener of this.listeners) listener.onBarUpdate(activeGen, bar)
+          }
+        }
+      }
 
       this.isLoading = false
       const result = [...this.activeBars]
+      this.writeSnapshot(symbol, timeframe, result)
       for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, result)
       return result
     }

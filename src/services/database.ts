@@ -19,7 +19,8 @@ import type {
 
 export class DatabaseService {
   private db: SqlJsDatabase | null = null
-  private saveTimeout: any = null
+  private saveTimeout: ReturnType<typeof setTimeout> | null = null
+  private pendingSave: Promise<void> | null = null
   private isInitialized = false
 
   constructor() {}
@@ -224,21 +225,33 @@ export class DatabaseService {
   }
 
   private scheduleDiskWrite(delayMs = 1500): void {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout)
-    }
+    if (this.saveTimeout) clearTimeout(this.saveTimeout)
     this.saveTimeout = setTimeout(() => {
-      this.flushSync()
+      this.saveTimeout = null
+      void this.flushSync().catch((err) => {
+        console.error('Failed to flush SQLite database to disk:', err)
+      })
     }, delayMs)
   }
 
   public async flushSync(): Promise<void> {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout)
+      this.saveTimeout = null
+    }
+    if (this.pendingSave) await this.pendingSave
     if (!this.db) return
+
+    const data = this.db.export()
+    const previousSave = this.pendingSave
+    const save = (previousSave ? previousSave.catch(() => undefined) : Promise.resolve())
+      .then(() => invoke('save_db', { data: Array.from(data) }))
+      .then(() => undefined)
+    this.pendingSave = save
     try {
-      const data = this.db.export()
-      await invoke('save_db', { data: Array.from(data) })
-    } catch (err) {
-      console.error('Failed to flush SQLite database to disk:', err)
+      await save
+    } finally {
+      if (this.pendingSave === save) this.pendingSave = null
     }
   }
 

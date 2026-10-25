@@ -3,7 +3,11 @@ import {
   useAiAgentStore,
   parseLlmResponseBody,
   parseThinkingAndContent,
-  hasExplicitTradeIntent
+  hasExplicitTradeIntent,
+  createCompactAnalysisSnapshot,
+  loadAnalysisSnapshots,
+  persistAnalysisSnapshot,
+  type CompactAnalysisSnapshot
 } from './useAiAgentStore'
 
 describe('useAiAgentStore', () => {
@@ -13,6 +17,46 @@ describe('useAiAgentStore', () => {
       setItem: vi.fn()
     })
     useAiAgentStore.getState().clearChat()
+  })
+
+  it('bounds and validates compact analysis history without dropping older same-symbol snapshots', () => {
+    const snapshots: CompactAnalysisSnapshot[] = Array.from({ length: 21 }, (_, index) => ({
+      id: `analysis-${index}`,
+      symbol: index === 20 ? 'XAUUSD' : 'EURUSD',
+      timeframe: '1h',
+      capturedAt: index + 1,
+      summary: `Summary ${index}`,
+      evidence: { price: 2000 + index },
+      unavailable: [],
+      tools: []
+    }))
+
+    const retained = persistAnalysisSnapshot(snapshots[20], snapshots.slice(0, 20))
+    expect(retained).toHaveLength(20)
+    expect(retained.some((item) => item.id === 'analysis-0')).toBe(true)
+    expect(retained.some((item) => item.id === 'analysis-20')).toBe(true)
+
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([
+      snapshots[0],
+      { ...snapshots[1], evidence: { price: { unexpected: true } } },
+      { ...snapshots[2], tools: [{ name: 'bad', status: 'running' }] }
+    ]))
+    expect(loadAnalysisSnapshots()).toEqual([snapshots[0]])
+
+    vi.mocked(localStorage.getItem).mockReturnValue('x'.repeat(50_001))
+    expect(loadAnalysisSnapshots()).toEqual([])
+  })
+
+  it('does not fabricate missing market evidence in compact analysis snapshots', () => {
+    const snapshot = createCompactAnalysisSnapshot('XAUUSD', '15m', 'Review', [{
+      step: 1,
+      timestamp: Date.now(),
+      toolCalls: [{ id: '1', name: 'get_market_snapshot', args: {}, result: { price: null } }]
+    }])
+    expect(snapshot.evidence).toEqual({})
+    expect(snapshot.unavailable).toContain('price')
+    expect(snapshot.unavailable).toContain('RSI')
+    expect(snapshot.unavailable).toContain('ATR')
   })
 
   it('initializes with default config and built-in provider', () => {

@@ -150,6 +150,8 @@ export class PiaProvider {
   private inFlightPricesPromise: Promise<PriceQuote[]> | null = null
   private latestPricesAt = 0
   private watchdogTimer: ReturnType<typeof setInterval> | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
   private lastActivityAt = 0
 
   constructor(credManager: CredentialManager) {
@@ -182,6 +184,8 @@ export class PiaProvider {
     this.symbolsRefreshedAt = 0
     this.loggedSymbolCount = null
     this.stopWatchdog()
+    this.clearReconnectTimer()
+    this.reconnectAttempts = 0
 
     if (this.client) {
       try {
@@ -223,7 +227,7 @@ export class PiaProvider {
   }
 
   public reconnectRealtime(reason = 'manual'): void {
-    if (!this.client) return
+    if (!this.client || this.reconnectTimer) return
     console.info(`[PiaProvider] Reconnecting realtime connection (reason: ${reason})...`)
     this.lastActivityAt = Date.now()
     this.setConnectionState({ status: 'reconnecting' })
@@ -233,12 +237,20 @@ export class PiaProvider {
       // ignore
     }
 
-    setTimeout(() => {
+    const delay = Math.min(500 * 2 ** this.reconnectAttempts, 15_000)
+    this.reconnectAttempts++
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
       if (this.client) {
         this.lastLatencyCheck = Date.now()
         this.client.realtime.connect()
       }
-    }, 500)
+    }, delay)
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
   }
 
   private startWatchdog(): void {
@@ -330,6 +342,8 @@ export class PiaProvider {
         .filter(([, count]) => count > 0)
         .map(([sym]) => sym)
 
+      this.reconnectAttempts = 0
+      this.clearReconnectTimer()
       if (activeSymbols.length > 0) {
         rt.subscribe(activeSymbols)
       }

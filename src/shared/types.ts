@@ -646,6 +646,7 @@ export type UpdaterState =
   | 'not-available'
   | 'downloading'
   | 'downloaded'
+  | 'installing'
   | 'error'
 
 export interface UpdaterStatus {
