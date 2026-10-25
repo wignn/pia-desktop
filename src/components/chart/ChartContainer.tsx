@@ -374,18 +374,16 @@ export const ChartContainer: React.FC = () => {
             const latestSymbol = useMarketStore.getState().symbol
             const latestTf = useMarketStore.getState().timeframe
             if (sym.ticker === latestSymbol && tf === latestTf) {
-              renderedCachedBars.splice(0, renderedCachedBars.length, ...cachedBars)
               callback(cachedBars, true)
             }
           })
 
-          // Verify request was not superseded while in flight
+          // Do not let a superseded request replace the active symbol's data.
           const latestSymbol = useMarketStore.getState().symbol
           const latestTf = useMarketStore.getState().timeframe
-          if (sym.ticker !== latestSymbol || tf !== latestTf) {
-            if (renderedCachedBars.length === 0) callback([], false)
-            return
-          }
+          if (sym.ticker !== latestSymbol || tf !== latestTf) return
+
+          callback(bars, { forward: bars.length >= 300, backward: false })
 
           const lastError = candleEngine.getLastLoadError()
           setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
