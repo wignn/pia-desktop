@@ -234,6 +234,7 @@ export interface CredentialStatus {
   email?: string
   avatarUrl?: string
   plan?: string
+  storageError?: string
 }
 
 export interface OrderBookLevel {

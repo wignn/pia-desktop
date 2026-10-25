@@ -68,6 +68,36 @@ describe('CredentialManager endpoint resilience', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('save_credentials', expect.objectContaining({ key: 'pia_cached_session' }))
   })
 
+  it('restores credentials returned by native storage after reinitialization', async () => {
+    let stored: string | null = null
+    invokeMock.mockImplementation(async (command: string, args?: { content?: string }) => {
+      if (command === 'load_credentials') return stored
+      if (command === 'save_credentials') {
+        stored = args?.content?.trim() || null
+        return undefined
+      }
+      throw new Error(`Unexpected invoke: ${command}`)
+    })
+
+    await manager.initialize()
+    expect(await manager.saveCredentials('persisted-key')).toBe(true)
+
+    const restartedManager = new CredentialManager()
+    await restartedManager.initialize()
+    expect(restartedManager.getStatus().isLoggedIn).toBe(true)
+    expect(restartedManager.getApiKey()).toBe('persisted-key')
+  })
+
+  it('exposes native credential storage failures', async () => {
+    invokeMock.mockRejectedValue(new Error('OS credential vault unavailable'))
+
+    await manager.initialize()
+    expect(manager.getStorageError()).toBe('OS credential vault unavailable')
+    expect(manager.getStatus().storageError).toBe('OS credential vault unavailable')
+    expect(await manager.saveCredentials('secret')).toBe(false)
+    expect(manager.getStorageError()).toBe('OS credential vault unavailable')
+  })
+
   it('keeps user logged out after clearCredentials across initialization', async () => {
     // Provide polyfill if localStorage is missing in pure node test runner
     if (typeof localStorage === 'undefined') {

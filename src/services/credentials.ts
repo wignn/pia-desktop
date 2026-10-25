@@ -45,17 +45,21 @@ interface StoredCredentials {
 export class CredentialManager {
   private inMemoryCreds: StoredCredentials | null = null
   private initialized = false
+  private storageError: string | undefined
   private defaultBaseUrl: string = DEFAULT_BASE_URL
   private defaultWsUrl: string = DEFAULT_WS_URL
 
   private async persist(content: string): Promise<boolean> {
     try {
       if (typeof window === 'undefined' || !Boolean((window as any).__TAURI_INTERNALS__)) {
+        this.storageError = 'Secure credential storage is only available in the desktop app.'
         return false
       }
       await invoke('save_credentials', { content })
+      this.storageError = undefined
       return true
-    } catch {
+    } catch (error) {
+      this.storageError = error instanceof Error ? error.message : 'Could not access secure credential storage.'
       return false
     }
   }
@@ -80,8 +84,12 @@ export class CredentialManager {
         const content = await invoke<string | null>('load_credentials')
         if (content && content.trim()) this.inMemoryCreds = JSON.parse(content)
       }
-    } catch {
+    } catch (error) {
       this.inMemoryCreds = null
+      this.storageError = error instanceof Error ? error.message : 'Could not access secure credential storage.'
+    }
+    if (typeof window === 'undefined' || !Boolean((window as any).__TAURI_INTERNALS__)) {
+      this.storageError = 'Secure credential storage is only available in the desktop app.'
     }
 
     if (this.inMemoryCreds) {
@@ -97,14 +105,19 @@ export class CredentialManager {
     return {
       hasApiKey: hasCreds,
       isLoggedIn: hasCreds,
-      isSecureStorage: true,
+      isSecureStorage: !this.storageError,
       baseUrl: this.getBaseUrl(),
       wsUrl: this.getWsUrl(),
       name: this.inMemoryCreds?.name,
       email: this.inMemoryCreds?.email,
       avatarUrl: this.inMemoryCreds?.avatarUrl,
-      plan: this.inMemoryCreds?.plan || 'free'
+      plan: this.inMemoryCreds?.plan || 'free',
+      storageError: this.storageError
     }
+  }
+
+  public getStorageError(): string | undefined {
+    return this.storageError
   }
 
   public getDesktopCredential(): string | null {

@@ -35,6 +35,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ credentials: creds, isLoading: false })
     } catch (err) {
       set({
+        credentials: {
+          hasApiKey: false,
+          isLoggedIn: false,
+          isSecureStorage: false,
+          baseUrl: 'https://api-engine.wign.dev',
+          wsUrl: 'wss://api-engine.wign.dev/api/v1/ws'
+        },
         isLoading: false,
         errorMessage: err instanceof Error ? err.message : 'Failed to load credentials'
       })
@@ -47,6 +54,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const ok = await window.api.settings.saveApiKey({ apiKey, baseUrl, wsUrl })
       if (ok) {
         await get().loadCredentials()
+      } else {
+        set({ errorMessage: 'Could not save credentials to the system credential store.' })
       }
       set({ isSaving: false })
       return ok

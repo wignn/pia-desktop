@@ -64,6 +64,8 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         await getCurrentWindow().close()
       } catch (err) {
         console.error('Unable to persist local database before closing:', err)
+        allowClose = true
+        await getCurrentWindow().close()
       }
     })
   }
@@ -220,6 +222,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     settings: {
       getCredentials: async () => {
         const status = credManager.getStatus()
+        if (status.storageError) throw new Error(`Secure credential storage is unavailable: ${status.storageError}`)
         let profile = dbService.getUserProfile()
 
         // Fallback 1: Restore from localStorage if SQLite is empty
@@ -314,7 +317,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           authUrl.origin !== 'https://accounts.google.com' ||
           authUrl.pathname !== '/o/oauth2/v2/auth' ||
           authUrl.searchParams.get('state') !== start.state ||
-          authUrl.searchParams.get('redirect_uri') !== 'https://api-engine.wign.dev/api/v1/auth/oauth/google/desktop-callback'
+          authUrl.searchParams.get('redirect_uri') !== `${baseUrl}/api/v1/auth/oauth/google/desktop-callback`
         ) {
           throw new Error('Google login returned an unexpected authorization URL')
         }
@@ -353,7 +356,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
           : undefined
 
         if (!(await credManager.saveDesktopCredential(finish.desktop_credential, userMeta))) {
-          throw new Error('Could not securely save desktop login')
+          throw new Error(`Could not securely save desktop login: ${credManager.getStorageError() || 'system credential store unavailable'}`)
         }
         if (userMeta) {
           dbService.saveUserProfile(userMeta)

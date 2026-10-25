@@ -38,6 +38,13 @@ pub struct NativeHttpResponse {
 
 const MAX_NATIVE_HTTP_BYTES: usize = 10_000_000;
 
+fn valid_oauth_callback_params(params: &[(String, String)]) -> bool {
+    let state_count = params.iter().filter(|(key, _)| key == "state").count();
+    let code_count = params.iter().filter(|(key, _)| key == "code").count();
+    let has_error = params.iter().any(|(key, _)| key == "error");
+    state_count == 1 && if has_error { code_count == 0 } else { code_count == 1 }
+}
+
 fn append_bounded_response_chunk(body: &mut Vec<u8>, chunk: &[u8]) -> Result<(), String> {
     if body.len().saturating_add(chunk.len()) > MAX_NATIVE_HTTP_BYTES {
         return Err("Native HTTP response exceeds 10 MB".to_string());
@@ -194,6 +201,13 @@ mod native_http_tests {
     }
 
     #[test]
+    fn accepts_oauth_error_callback_without_authorization_code() {
+        let params = vec![("error".to_string(), "access_denied".to_string()), ("state".to_string(), "nonce".to_string())];
+        assert!(valid_oauth_callback_params(&params));
+        assert!(!valid_oauth_callback_params(&[("code".to_string(), "value".to_string())]));
+    }
+
+    #[test]
     fn only_allows_loopback_for_ollama_port() {
         assert!(resolve_native_http_target(&url::Url::parse("http://localhost:11434/v1").unwrap()).is_ok());
         assert!(resolve_native_http_target(&url::Url::parse("http://127.0.0.1:11434/v1").unwrap()).is_ok());
@@ -309,190 +323,62 @@ fn save_credentials(content: String) -> Result<(), String> {
 }
 
 fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, description: &str) -> Vec<u8> {
-    let icon_svg = if is_success {
-        r##"<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>"##
-    } else {
-        r##"<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>"##
-    };
-
-    let icon_class = if is_success { "icon-success" } else { "icon-error" };
-    let btn_text = if is_success { "Return to PIA Terminal" } else { "Close This Tab" };
-    let countdown_html = if is_success {
-        r#"<div class="countdown-text">Auto-closing in <span id="sec">3</span>s...</div>"#
+    let accent = if is_success { "#10b981" } else { "#f43f5e" };
+    let action = if is_success { "You can return to PIA Terminal." } else { "Close this tab and return to PIA Terminal." };
+    let countdown = if is_success {
+        r#"<p class="countdown">This tab will close in <span id="seconds">3</span> seconds.</p>"#
     } else {
         ""
     };
-
     let html = format!(
-        r##"<!DOCTYPE html>
+        r##"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PIA Terminal — {title}</title>
 <style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-  background-color: #080A0F;
-  color: #F4F6FC;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  position: relative;
-  overflow: hidden;
-}}
-body::before {{
-  content: '';
-  position: absolute;
-  width: 500px;
-  height: 500px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(212, 175, 55, 0.07) 0%, rgba(16, 185, 129, 0.04) 40%, transparent 70%);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}}
-.card {{
-  position: relative;
-  background: #0D111A;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 36px 32px;
-  max-width: 420px;
-  width: 100%;
-  text-align: center;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 1px 1px rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(12px);
-}}
-.brand {{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: #94A3B8;
-  text-transform: uppercase;
-  margin-bottom: 24px;
-  padding: 5px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
-}}
-.brand span {{ color: #D4AF37; }}
-.icon-box {{
-  width: 60px;
-  height: 60px;
-  margin: 0 auto 20px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}}
-.icon-success {{
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.18);
-}}
-.icon-error {{
-  background: rgba(244, 63, 94, 0.12);
-  border: 1px solid rgba(244, 63, 94, 0.3);
-  box-shadow: 0 0 24px rgba(244, 63, 94, 0.18);
-}}
-h1 {{
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #FFFFFF;
-  margin-bottom: 10px;
-}}
-p {{
-  font-size: 13px;
-  color: #94A3B8;
-  line-height: 1.55;
-  margin-bottom: 24px;
-}}
-.btn {{
-  display: block;
-  width: 100%;
-  padding: 11px 16px;
-  background: #D4AF37;
-  color: #080A0F;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s ease;
-}}
-.btn:hover {{
-  background: #E5C358;
-  transform: translateY(-1px);
-}}
-.btn-alt {{
-  background: rgba(255, 255, 255, 0.06);
-  color: #F4F6FC;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}}
-.btn-alt:hover {{
-  background: rgba(255, 255, 255, 0.1);
-}}
-.countdown-text {{
-  margin-top: 14px;
-  font-size: 11px;
-  color: #64748B;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}}
-.footnote {{
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 10px;
-  color: #475569;
-  letter-spacing: 0.02em;
-}}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #0b0e14; color: #f4f6fc; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+main {{ width: min(100%, 360px); padding: 28px; background: #11151f; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; }}
+.brand {{ margin-bottom: 28px; color: #838896; font-size: 12px; font-weight: 600; }}
+.status {{ width: 30px; height: 30px; margin-bottom: 18px; color: {accent}; }}
+h1 {{ margin: 0 0 8px; font-size: 18px; font-weight: 600; letter-spacing: -.02em; }}
+p {{ margin: 0; color: #838896; line-height: 1.55; }}
+.countdown {{ margin-top: 18px; color: #525766; font-size: 11px; }}
+button {{ margin-top: 22px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; background: transparent; color: #d8dce6; font: inherit; cursor: pointer; }}
+button:focus-visible {{ outline: 2px solid #3b82f6; outline-offset: 2px; }}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="brand"><span>◈</span> PIA Terminal</div>
-  <div class="icon-box {icon_class}">{icon_svg}</div>
+<main>
+  <div class="brand">PIA Terminal</div>
+  <svg class="status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{icon}</svg>
   <h1>{title}</h1>
-  <p>{description}</p>
-  <button class="btn {btn_class}" onclick="window.close()">{btn_text}</button>
-  {countdown_html}
-  <div class="footnote">Encrypted Session &middot; Secure Desktop Handshake</div>
-</div>
+  <p>{description} {action}</p>
+  {countdown}
+  <button type="button" onclick="window.close()">Close tab</button>
+</main>
 <script>
 try {{
-  var sec = 3;
-  var el = document.getElementById('sec');
+  var seconds = 3;
+  var element = document.getElementById('seconds');
   var timer = setInterval(function() {{
-    sec--;
-    if (el) el.textContent = sec;
-    if (sec <= 0) {{
-      clearInterval(timer);
-      try {{ window.open('', '_self', ''); window.close(); }} catch(e) {{}}
-    }}
+    seconds--;
+    if (element) element.textContent = seconds;
+    if (seconds <= 0) {{ clearInterval(timer); try {{ window.open('', '_self', ''); window.close(); }} catch (e) {{}} }}
   }}, 1000);
-}} catch(e) {{}}
+}} catch (e) {{}}
 </script>
 </body>
 </html>"##,
+        accent = accent,
+        icon = if is_success { r#"<path d="m5 12 4 4L19 6"/>"# } else { r#"<path d="M18 6 6 18M6 6l12 12"/>"# },
         title = title,
-        icon_class = icon_class,
-        icon_svg = icon_svg,
         description = description,
-        btn_class = if is_success { "" } else { "btn-alt" },
-        btn_text = btn_text,
-        countdown_html = countdown_html
+        action = action,
+        countdown = countdown
     );
-
     format!(
         "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n{}",
         status_code,
@@ -578,8 +464,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                             || callback.fragment().is_some()
                             || callback.username() != ""
                             || callback.password().is_some()
-                            || query_pairs.iter().filter(|(key, _)| key == "state").count() != 1
-                            || query_pairs.iter().filter(|(key, _)| key == "code").count() != 1
+                            || !valid_oauth_callback_params(&query_pairs)
                         {
                             stream
                                 .write_all(&render_oauth_callback_html(
@@ -592,17 +477,6 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                             continue;
                         }
                         let query_pairs: Vec<_> = callback.query_pairs().into_owned().collect();
-                        if query_pairs.iter().any(|(key, _)| key == "error") {
-                            stream
-                                .write_all(&render_oauth_callback_html(
-                                    "400 Bad Request",
-                                    false,
-                                    "Sign-In Cancelled",
-                                    "Google sign-in was cancelled. You can safely close this tab and return to PIA Terminal.",
-                                ))
-                                .ok();
-                            return Err("Google sign-in was cancelled".into());
-                        }
                         if query_pairs
                             .iter()
                             .find(|(key, _)| key == "state")
@@ -619,6 +493,17 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                 .ok();
                             continue;
                         }
+                        if query_pairs.iter().any(|(key, _)| key == "error") {
+                            stream
+                                .write_all(&render_oauth_callback_html(
+                                    "400 Bad Request",
+                                    false,
+                                    "Sign-In Cancelled",
+                                    "Google sign-in was cancelled. You can safely close this tab and return to PIA Terminal.",
+                                ))
+                                .ok();
+                            return Err("Google sign-in was cancelled".into());
+                        }
                         let code = query_pairs
                             .iter()
                             .find(|(key, _)| key == "code")
@@ -632,7 +517,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                 "200 OK",
                                 true,
                                 "Authentication Successful",
-                                "Your desktop session has been verified and encrypted. You can return to PIA Terminal now.",
+                                "Google sign-in is complete. You can return to PIA Terminal now.",
                             ))
                             .ok();
                         return Ok(serde_json::json!({"code": code, "state": expected_state}));

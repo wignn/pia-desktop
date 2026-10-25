@@ -12,332 +12,101 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({
-  statusText = 'Initializing terminal...',
+  statusText = 'Preparing your terminal…',
   progressPercent,
   isIndeterminate = true,
-  version = '3.0.18',
+  version = '3.0.21',
   state,
   availableVersion
 }) => {
   const percent = Math.min(100, Math.max(0, progressPercent ?? 0))
   const isDownloading = state === 'downloading'
-  const isDownloaded = state === 'downloaded'
   const isInstalling = state === 'installing'
-  const hasError = state === 'error'
-
-  let cardTitle = 'Preparing Terminal'
-  if (isDownloading) {
-    cardTitle = `Downloading v${availableVersion || 'Update'}`
-  } else if (isInstalling) {
-    cardTitle = 'Installing Update'
-  } else if (isDownloaded) {
-    cardTitle = 'Update Ready to Install'
-  } else if (state === 'available') {
-    cardTitle = `Update Available (v${availableVersion})`
-  } else if (state === 'checking') {
-    cardTitle = 'Checking for Updates'
-  } else if (hasError) {
-    cardTitle = 'Starting Current Version'
-  }
+  const isBusy = isIndeterminate || isDownloading || isInstalling
+  const colors = THEME_TOKENS.colors
+  let title = 'Starting PIA Terminal'
+  if (isDownloading) title = `Downloading v${availableVersion || 'update'}`
+  else if (isInstalling) title = 'Installing update'
+  else if (state === 'downloaded') title = 'Update ready to install'
+  else if (state === 'available') title = `Update available · v${availableVersion}`
+  else if (state === 'checking') title = 'Checking for updates'
+  else if (state === 'error') title = 'Starting current version'
 
   return (
-    <div
+    <main
       data-tauri-drag-region
       role="status"
       aria-live="polite"
-      aria-busy={isIndeterminate || isDownloading || isInstalling}
+      aria-busy={isBusy}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
         justifyContent: 'space-between',
         height: '100vh',
         width: '100vw',
-        backgroundColor: '#0D111A',
-        color: '#F4F6FC',
-        fontFamily: THEME_TOKENS.typography.fontSans,
-        userSelect: 'none',
-        overflow: 'hidden',
-        position: 'relative',
-        padding: '24px 22px 18px',
         boxSizing: 'border-box',
-        border: '1px solid rgba(255, 255, 255, 0.08)'
+        overflow: 'hidden',
+        padding: '32px 28px 18px',
+        border: `1px solid ${colors.borderSubtle}`,
+        background: colors.bgApp,
+        color: colors.textBright,
+        fontFamily: THEME_TOKENS.typography.fontSans,
+        position: 'relative',
+        userSelect: 'none'
       }}
     >
       <style>{`
-        @keyframes piaLogoPulse {
-          0%, 100% {
-            transform: scale(1);
-            filter: drop-shadow(0 0 16px rgba(212, 175, 55, 0.3));
-          }
-          50% {
-            transform: scale(1.04);
-            filter: drop-shadow(0 0 26px rgba(212, 175, 55, 0.55));
-          }
-        }
-        .pia-splash-motion { animation: piaLogoPulse 2.8s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) {
-          .pia-splash-motion, .pia-splash-progress { animation: none !important; }
-        }
-        @keyframes piaIndeterminateBar {
-          0% {
-            left: -40%;
-            width: 40%;
-          }
-          50% {
-            left: 30%;
-            width: 60%;
-          }
-          100% {
-            left: 100%;
-            width: 40%;
-          }
-        }
+        @keyframes piaProgress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+        .pia-progress-indeterminate { animation: piaProgress 1.5s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .pia-progress-indeterminate { animation: none; width: 35% !important; transform: translateX(90%); } }
       `}</style>
-
-      {/* Custom Window Drag Handle & Close Button */}
-      <div
-        data-tauri-drag-region
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 36,
-          cursor: 'grab',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          paddingRight: 10,
-          zIndex: 20
-        }}
+      <div data-tauri-drag-region style={{ position: 'absolute', inset: '0 0 auto', height: 28 }} />
+      <button
+        type="button"
+        onClick={() => window.api?.system?.closeApp?.()}
+        aria-label="Close"
+        title="Close"
+        style={{ position: 'absolute', top: 7, right: 9, border: 0, borderRadius: 4, padding: '4px 7px', color: colors.textSecondary, background: 'transparent', cursor: 'pointer' }}
       >
-        <button
-          type="button"
-          onClick={() => {
-            window.api?.system?.closeApp?.()
-          }}
-          title="Close"
-          aria-label="Close"
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 6,
-            border: 'none',
-            backgroundColor: 'transparent',
-            color: '#64748B',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(244, 63, 94, 0.18)'
-            e.currentTarget.style.color = '#F43F5E'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent'
-            e.currentTarget.style.color = '#64748B'
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="m18 6-12 12M6 6l12 12" />
+        </svg>
+      </button>
 
-      {/* Main Content Body */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 16,
-          width: '100%',
-          marginTop: 8
-        }}
-      >
-        {/* Animated Institutional PIA Avatar */}
-        <div
-          style={{
-            position: 'relative',
-            width: 76,
-            height: 76,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              inset: -6,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(212, 175, 55, 0.3) 0%, transparent 70%)',
-              filter: 'blur(8px)',
-              pointerEvents: 'none'
-            }}
-          />
-
-          <img
-            src={piaLogo}
-            alt="PIA Terminal"
-            className="pia-splash-motion"
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: '50%',
-              border: '2px solid rgba(212, 175, 55, 0.65)',
-              boxShadow: '0 0 20px rgba(212, 175, 55, 0.35)',
-              objectFit: 'cover'
-            }}
-          />
-        </div>
-
-        {/* Brand Header Pill */}
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '3px 12px 3px 6px',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: 999
-          }}
-        >
-          <img
-            src={piaLogo}
-            alt="PIA"
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              border: '1px solid rgba(212, 175, 55, 0.5)',
-              objectFit: 'cover'
-            }}
-          />
-          <span
-            style={{
-              fontWeight: 700,
-              fontSize: 11,
-              letterSpacing: '0.1em',
-              color: '#F4F6FC'
-            }}
-          >
-            PIA TERMINAL
-          </span>
-          <span
-            style={{
-              fontSize: 10,
-              fontFamily: THEME_TOKENS.typography.fontMono,
-              color: '#64748B'
-            }}
-          >
-            v{version}
-          </span>
-        </div>
-
-        {/* Status Headings */}
-        <div style={{ textAlign: 'center', width: '100%' }}>
-          <h1
-            style={{
-              fontSize: 17,
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              color: '#FFFFFF',
-              margin: '0 0 4px 0'
-            }}
-          >
-            {cardTitle}
-          </h1>
-          <p
-            style={{
-              fontSize: 11,
-              color: isDownloading ? '#10B981' : hasError ? '#F59E0B' : '#838896',
-              margin: 0,
-              lineHeight: 1.4,
-              minHeight: 18
-            }}
-          >
-            {statusText}
-          </p>
-        </div>
-
-        {/* Progress Bar & Percentage */}
-        <div style={{ width: '100%' }}>
-          <div
-            style={{
-              width: '100%',
-              height: 4,
-              backgroundColor: 'rgba(255, 255, 255, 0.06)',
-              borderRadius: 4,
-              overflow: 'hidden',
-              position: 'relative'
-            }}
-          >
-            {isIndeterminate && !isDownloading ? (
-              <div
-                className="pia-splash-progress"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  backgroundColor: '#D4AF37',
-                  borderRadius: 4,
-                  animation: 'piaIndeterminateBar 1.4s ease-in-out infinite'
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  left: 0,
-                  width: `${percent}%`,
-                  backgroundColor: '#10B981',
-                  borderRadius: 4,
-                  transition: 'width 0.25s ease-out'
-                }}
-              />
-            )}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 14 }}>
+        <header style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <img src={piaLogo} alt="PIA" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'cover' }} />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 650, letterSpacing: '-0.02em' }}>PIA Terminal</div>
+            <div style={{ marginTop: 2, color: colors.textMuted, fontSize: 10 }}>v{version}</div>
           </div>
+        </header>
 
-          {isDownloading && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginTop: 8,
-                fontSize: 11,
-                fontFamily: THEME_TOKENS.typography.fontMono,
-                color: '#64748B'
-              }}
-            >
-              <span>Downloading update package</span>
-              <span style={{ color: '#10B981', fontWeight: 600 }}>{percent}%</span>
-            </div>
+        <div>
+          <h1 style={{ margin: '0 0 5px', fontSize: 17, fontWeight: 620, letterSpacing: '-0.02em' }}>{title}</h1>
+          <p style={{ margin: 0, color: colors.textSecondary, fontSize: 11, lineHeight: 1.5, minHeight: 17 }}>{statusText}</p>
+        </div>
+
+        <div
+          role={isDownloading ? 'progressbar' : undefined}
+          aria-label={isDownloading ? 'Update download progress' : undefined}
+          aria-valuemin={isDownloading ? 0 : undefined}
+          aria-valuemax={isDownloading ? 100 : undefined}
+          aria-valuenow={isDownloading ? percent : undefined}
+          style={{ height: 3, width: '100%', borderRadius: 2, background: colors.bgActive, overflow: 'hidden', position: 'relative' }}
+        >
+          {isIndeterminate && !isDownloading ? (
+            <div className="pia-progress-indeterminate" style={{ position: 'absolute', inset: '0 auto 0 0', width: '35%', background: colors.accent, borderRadius: 2 }} />
+          ) : (
+            <div style={{ height: '100%', width: `${percent}%`, background: colors.accent, transition: 'width 0.25s ease-out' }} />
           )}
         </div>
-      </div>
+        {isDownloading && <div style={{ marginTop: -12, color: colors.textMuted, fontSize: 10, fontFamily: THEME_TOKENS.typography.fontMono }}>{percent}%</div>}
+      </section>
 
-      {/* Security & Engine Footnote */}
-      <div
-        style={{
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          paddingTop: 10,
-          width: '100%',
-          textAlign: 'center',
-          fontSize: 10,
-          fontFamily: THEME_TOKENS.typography.fontMono,
-          color: '#525766'
-        }}
-      >
-        Quantitative Trading &amp; Real-time Engine
-      </div>
-    </div>
+      <footer style={{ paddingTop: 12, borderTop: `1px solid ${colors.borderSubtle}`, color: colors.textMuted, fontSize: 10 }}>
+        {isDownloading ? 'Downloading update package' : 'Please wait'}
+      </footer>
+    </main>
   )
 }
