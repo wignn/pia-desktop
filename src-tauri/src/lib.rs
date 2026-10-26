@@ -322,6 +322,31 @@ fn save_credentials(content: String) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+async fn load_ai_provider_credentials() -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new("dev.wign.pia", "ai-provider").map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(content) if !content.trim().is_empty() => Ok(Some(content)),
+        Ok(_) => Ok(None),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_ai_provider_credentials(content: String) -> Result<(), String> {
+    let entry = keyring::Entry::new("dev.wign.pia", "ai-provider").map_err(|e| e.to_string())?;
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
+    } else {
+        entry.set_password(trimmed).map_err(|e| e.to_string())
+    }
+}
+
 fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, description: &str) -> Vec<u8> {
     let accent = if is_success { "#10b981" } else { "#f43f5e" };
     let action = if is_success { "You can return to PIA Terminal." } else { "Close this tab and return to PIA Terminal." };
@@ -613,6 +638,8 @@ pub fn run() {
             save_db,
             load_credentials,
             save_credentials,
+            load_ai_provider_credentials,
+            save_ai_provider_credentials,
             google_oauth_callback,
             pia_native_candles,
             pia_native_request,

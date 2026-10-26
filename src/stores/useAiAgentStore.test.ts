@@ -64,6 +64,16 @@ describe('useAiAgentStore', () => {
     expect(config.provider).toBe('builtin')
   })
 
+  it('keeps provider API keys out of localStorage config', () => {
+    useAiAgentStore.getState().updateConfig({ provider: 'openai', apiKey: 'private-test-key' })
+    const savedConfig = vi.mocked(localStorage.setItem).mock.calls
+      .find(([key]) => key === 'pia_ai_agent_config')?.[1]
+    expect(savedConfig).toBeTruthy()
+    expect(savedConfig).not.toContain('private-test-key')
+    expect(JSON.parse(savedConfig || '{}')).not.toHaveProperty('apiKey')
+    useAiAgentStore.getState().updateConfig({ apiKey: '' })
+  })
+
   it('updates provider presets cleanly', () => {
     const { applyPreset } = useAiAgentStore.getState()
 
