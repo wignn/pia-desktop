@@ -1,12 +1,15 @@
 /**
  * PIA Terminal - AI Agent Store (Zustand)
  * Institutional Quantitative Agent & MCP Tool Execution Store.
- * Supports OpenAI-compatible providers (OpenAI, DeepSeek, OpenRouter, Groq, Ollama)
- * with multi-tool calling, SSE token streaming, abort control, latency telemetry,
- * and direct paper trading execution.
+ * Runs a local LangGraph agent with OpenAI-compatible providers and PIA tools.
  */
 
 import { create } from 'zustand'
+import { AIMessage, ToolMessage } from '@langchain/core/messages'
+import { tool } from '@langchain/core/tools'
+import { createReactAgent } from '@langchain/langgraph/prebuilt'
+import { ChatOpenAI } from '@langchain/openai'
+import { z } from 'zod'
 import { invoke } from '@tauri-apps/api/core'
 import { AiMcpEngine } from '../services/ai-mcp-engine'
 import { usePaperTradingStore } from './usePaperTradingStore'
@@ -127,6 +130,7 @@ interface AiAgentState {
 
   setConfigOpen: (open: boolean) => void
   updateConfig: (updates: Partial<AiAgentConfig>) => void
+  hydrateProviderCredentials: () => Promise<void>
   applyPreset: (presetKey: 'openai' | 'deepseek' | 'openrouter' | 'groq' | 'ollama') => void
   sendMessage: (prompt: string, currentSymbol: string) => Promise<void>
   abortGeneration: () => void
@@ -249,16 +253,118 @@ const DEFAULT_CONFIG: AiAgentConfig = {
   temperature: 0.1
 }
 
+interface StoredAiProviderCredentials {
+  baseUrl: string
+  apiKey: string
+}
+
+function isTauriDesktop(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)
+}
+
+async function loadAiProviderCredentials(): Promise<StoredAiProviderCredentials | null> {
+  if (!isTauriDesktop()) return null
+  try {
+    const raw = await invoke<string | null>('load_ai_provider_credentials')
+    if (!raw) return null
+    const stored = JSON.parse(raw) as Record<string, unknown>
+    if (typeof stored.apiKey !== 'string' || typeof stored.baseUrl !== 'string') return null
+    return { apiKey: stored.apiKey, baseUrl: stored.baseUrl }
+  } catch {
+    return null
+  }
+}
+
+async function saveAiProviderCredentials(credentials: StoredAiProviderCredentials): Promise<boolean> {
+  if (!isTauriDesktop()) return false
+  try {
+    await invoke('save_ai_provider_credentials', {
+      content: JSON.stringify({ apiKey: credentials.apiKey, baseUrl: credentials.baseUrl })
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function loadInitialConfig(): AiAgentConfig {
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem('pia_ai_agent_config')
       if (raw) {
-        return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+        const saved = JSON.parse(raw) as Partial<AiAgentConfig>
+        if (saved.apiKey) {
+          const { apiKey: _apiKey, ...safeConfig } = saved
+          localStorage.setItem('pia_ai_agent_config', JSON.stringify(safeConfig))
+        }
+        return { ...DEFAULT_CONFIG, ...saved, apiKey: '' }
       }
     } catch {}
   }
   return DEFAULT_CONFIG
+}
+
+function createPiaAgentTools(currentSymbol: string) {
+  const symbolField = z.string().trim().min(1).max(32).default(currentSymbol)
+  return [
+    tool((args) => AiMcpEngine.executeTool('get_market_snapshot', args), {
+      name: 'get_market_snapshot',
+      description: 'Read the live ticker, orderbook depth, spread, and 24-hour metrics for a symbol.',
+      schema: z.object({ symbol: symbolField })
+    }),
+    tool((args) => AiMcpEngine.executeTool('get_news_sentiment', args), {
+      name: 'get_news_sentiment',
+      description: 'Read recent news and social sentiment for a symbol.',
+      schema: z.object({ symbol: symbolField, limit: z.number().int().min(1).max(100).optional() })
+    }),
+    tool(() => AiMcpEngine.executeTool('get_macro_context', {}), {
+      name: 'get_macro_context',
+      description: 'Read macro indicators and broad market context.',
+      schema: z.object({})
+    }),
+    tool((args) => AiMcpEngine.executeTool('compute_technical_analysis', args), {
+      name: 'compute_technical_analysis',
+      description: 'Compute trend, indicators, swing points, and key price zones for a symbol.',
+      schema: z.object({ symbol: symbolField, timeframe: z.string().optional() })
+    }),
+    tool((args) => AiMcpEngine.executeTool('draw_trendline_on_chart', args), {
+      name: 'draw_trendline_on_chart',
+      description: 'Draw a trendline on the chart between two time and price coordinates.',
+      schema: z.object({
+        symbol: symbolField,
+        timestamp1: z.number().positive(), price1: z.number().positive(),
+        timestamp2: z.number().positive(), price2: z.number().positive(),
+        label: z.string().max(100).optional(), color: z.string().max(32).optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('draw_level_on_chart', args), {
+      name: 'draw_level_on_chart',
+      description: 'Draw a support, resistance, or pivot level on the chart.',
+      schema: z.object({
+        symbol: symbolField, price: z.number().positive(),
+        type: z.enum(['support', 'resistance', 'pivot']), label: z.string().max(100).optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('draw_zone_on_chart', args), {
+      name: 'draw_zone_on_chart',
+      description: 'Draw a supply or demand zone on the chart.',
+      schema: z.object({
+        symbol: symbolField, type: z.enum(['demand', 'supply']),
+        timestamp1: z.number().positive(), price1: z.number().positive(),
+        timestamp2: z.number().positive(), price2: z.number().positive(), label: z.string().max(100).optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('clear_chart_drawings', args), {
+      name: 'clear_chart_drawings',
+      description: 'Clear AI and custom drawings from the selected chart.',
+      schema: z.object({ symbol: symbolField })
+    }),
+    tool((args) => AiMcpEngine.executeTool('execute_full_chart_analysis', args), {
+      name: 'execute_full_chart_analysis',
+      description: 'Run full market and chart analysis; may draw computed levels onto the chart.',
+      schema: z.object({ symbol: symbolField, applyToChart: z.boolean().optional() })
+    })
+  ]
 }
 
 export function parseLlmResponseBody(raw: string): any {
@@ -526,9 +632,19 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
     set({ config: next })
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem('pia_ai_agent_config', JSON.stringify(next))
+        const { apiKey: _apiKey, ...safeConfig } = next
+        localStorage.setItem('pia_ai_agent_config', JSON.stringify(safeConfig))
       } catch {}
     }
+    if (updates.apiKey !== undefined || updates.baseUrl !== undefined) {
+      void saveAiProviderCredentials({ baseUrl: next.baseUrl, apiKey: next.apiKey })
+    }
+  },
+
+  hydrateProviderCredentials: async () => {
+    const stored = await loadAiProviderCredentials()
+    if (!stored) return
+    set((state) => ({ config: { ...state.config, ...stored } }))
   },
 
   applyPreset: (presetKey) => {
@@ -798,26 +914,31 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
    - Always format prices cleanly (e.g. 2,748.50, never raw floats like 2748.5000000001).
    - Match the user's language (Indonesian if asked in Indonesian, English if asked in English). Be natural, professional, and directly answer what was asked without unnecessary boilerplate.`
 
-        const activeConversation: any[] = [
-          { role: 'system', content: systemPrompt },
-          ...messages.slice(-8).map((m) => ({
-            role: m.role,
-            content: m.content
-          })),
-          { role: 'user', content: prompt }
+        const priorMessages = messages.slice(-8).map((message) => ({ role: message.role, content: message.content }))
+        const agentMessages = [
+          ...priorMessages,
+          { role: 'user' as const, content: prompt }
         ]
+        const piaTools = createPiaAgentTools(currentSymbol)
+        const normalizedBaseUrl = config.baseUrl.trim().replace(/\/+$/, '')
+        const endpoint = `${normalizedBaseUrl}/chat/completions`
+        const invokeOpenAiCompatible = async (url: string, options: RequestInit): Promise<Response> => {
+          const response = await universalFetch(url, { ...options, signal: abortController.signal })
+          return new Response(await response.text(), { status: response.status, headers: response.headers })
+        }
+        const model = new ChatOpenAI({
+          model: config.model,
+          apiKey: config.apiKey || 'local-no-key',
+          temperature: config.temperature ?? 0.1,
+          maxRetries: 0,
+          configuration: {
+            baseURL: normalizedBaseUrl,
+            fetch: invokeOpenAiCompatible as typeof globalThis.fetch
+          }
+        })
+        const agent = createReactAgent({ llm: model, tools: piaTools, prompt: systemPrompt, version: 'v2' })
 
         set({ statusMessage: `Connecting to ${config.model}...` })
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
-        }
-        if (config.apiKey) {
-          headers['Authorization'] = `Bearer ${config.apiKey}`
-        }
-
-        const normalizedBaseUrl = config.baseUrl.replace(/\/+$/, '')
-        const endpoint = `${normalizedBaseUrl}/chat/completions`
 
         const asstMsgId = `asst-${Date.now()}`
         set((state) => ({
@@ -835,262 +956,86 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
           ]
         }))
 
-        const MAX_STEPS = 6
-        let currentStep = 1
-        const executedSteps: AgentStepTrace[] = []
-        let detectedTradePlan: TradePlanData | undefined
+        set({ statusMessage: `Reasoning with ${config.model}...` })
+        const result = await agent.invoke(
+          { messages: agentMessages },
+          { recursionLimit: 20, signal: abortController.signal }
+        )
+        if (abortController.signal.aborted) throw new DOMException('Generation stopped', 'AbortError')
 
-        // ponytail: autonomous multi-turn tool execution loop. Upgrade to DAG task graph when parallel agent sub-delegation is needed.
-        while (currentStep <= MAX_STEPS) {
-          if (abortController.signal.aborted) break
-          const isLastStep = currentStep === MAX_STEPS
-          set({ statusMessage: `Step ${currentStep}/${MAX_STEPS} • Reasoning with ${config.model}...` })
-          const stepStart = performance.now()
-
-          const stepRes = await universalFetch(endpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              model: config.model,
-              messages: activeConversation,
-              tools: isLastStep ? undefined : AiMcpEngine.getOpenAiTools(),
-              tool_choice: isLastStep ? 'none' : 'auto',
-              temperature: config.temperature ?? 0.1,
-              stream: false
-            }),
-            signal: abortController.signal
-          })
-
-          if (!stepRes.ok) {
-            const errText = await stepRes.text()
-            throw new Error(`API error (${stepRes.status}): ${errText.slice(0, 200)}`)
-          }
-
-          const stepData = await stepRes.json()
-          const choice = stepData.choices?.[0]
-          const assistantMsg = choice?.message
-
-          if (!assistantMsg) {
-            break
-          }
-
-          const rawContent = assistantMsg.content || ''
-          const parsed = parseThinkingAndContent(rawContent)
-          const stepThought = parsed.thought || assistantMsg.reasoning_content || ''
-          const hasToolCalls = assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0 && !isLastStep
-
-          if (hasToolCalls) {
-            const stepToolExecutions: ToolCallExecution[] = []
-            const toolMessages: any[] = []
-
-            for (const tc of assistantMsg.tool_calls) {
-              if (abortController.signal.aborted) break
-              const toolName = tc.function.name
-              let toolArgs: Record<string, any> = {}
-              try {
-                toolArgs = JSON.parse(tc.function.arguments || '{}')
-              } catch {}
-
-              if (!toolArgs.symbol) {
-                toolArgs.symbol = currentSymbol
-              }
-
-              set({ statusMessage: `Step ${currentStep}/${MAX_STEPS} • Running ${toolName}...` })
-              const toolStart = performance.now()
-              const pendingTool: ToolCallExecution = { id: tc.id, name: toolName, args: toolArgs, isRunning: true }
-              stepToolExecutions.push(pendingTool)
-              const publishRunningTool = () => {
-                const allToolCalls = executedSteps.flatMap((step) => step.toolCalls || []).concat(stepToolExecutions)
-                set((state) => ({
-                  messages: state.messages.map((message) => message.id === asstMsgId
-                    ? { ...message, steps: [...executedSteps, { step: currentStep, title: `Step ${currentStep}: ${toolName}`, toolCalls: [...stepToolExecutions], timestamp: Date.now() }], toolCalls: allToolCalls }
-                    : message)
-                }))
-              }
-              publishRunningTool()
-
-              try {
-                const result = await AiMcpEngine.executeTool(toolName, toolArgs)
-                const durationMs = Math.round(performance.now() - toolStart)
-
-                if (result?.tradePlan) {
-                  detectedTradePlan = {
-                    symbol: toolArgs.symbol || currentSymbol,
-                    bias: result.tradePlan.bias,
-                    orderType: result.tradePlan.orderType,
-                    entry: result.tradePlan.suggestedEntry,
-                    stopLoss: result.tradePlan.stopLoss,
-                    takeProfit1: result.tradePlan.takeProfit1,
-                    takeProfit2: result.tradePlan.takeProfit2,
-                    riskRewardRatio: result.tradePlan.riskRewardRatio,
-                    suggestedLotSize: result.tradePlan.suggestedLotSize,
-                    rationale: result.tradePlan.rationale
-                  }
-                }
-
-                stepToolExecutions[stepToolExecutions.length - 1] = {
-                ...pendingTool,
-                result,
-                durationMs,
-                isRunning: false,
-                isError: false
-              }
-              publishRunningTool()
-              toolMessages.push({
-                  role: 'tool',
-                  tool_call_id: tc.id,
-                  name: toolName,
-                  content: typeof result === 'string' ? result : JSON.stringify(result)
-                })
-              } catch (err: any) {
-                const durationMs = Math.round(performance.now() - toolStart)
-                stepToolExecutions[stepToolExecutions.length - 1] = {
-                  ...pendingTool,
-                  result: { error: err?.message || 'Tool execution failed' },
-                  durationMs,
-                  isRunning: false,
-                  isError: true
-                }
-                publishRunningTool()
-                toolMessages.push({
-                  role: 'tool',
-                  tool_call_id: tc.id,
-                  name: toolName,
-                  content: JSON.stringify({ error: err?.message || 'Tool execution failed' })
-                })
-              }
-            }
-
-            const stepDuration = Math.round(performance.now() - stepStart)
-            const stepTrace: AgentStepTrace = {
-              step: currentStep,
-              title: `Step ${currentStep}: ${stepToolExecutions.map((t) => t.name).join(', ')}`,
-              thought: stepThought,
-              toolCalls: stepToolExecutions,
-              content: parsed.content,
-              durationMs: stepDuration,
-              timestamp: Date.now()
-            }
-            executedSteps.push(stepTrace)
-
-            const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
-
-            const userWantsTrade = hasExplicitTradeIntent(prompt)
-
-            set((state) => ({
-              messages: state.messages.map((m) =>
-                m.id === asstMsgId
-                  ? {
-                      ...m,
-                      steps: [...executedSteps],
-                      toolCalls: allToolCalls,
-                      thought: stepThought || m.thought,
-                      content: parsed.content || m.content,
-                      tradePlan: userWantsTrade ? (detectedTradePlan || m.tradePlan) : undefined
-                    }
-                  : m
-              )
-            }))
-
-            activeConversation.push(assistantMsg)
-            activeConversation.push(...toolMessages)
-
-            currentStep++
-          } else {
-            // Final response without tool calls reached
-            const stepDuration = Math.round(performance.now() - stepStart)
-
-            let finalContent = (parsed.content || '').trim()
-            let finalThought = stepThought
-
-            // If the model emitted all its reasoning/answer inside thought tags or reasoning_content,
-            // and left parsed.content empty, promote that text to finalContent so the answer is never blank or dropped!
-            if (!finalContent && finalThought) {
-              finalContent = finalThought
-              finalThought = undefined
-            }
-
-            if (finalThought) {
-              executedSteps.push({
-                step: currentStep,
-                title: 'Reasoning',
-                thought: finalThought,
-                durationMs: stepDuration,
-                timestamp: Date.now()
-              })
-            }
-
-            const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
-            const userWantsTrade = hasExplicitTradeIntent(prompt)
-            const textTradePlan = extractTradePlanFromText(finalContent, currentSymbol)
-            const resolvedPlan = textTradePlan || (userWantsTrade ? detectedTradePlan : undefined)
-
-            const allThoughts = executedSteps
-              .map((s) => s.thought?.trim())
-              .filter(Boolean)
-              .join('\n\n')
-            const analysis = createCompactAnalysisSnapshot(
-              currentSymbol,
-              useMarketStore.getState().timeframe,
-              finalContent,
-              executedSteps,
-              resolvedPlan
-            )
-            const analysisSnapshots = persistAnalysisSnapshot(analysis, get().analysisSnapshots)
-
-            set((state) => ({
-              analysisSnapshots,
-              messages: state.messages.map((m) =>
-                m.id === asstMsgId
-                  ? {
-                      ...m,
-                      steps: [...executedSteps],
-                      toolCalls: allToolCalls,
-                      thought: allThoughts || finalThought,
-                      content: finalContent || 'Analysis completed.',
-                      tradePlan: resolvedPlan,
-                      analysis,
-                      isStreaming: false
-                    }
-                  : m
-              ),
-              isBusy: false,
-              statusMessage: null,
-              activeAbortController: null
-            }))
-
-            return
+        const finalAssistantMessage = [...result.messages].reverse().find((message) => message.getType() === 'ai')
+        const finalRawContent = typeof finalAssistantMessage?.content === 'string'
+          ? finalAssistantMessage.content
+          : ''
+        let finalContent = parseThinkingAndContent(finalRawContent).content.trim()
+        if (!finalContent) finalContent = finalRawContent.trim()
+        const userWantsTrade = hasExplicitTradeIntent(prompt)
+        const resolvedPlan = extractTradePlanFromText(finalContent, currentSymbol)
+        const toolCalls = result.messages.flatMap((message, messageIndex) => {
+          if (!(message instanceof AIMessage)) return []
+          return (message.tool_calls || []).map((call, callIndex) => ({
+            id: String(call.id || `tool-${messageIndex}-${callIndex}`),
+            name: call.name,
+            args: call.args as Record<string, unknown>
+          }))
+        })
+        const toolResults = new Map<string, { content: unknown; isError: boolean }>()
+        for (const message of result.messages) {
+          if (message instanceof ToolMessage) {
+            toolResults.set(message.tool_call_id, {
+              content: message.content,
+              isError: Boolean(message.status === 'error')
+            })
           }
         }
-
-        // Loop concluded after MAX_STEPS
-        const allToolCalls = executedSteps.flatMap((s) => s.toolCalls || [])
-        const allThoughts = executedSteps
-          .map((s) => s.thought?.trim())
-          .filter(Boolean)
-          .join('\n\n')
-        const userWantsTrade = hasExplicitTradeIntent(prompt)
-
+        const toolCallsWithResults = toolCalls.map((call) => {
+          const toolResult = toolResults.get(call.id)
+          let result: unknown = toolResult?.content
+          if (typeof result === 'string') {
+            try { result = JSON.parse(result) } catch {}
+          }
+          return { ...call, content: result, isError: toolResult?.isError }
+        })
+        const steps: AgentStepTrace[] = toolCallsWithResults.map((call, index) => ({
+          step: index + 1,
+          title: `Step ${index + 1}: ${call.name}`,
+          toolCalls: [{
+            id: call.id,
+            name: call.name,
+            args: call.args,
+            result: call.content,
+            isError: call.isError
+          }],
+          timestamp: Date.now()
+        }))
+        const analysis = createCompactAnalysisSnapshot(
+          currentSymbol,
+          useMarketStore.getState().timeframe,
+          finalContent,
+          steps,
+          resolvedPlan
+        )
+        const analysisSnapshots = persistAnalysisSnapshot(analysis, get().analysisSnapshots)
         set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id !== asstMsgId) return m
-            const finalContent = m.content || allThoughts || 'Autonomous loop completed.'
-            const textTradePlan = extractTradePlanFromText(finalContent, currentSymbol)
-            const resolvedPlan = textTradePlan || (userWantsTrade ? detectedTradePlan : undefined)
-            return {
-              ...m,
-              steps: [...executedSteps],
-              toolCalls: allToolCalls,
-              thought: allThoughts || m.thought,
-              content: finalContent,
-              tradePlan: resolvedPlan,
-              isStreaming: false
-            }
-          }),
-          analysisSnapshots: persistAnalysisSnapshot(
-            createCompactAnalysisSnapshot(currentSymbol, useMarketStore.getState().timeframe, allThoughts, executedSteps),
-            state.analysisSnapshots
-          ),
+          analysisSnapshots,
+          messages: state.messages.map((message) => message.id === asstMsgId
+            ? {
+                ...message,
+                steps,
+                toolCalls: toolCallsWithResults.map((call) => ({
+                  id: call.id,
+                  name: call.name,
+                  args: call.args,
+                  result: call.content,
+                  isRunning: false,
+                  isError: call.isError
+                })),
+                content: finalContent || 'Analysis completed.',
+                tradePlan: userWantsTrade ? resolvedPlan : undefined,
+                analysis,
+                isStreaming: false
+              }
+            : message),
           isBusy: false,
           statusMessage: null,
           activeAbortController: null

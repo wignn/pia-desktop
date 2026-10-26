@@ -5,6 +5,7 @@ import { AuthGateway } from './components/auth/AuthGateway'
 import { SplashScreen } from './components/common/SplashScreen'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useUpdaterStore } from './stores/useUpdaterStore'
+import { useAiAgentStore } from './stores/useAiAgentStore'
 
 export function App(): React.JSX.Element {
   const credentials = useSettingsStore((state) => state.credentials)
@@ -27,8 +28,9 @@ export function App(): React.JSX.Element {
 
     const boot = async (): Promise<void> => {
       setSplashStatus('Checking for updates…')
-      const [, updateResult] = await Promise.allSettled([
+      const [, , updateResult] = await Promise.allSettled([
         loadCredentials(),
+        useAiAgentStore.getState().hydrateProviderCredentials(),
         useUpdaterStore.getState().checkForUpdates()
       ])
       if (!isMounted) return
