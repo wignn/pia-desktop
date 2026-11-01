@@ -1,5 +1,8 @@
 import React from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
+import { useChartStore } from '../../stores/useChartStore'
+import { candleEngine } from '../../services/candle-engine'
+import { getCachedKronosRollout, useKronosStore } from '../../services/kronos-client'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
@@ -9,6 +12,9 @@ export const ChartLegend: React.FC = () => {
   const timeframe = useMarketStore((state) => state.timeframe)
   const selectedBar = useMarketStore((state) => state.selectedBar)
   const latestBar = useMarketStore((state) => state.latestBar)
+  const isKronosActive = useChartStore((state) =>
+    state.activeIndicators.some((ind) => ind.name === 'KRONOS')
+  )
   const livePrice = useMarketStore((state) =>
     state.symbol ? state.prices[state.symbol]?.price : undefined
   )
@@ -45,6 +51,10 @@ export const ChartLegend: React.FC = () => {
   const changePercent =
     open !== undefined && open > 0 && close !== undefined ? (change / open) * 100 : 0
   const isUp = change >= 0
+  const kronosSteps = useKronosStore((state) => state.steps)
+  const kronosTail = isKronosActive
+    ? (getCachedKronosRollout(candleEngine.getActiveBars(), 12).at(-1) ?? kronosSteps.at(-1))
+    : undefined
 
   return (
     <div
@@ -173,6 +183,44 @@ export const ChartLegend: React.FC = () => {
           </div>
         )}
       </div>
+
+      {isKronosActive && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            alignSelf: 'flex-start',
+            lineHeight: '18px',
+            whiteSpace: 'nowrap',
+            backgroundColor: 'rgba(11, 14, 20, 0.72)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: '1px solid rgba(234, 88, 12, 0.35)',
+            borderRadius: 6,
+            padding: '2px 8px',
+            fontFamily: THEME_TOKENS.typography?.fontMono,
+            fontVariantNumeric: 'tabular-nums'
+          }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#ea580c', fontWeight: 700 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ea580c' }} />
+            Kronos AI (+12 bars)
+          </span>
+          {kronosTail ? (
+            <>
+              <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                q50 <strong style={{ color: '#ea580c' }}>{formatPrice(kronosTail.q50)}</strong>
+              </span>
+              <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                80% fan [{formatPrice(kronosTail.q10)} – {formatPrice(kronosTail.q90)}]
+              </span>
+            </>
+          ) : (
+            <span style={{ color: THEME_TOKENS.colors.textSecondary }}>computing CPU forecast…</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
