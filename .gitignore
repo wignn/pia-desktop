@@ -30,6 +30,7 @@ EBWebView/
 
 # Internal docs & superpower scratchpads
 .superpowers/
+.calude/
 docs/
 
 # Rust & Tauri artifacts

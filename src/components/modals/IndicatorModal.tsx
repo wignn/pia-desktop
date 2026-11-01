@@ -30,6 +30,12 @@ const AVAILABLE_INDICATORS: IndicatorMeta[] = [
     description: 'Volatility bands placed above and below a moving average'
   },
   {
+    name: 'KRONOS',
+    fullName: 'Kronos AI Forecast (q10–q90)',
+    category: 'Volatility',
+    description: 'Real-time K-line foundation model trajectory & 80% uncertainty fan'
+  },
+  {
     name: 'VOL',
     fullName: 'Volume',
     category: 'Volume',

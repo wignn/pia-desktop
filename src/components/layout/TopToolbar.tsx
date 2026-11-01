@@ -22,6 +22,10 @@ export const TopToolbar: React.FC = () => {
   const chartType = useChartStore((state) => state.chartType)
   const setChartType = useChartStore((state) => state.setChartType)
   const activeIndicatorsCount = useChartStore((state) => state.activeIndicators.length)
+  const isKronosActive = useChartStore((state) =>
+    state.activeIndicators.some((ind) => ind.name === 'KRONOS')
+  )
+  const toggleIndicator = useChartStore((state) => state.toggleIndicator)
   const clearAllDrawings = useChartStore((state) => state.clearAllDrawings)
   const isReplaying = useChartStore((state) => state.isReplaying)
   const setReplaying = useChartStore((state) => state.setReplaying)
@@ -557,6 +561,39 @@ export const TopToolbar: React.FC = () => {
             {activeIndicatorsCount}
           </span>
         )}
+      </button>
+
+      {/* 6.5. Kronos AI Forecast Quick Toggle Button */}
+      <button
+        type="button"
+        onClick={() => toggleIndicator('KRONOS')}
+        className={`tv-btn ${isKronosActive ? 'active' : ''}`}
+        aria-pressed={isKronosActive}
+        style={{
+          height: 28,
+          fontSize: 12,
+          padding: '0 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          color: isKronosActive ? '#ea580c' : THEME_TOKENS.colors.textPrimary,
+          backgroundColor: isKronosActive ? 'rgba(234, 88, 12, 0.14)' : 'transparent',
+          border: isKronosActive ? '1px solid rgba(234, 88, 12, 0.45)' : '1px solid transparent',
+          borderRadius: 5,
+          fontWeight: isKronosActive ? 600 : 500
+        }}
+        title="Toggle Real-Time Kronos AI K-Line Forecast (q10–q90 Fan)"
+      >
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            backgroundColor: '#ea580c',
+            boxShadow: isKronosActive ? '0 0 0 3px rgba(234, 88, 12, 0.25)' : 'none'
+          }}
+        />
+        <span>Kronos AI</span>
       </button>
 
       {/* 7. Alerts Button (Clock icon) */}

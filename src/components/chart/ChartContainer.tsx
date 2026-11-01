@@ -842,6 +842,10 @@ export const ChartContainer: React.FC = () => {
         renderedIndicatorsRef.current.add(ind.name)
       }
     }
+    chart.setOffsetRightDistance(currentActiveNames.has('KRONOS') ? 180 : 80)
+    if (currentActiveNames.has('KRONOS')) {
+      chart.scrollToRealTime()
+    }
   }, [activeIndicators])
 
   // Synchronize PiaScript custom indicators and strategy signals
