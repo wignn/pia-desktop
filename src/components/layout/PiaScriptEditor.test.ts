@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { PiaScriptEditor, PIASCRIPT_COMPLETIONS } from './PiaScriptEditor'
@@ -41,20 +41,51 @@ describe('PiaScriptEditor & IntelliSense', () => {
 
   it('computes real-time pure Kronos AI CPU forecast fan and registers KRONOS as candle overlay', async () => {
     expect(isOverlayIndicator('KRONOS')).toBe(true)
-    const bars = Array.from({ length: 32 }, (_, i) => ({
-      timestamp: (1730000000 + i * 900) * 1000,
-      open: 4000 + i * 1.5,
-      high: 4003 + i * 1.5,
-      low: 3998 + i * 1.5,
-      close: 4001 + i * 1.5 + (i % 3) * 2
-    }))
-    const rolloutA = await fetchPureKronosRollout(bars, 12)
-    expect(rolloutA).toHaveLength(12)
-    for (const step of rolloutA) {
-      expect(step.q10).toBeLessThanOrEqual(step.q50)
-      expect(step.q50).toBeLessThanOrEqual(step.q90)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      const lastClose = Number(body?.candles?.at(-1)?.close ?? 4000)
+      const predLen = Number(body?.pred_len ?? 12)
+      const points = Array.from({ length: predLen }, (_, idx) => {
+        const q50 = lastClose + (idx + 1) * 1.25
+        return {
+          step: idx + 1,
+          open: q50 - 0.5,
+          high: q50 + 2.5,
+          low: q50 - 2.5,
+          close: q50,
+          q10: q50 - 4,
+          q50,
+          q90: q50 + 4
+        }
+      })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ symbol: body.symbol, horizon: predLen, points })
+      } as Response
+    })
+
+    try {
+      const bars = Array.from({ length: 32 }, (_, i) => ({
+        timestamp: (1730000000 + i * 900) * 1000,
+        open: 4000 + i * 1.5,
+        high: 4003 + i * 1.5,
+        low: 3998 + i * 1.5,
+        close: 4001 + i * 1.5 + (i % 3) * 2
+      }))
+      const rolloutA = await fetchPureKronosRollout(bars, 12)
+      expect(rolloutA).toHaveLength(12)
+      for (const step of rolloutA) {
+        expect(step.q10).toBeLessThanOrEqual(step.q50)
+        expect(step.q50).toBeLessThanOrEqual(step.q90)
+      }
+      const rolloutB = await fetchPureKronosRollout(
+        [...bars.slice(0, -1), { ...bars[31], close: 4120, high: 4125 }],
+        12
+      )
+      expect(rolloutB[11].q50).not.toBe(rolloutA[11].q50)
+    } finally {
+      fetchSpy.mockRestore()
     }
-    const rolloutB = await fetchPureKronosRollout([...bars.slice(0, -1), { ...bars[31], close: 4120, high: 4125 }], 12)
-    expect(rolloutB[11].q50).not.toBe(rolloutA[11].q50)
-  }, 20000)
+  })
 })
