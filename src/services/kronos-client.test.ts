@@ -101,10 +101,11 @@ describe('local Kronos ownership and closed-candle scheduling', () => {
     expect(client.getCachedKronosRollout(a, nextBars)).toHaveLength(12)
   })
 
-  it('invalidates on revised historical OHLC inside last 256 closed bars and ignores older pagination outside 256', async () => {
-    const full = makeBars(257)
-    const fullCutoff = START + 256 * STEP + 1000
+  it('sends 360 closed bars, invalidates revised OHLC inside the window and ignores older pagination outside it', async () => {
+    const full = makeBars(361)
+    const fullCutoff = START + 360 * STEP + 1000
     await start(a, full, fullCutoff)
+    expect(pending[0].args.payload.candles).toHaveLength(360)
     pending[0].resolve(resultFor(pending[0].args.payload))
     await flush()
     const prepended = [{ timestamp: START - STEP, open: 95, high: 98, low: 94, close: 96 }, ...full]

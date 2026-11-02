@@ -44,7 +44,7 @@ export function auditKronosHistory(bars: readonly KronosBar[], timeframe: string
 export function prepareKronosInput(identity: KronosChartIdentity, history: readonly KronosBar[], cutoffTimestamp: number) {
   if (!Number.isSafeInteger(cutoffTimestamp) || cutoffTimestamp <= 0) throw new Error('Invalid forecast cutoff')
   const interval = timeframeMilliseconds(identity.timeframe)
-  const bars = validated(history, identity.timeframe).filter((bar) => bar.timestamp + interval <= cutoffTimestamp).slice(-256)
+  const bars = validated(history, identity.timeframe).filter((bar) => bar.timestamp + interval <= cutoffTimestamp).slice(-360)
   return { bars, key: bars.length < 12 ? '' : JSON.stringify([identity.symbol, identity.timeframe, 12, 6, bars]),
     originTimestamp: bars.length ? bars[bars.length - 1].timestamp + interval : 0, quality: quality(bars, identity.timeframe) }
 }

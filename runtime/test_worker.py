@@ -45,11 +45,11 @@ class WorkerTests(unittest.TestCase):
         messages, initialized, received = self.run_worker([
             dict(id=1, op="initialize", cacheDir="C:/model cache/日本"),
             dict(id=2, op="initialize", cacheDir="C:/model cache/日本"),
-            forecast_request(3, 256), forecast_request(4),
+            forecast_request(3, 360), forecast_request(4),
         ])
         self.assertEqual(initialized, ["C:/model cache/日本"])
         self.assertEqual([m["id"] for m in messages if m["type"] == "result"], [1, 2, 3, 4])
-        self.assertEqual(len(received[0]["candles"]), 256)
+        self.assertEqual(len(received[0]["candles"]), 360)
         self.assertEqual(received[0]["symbol"], "BTCUSD")
         for message in messages:
             for p in message.get("result", {}).get("points", []):
@@ -65,7 +65,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(initialized, ["cache"])
 
     def test_rejects_nonfinite_and_short_history(self):
-        bad = [forecast_request(2, 11), forecast_request(3, 257)]
+        bad = [forecast_request(2, 11), forecast_request(3, 361)]
         for value in [float("nan"), float("inf"), True, "100"]:
             request = forecast_request(4)
             request["payload"]["candles"][0]["close"] = value

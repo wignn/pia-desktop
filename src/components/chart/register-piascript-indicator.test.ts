@@ -150,7 +150,16 @@ it('renders truthful ensemble range, scenario vs median labels, provenance cavea
   expect(readyHtml).toContain('2023-11-15 02:00 UTC')
   expect(readyHtml).toContain('2 gaps')
   expect(readyHtml).toContain('12 missing-vol')
-  expect(readyHtml).toContain('Waiting for current candle close')
+  const summary = readyHtml.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1]
+  expect(summary).toBeDefined()
+  expect(summary).toContain('Kronos')
+  expect(summary).toContain('+12 bars')
+  expect(summary).toContain('Median')
+  expect(summary).toContain('Detail')
+  expect(summary).not.toContain('Scenario candles')
+  expect(summary).not.toContain('Origin')
+  expect(readyHtml).not.toMatch(/<details[^>]*\bopen(?:[\s=>])/)
+  expect(readyHtml).not.toContain('Waiting for current candle close')
   expect(readyHtml).not.toContain('80% fan')
 
   kronosState.status = 'error'

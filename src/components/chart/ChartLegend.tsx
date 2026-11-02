@@ -69,7 +69,7 @@ export const ChartLegend: React.FC = () => {
     ? 'Updating forecast for new closed candle… (showing prior origin)'
     : kronos.status === 'error'
     ? `Replacement failed (${kronos.error}); showing prior origin`
-    : 'Waiting for current candle close'
+    : ''
 
   return (
     <div
@@ -77,8 +77,12 @@ export const ChartLegend: React.FC = () => {
         position: 'absolute',
         top: 8,
         left: 10,
+        right: 70,
+        minWidth: 0,
+        maxHeight: 'calc(100% - 16px)',
+        overflowY: 'auto',
         zIndex: 10,
-        pointerEvents: 'auto',
+        pointerEvents: 'none',
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
@@ -92,7 +96,7 @@ export const ChartLegend: React.FC = () => {
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          flexWrap: 'nowrap',
+          flexWrap: 'wrap',
           gap: 8,
           lineHeight: '20px',
           whiteSpace: 'nowrap',
@@ -102,7 +106,11 @@ export const ChartLegend: React.FC = () => {
           border: '1px solid rgba(255, 255, 255, 0.07)',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
           borderRadius: 6,
-          padding: '2px 8px'
+          padding: '2px 8px',
+          alignSelf: 'flex-start',
+          pointerEvents: 'auto',
+          maxWidth: '100%',
+          boxSizing: 'border-box'
         }}
       >
         {/* Symbol & Timeframe & Exchange badge */}
@@ -146,6 +154,7 @@ export const ChartLegend: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 7,
+              flexWrap: 'wrap',
               color: THEME_TOKENS.colors.textSecondary,
               fontFamily: THEME_TOKENS.typography?.fontMono,
               fontVariantNumeric: 'tabular-nums'
@@ -200,14 +209,14 @@ export const ChartLegend: React.FC = () => {
       </div>
 
       {isKronosActive && (
-        <div
+        <>
+        <details
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 8,
             alignSelf: 'flex-start',
-            maxWidth: 'calc(100vw - 24px)',
+            pointerEvents: 'auto',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            overflowWrap: 'anywhere',
             lineHeight: '18px',
             backgroundColor: 'rgba(11, 14, 20, 0.72)',
             backdropFilter: 'blur(10px)',
@@ -219,17 +228,20 @@ export const ChartLegend: React.FC = () => {
             fontVariantNumeric: 'tabular-nums'
           }}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#ea580c', fontWeight: 700 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ea580c' }} />
-            Kronos (+12 bars • Local CPU)
-          </span>
-          {kronosTail ? (
-            <>
+          <summary style={{ cursor: 'pointer', color: THEME_TOKENS.colors.textPrimary }}>
+            <span aria-hidden="true" style={{ display: 'inline-block', width: 6, height: 6, marginRight: 5, borderRadius: '50%', backgroundColor: '#ea580c' }} />
+            <strong>Kronos</strong> · +12 bars
+            {kronosTail && <> · Median <strong>{formatPrice(kronosTail.q50)}</strong></>}
+            <span style={{ marginLeft: 8, color: THEME_TOKENS.colors.textMuted }}>Detail</span>
+          </summary>
+          {kronosTail && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 0', color: THEME_TOKENS.colors.textSecondary }}>
+              <span>Local CPU · 6 sampled rollouts</span>
               <span
                 style={{ color: THEME_TOKENS.colors.textSecondary }}
                 title="Median close trajectory across 6 sampled rollouts; neither median line nor scenario candles is observed future OHLC."
               >
-                Median line (q50) <strong style={{ color: '#ea580c' }}>{formatPrice(kronosTail.q50)}</strong>
+                Median line (q50) <strong style={{ color: THEME_TOKENS.colors.textPrimary }}>{formatPrice(kronosTail.q50)}</strong>
               </span>
               <span
                 style={{ color: THEME_TOKENS.colors.textSecondary }}
@@ -248,18 +260,16 @@ export const ChartLegend: React.FC = () => {
                 {kronos.quality.gapCount > 0 ? ` • ${kronos.quality.gapCount} ${kronos.quality.gapCount === 1 ? 'gap' : 'gaps'} (nominal steps)` : ''}
                 {kronos.quality.missingVolumeCount > 0 ? ` • ${kronos.quality.missingVolumeCount} missing-vol` : ''}
               </span>
-              <span role="status" style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                {activeStatusNote}
-                {kronos.status === 'error' && <button type="button" onClick={retryKronos}>Retry Kronos</button>}
-              </span>
-            </>
-          ) : (
-            <span role="status" style={{ color: THEME_TOKENS.colors.textSecondary }}>
-              {kronosMessage}
-              {kronos.status === 'error' && <button type="button" onClick={retryKronos}>Retry Kronos</button>}
-            </span>
+            </div>
           )}
-        </div>
+        </details>
+        {(kronosTail ? activeStatusNote : kronosMessage) && (
+          <div role="status" style={{ color: THEME_TOKENS.colors.textSecondary, overflowWrap: 'anywhere', pointerEvents: 'auto' }}>
+            {kronosTail ? activeStatusNote : kronosMessage}
+            {kronos.status === 'error' && <button type="button" onClick={retryKronos}>Retry Kronos</button>}
+          </div>
+        )}
+        </>
       )}
     </div>
   )

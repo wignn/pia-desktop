@@ -12,37 +12,37 @@ from worker import validate_result
 
 
 class ServerTests(unittest.TestCase):
-    def test_uses_latest_256_candles_and_matching_model_context(self):
-        history = candles(256)
+    def test_uses_latest_360_candles_and_matching_model_context(self):
+        history = candles(360)
         for bar in history:
             bar.pop('volume')
 
         class Predictor:
             def predict_quantiles(inner, **kwargs):
-                self.assertEqual(len(kwargs['df']), 256)
+                self.assertEqual(len(kwargs['df']), 360)
                 self.assertEqual(int(kwargs['x_timestamp'].iloc[0].timestamp()),
-                                 history[-256]['timestamp'] // 1000)
+                                 history[-360]['timestamp'] // 1000)
                 return pd.DataFrame([dict(open=100, high=102, low=99, close=101,
                                           q10=99, q50=101, q90=102)] * 12)
 
         server._cache.clear()
         try:
             with patch.object(server, 'get_predictor', return_value=Predictor()):
-                request = forecast_request(count=256)
+                request = forecast_request(count=360)
                 request['payload']['candles'] = history
                 messages, _, _ = test_worker.WorkerTests().run_worker([
                     dict(id=1, op='initialize', cacheDir='cache'), request], server.run_kronos_forecast)
                 self.assertEqual(messages[-1]['type'], 'result', messages[-1])
                 result = messages[-1]['result']
-                self.assertEqual(result['contextBars'], 256)
-                self.assertEqual(result['quality']['missingVolumeCount'], 256)
+                self.assertEqual(result['contextBars'], 360)
+                self.assertEqual(result['quality']['missingVolumeCount'], 360)
                 self.assertEqual(result['originTimestamp'], history[-1]['timestamp'] + 900000)
                 self.assertEqual(result['points'][0]['timestamp'], result['originTimestamp'])
             with patch.object(server.KronosTokenizer, 'from_pretrained'), \
                     patch.object(server.Kronos, 'from_pretrained'), \
                     patch.object(server, 'KronosPredictor') as constructor:
                 server.load_predictor('model', 'tokenizer')
-                self.assertEqual(constructor.call_args.kwargs['max_context'], 256)
+                self.assertEqual(constructor.call_args.kwargs['max_context'], 360)
         finally:
             server._cache.clear()
             server._predictor = None

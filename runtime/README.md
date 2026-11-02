@@ -2,7 +2,7 @@
 
 The Desktop app owns a persistent JSON-lines child process; this is not an HTTP service.
 Stdout contains protocol messages only. Diagnostics use stderr. Requests are bounded to
-1 MiB, up to 256 input bars (all used), 12 output bars and six trajectories, with two CPU threads.
+1 MiB, up to 360 input bars (all used), 12 output bars and six trajectories, with two CPU threads.
 No cloud fallback and no system Python are used by the packaged application.
 
 ## Source provenance
@@ -20,7 +20,9 @@ Model/tokenizer inference is preserved. Forecast candles use the complete sample
 whose closes are nearest the ensemble median, rather than averaging opposing candle bodies.
 The q10/q50/q90 ensemble summary remains separate; six samples are not calibrated coverage.
 The server adapter removes HTTP/startup entrypoints,
-uses local-only safetensors loading and fixes the context ceiling at 256. Decoded candle
+uses local-only safetensors loading and fixes the live context ceiling at 360 closed candles.
+Context follows the chart timeframe, not the visible viewport; shorter histories use all available
+closed candles (minimum 12), without filling market gaps. Decoded candle
 high/low are expanded to enclose the model's open/close; quantiles remain unchanged.
 Upstream: https://github.com/shiyu-coder/Kronos; MIT notice in `LICENSES/Kronos-MIT.txt`.
 The official NeoQuasar model/tokenizer cards also declare MIT.
@@ -73,7 +75,8 @@ remote Python code are acquired.
 
 Developer-operated CLI for reproducible local CPU walk-forward evaluation using the same
 completed-candle input rules (`forecast_input.py`) and OHLC post-processing (`kronos/server.py`)
-as live inference. Live IPC remains fixed at 256 context bars, 6 samples, and up to 12 output steps.
+as live inference. Live IPC permits up to 360 context bars, 6 samples, and up to 12 output steps.
+The offline experiment grid below is unchanged; its 256-bar results do not validate 360-bar accuracy.
 
 - **Dataset format**: UTF-8 JSON object `{ "symbol": "XAUUSD", "timeframe": "15m", "candles": [...] }`
   with strictly increasing UTC-aligned millisecond `timestamp`, positive finite `open`/`high`/`low`/`close`

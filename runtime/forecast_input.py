@@ -18,7 +18,7 @@ def safe_timestamp(value):
     return numeric(value) and 0 < value <= 9007199254740991 and value == int(value)
 
 
-def validate_history(candles, timeframe, cutoff_timestamp, max_bars=256, min_bars=12):
+def validate_history(candles, timeframe, cutoff_timestamp, max_bars=360, min_bars=12):
     interval = timeframe_ms(timeframe)
     anchor = 345600000 if timeframe == '1w' else 0
     if not safe_timestamp(cutoff_timestamp):
