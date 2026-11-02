@@ -563,7 +563,7 @@ export const TopToolbar: React.FC = () => {
         )}
       </button>
 
-      {/* 6.5. Kronos AI Forecast Quick Toggle Button */}
+      {/* 6.5. Kronos Forecast Quick Toggle Button */}
       <button
         type="button"
         onClick={() => toggleIndicator('KRONOS')}
@@ -582,7 +582,7 @@ export const TopToolbar: React.FC = () => {
           borderRadius: 5,
           fontWeight: isKronosActive ? 600 : 500
         }}
-        title="Toggle Real-Time Kronos AI K-Line Forecast (q10–q90 Fan)"
+        title="Toggle Real-Time Kronos Forecast (q10–q90 Fan)"
       >
         <span
           style={{
@@ -593,7 +593,7 @@ export const TopToolbar: React.FC = () => {
             boxShadow: isKronosActive ? '0 0 0 3px rgba(234, 88, 12, 0.25)' : 'none'
           }}
         />
-        <span>Kronos AI</span>
+        <span>Kronos</span>
       </button>
 
       {/* 7. Alerts Button (Clock icon) */}

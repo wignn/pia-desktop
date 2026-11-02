@@ -35,6 +35,9 @@ docs/
 
 # Rust & Tauri artifacts
 src-tauri/target/
+src-tauri/resources/kronos-runtime/
+runtime/__pycache__/
+runtime/kronos/__pycache__/
 target/
 
 # Editor directories and files

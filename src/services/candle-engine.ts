@@ -6,6 +6,7 @@
 
 import type { CandleBar, PriceQuote, Timeframe } from '@shared/types'
 import type { KLineData } from 'klinecharts'
+import { auditKronosHistory } from './kronos-input'
 
 export interface CandleEngineListener {
   onHistoryLoaded: (generationId: number, bars: KLineData[]) => void
@@ -23,6 +24,18 @@ export class CandleEngine {
   private inFlightKey = ''
   private inFlightPromise: Promise<KLineData[]> | null = null
   private lastLoadError: unknown = null
+  private kronosInputError: string | null = null
+
+  public getKronosInputState(): { cutoffTimestamp: number; error: string | null } {
+    return { cutoffTimestamp: this.isReplayMode ? (this.activeBars.at(-1)?.timestamp ?? 0) : Date.now(),
+      error: this.kronosInputError }
+  }
+
+  private auditKronosBars(bars: readonly CandleBar[], replace = false): void {
+    const error = auditKronosHistory(bars.map((bar) => ({ ...bar,
+      timestamp: bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp })), this.currentTimeframe).error
+    if (replace || error) this.kronosInputError = error
+  }
 
   // ponytail: retain only one recent chart snapshot; expand to a small LRU if users need multi-pair cold-start hydration.
   private readonly snapshotKey = 'pia_chart_snapshot_v1'
@@ -108,6 +121,7 @@ export class CandleEngine {
       ) {
         return []
       }
+      this.auditKronosBars(bars)
       return this.normalizeAndSortBars(bars)
     } catch {
       return []
@@ -159,13 +173,14 @@ export class CandleEngine {
     const execute = async (): Promise<KLineData[]> => {
       this.generationId++
       const activeGen = this.generationId
-      const isNewSymbol = this.currentSymbol !== symbol
+      const isNewSymbol = this.currentSymbol !== symbol || this.currentTimeframe !== timeframe
       this.currentSymbol = symbol
       this.currentTimeframe = timeframe
       this.isLoading = true
       this.lastLoadError = null
       this.tickBuffer = []
       if (isNewSymbol) {
+        this.kronosInputError = null
         this.activeBars = []
       }
       this.isReplayMode = false
@@ -196,6 +211,7 @@ export class CandleEngine {
           // If user switched symbol or timeframe while request was in-flight, discard.
           if (this.generationId !== activeGen) return []
 
+          this.auditKronosBars(rawBars, true)
           normalizedBars = this.normalizeAndSortBars(rawBars)
           if (normalizedBars.length === 0 && attempt === 0) {
             console.warn(
@@ -295,6 +311,7 @@ export class CandleEngine {
         return { bars: [], hasMore: false }
       }
 
+      this.auditKronosBars([...rawBars, ...this.activeBars])
       const normalized = this.normalizeAndSortBars(rawBars)
       const olderBars = normalized.filter((b) => b.timestamp < toTimestamp)
 
@@ -379,6 +396,10 @@ export class CandleEngine {
     const effectiveTs = Math.max(ts, lastBar.timestamp)
     const barStartTimestamp = Math.floor(effectiveTs / intervalMs) * intervalMs
     const price = quote.price
+    if (!Number.isFinite(price) || !Number.isSafeInteger(ts)) {
+      this.kronosInputError = 'Invalid live OHLC input'
+      return
+    }
 
     if (barStartTimestamp === lastBar.timestamp) {
       // Update current active bar

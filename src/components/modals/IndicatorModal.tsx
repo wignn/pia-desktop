@@ -31,9 +31,9 @@ const AVAILABLE_INDICATORS: IndicatorMeta[] = [
   },
   {
     name: 'KRONOS',
-    fullName: 'Kronos AI Forecast (q10–q90)',
+    fullName: 'Kronos Forecast (q10–q90)',
     category: 'Volatility',
-    description: 'Real-time K-line foundation model trajectory & 80% uncertainty fan'
+    description: 'Closed-candle K-line foundation model scenario trajectory, median line, and ensemble range (q10–q90)'
   },
   {
     name: 'VOL',
