@@ -51,19 +51,19 @@ class PackagingTests(unittest.TestCase):
             self.assertRegex(asset['sha256'], r'^[0-9a-f]{64}$')
             self.assertIn(asset['file'], ('config.json', 'model.safetensors'))
 
-    def test_smoke_contract_requires_256_aligned_bars_and_rejects_64_bar_truncation(self):
+    def test_smoke_contract_requires_360_aligned_bars_and_rejects_old_context_truncation(self):
         from smoke import make_smoke_payload, verify_smoke_result
         from worker import validate_payload
         payload = make_smoke_payload(0)
         validated = validate_payload(payload)
-        self.assertEqual(len(validated['candles']), 256)
+        self.assertEqual(len(validated['candles']), 360)
         self.assertEqual(validated['timeframe'], '15m')
         origin = payload['candles'][-1]['timestamp'] + 900000
         good = dict(
             device='cpu',
             inferenceMs=12.5,
             timeframe='15m',
-            contextBars=256,
+            contextBars=360,
             sampleCount=6,
             cutoffTimestamp=payload['cutoffTimestamp'],
             originTimestamp=origin,
@@ -77,8 +77,9 @@ class PackagingTests(unittest.TestCase):
             ]
         )
         verify_smoke_result(payload, good)
-        with self.assertRaises((AssertionError, ValueError)):
-            verify_smoke_result(payload, {**good, 'contextBars': 64})
+        for truncated in (64, 256):
+            with self.assertRaises((AssertionError, ValueError)):
+                verify_smoke_result(payload, {**good, 'contextBars': truncated})
 
 
 if __name__ == '__main__':

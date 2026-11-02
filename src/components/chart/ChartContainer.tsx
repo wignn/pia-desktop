@@ -282,7 +282,7 @@ export const ChartContainer: React.FC = () => {
     setHasHistoricalBars(true)
 
     try {
-      const bars = await candleEngine.setSymbolAndTimeframe(sym, tf, 300)
+      const bars = await candleEngine.setSymbolAndTimeframe(sym, tf, 361)
       if (bars.length > 0) {
         setHasHistoricalBars(true)
         setLoadError(null)
@@ -389,7 +389,7 @@ export const ChartContainer: React.FC = () => {
 
         try {
           const renderedCachedBars: KLineData[] = []
-          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 300, (cachedBars) => {
+          const bars = await candleEngine.setSymbolAndTimeframe(sym.ticker, tf, 361, (cachedBars) => {
             const latestSymbol = useMarketStore.getState().symbol
             const latestTf = useMarketStore.getState().timeframe
             if (sym.ticker === latestSymbol && tf === latestTf) {

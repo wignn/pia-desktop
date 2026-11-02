@@ -55,7 +55,7 @@ fn safe_timestamp(value: &Value) -> Option<u64> {
 }
 
 fn validate_payload(payload: &Value) -> Result<(), String> {
-    let fail = || "Provide a symbol, 12–256 aligned closed OHLC candles, a 1–12 horizon and six samples".to_string();
+    let fail = || "Provide a symbol, 12–360 aligned closed OHLC candles, a 1–12 horizon and six samples".to_string();
     let symbol = payload["symbol"].as_str().ok_or_else(fail)?;
     if symbol.trim().is_empty() || symbol.len() > 128 { return Err(fail()); }
     let timeframe = payload["timeframe"].as_str().ok_or_else(fail)?;
@@ -65,7 +65,7 @@ fn validate_payload(payload: &Value) -> Result<(), String> {
     let now_ms = u64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| fail())?.as_millis()).map_err(|_| fail())?;
     if cutoff > now_ms + 60_000 { return Err(fail()); }
     let bars = payload["candles"].as_array().ok_or_else(fail)?;
-    if !(12..=256).contains(&bars.len()) || !(1..=12).contains(&payload["pred_len"].as_u64().unwrap_or(0)) || payload["sample_count"].as_u64() != Some(6) { return Err(fail()); }
+    if !(12..=360).contains(&bars.len()) || !(1..=12).contains(&payload["pred_len"].as_u64().unwrap_or(0)) || payload["sample_count"].as_u64() != Some(6) { return Err(fail()); }
     let mut previous = None;
     for bar in bars {
         let timestamp = safe_timestamp(&bar["timestamp"]).ok_or_else(fail)?;
@@ -309,6 +309,15 @@ mod tests {
         runtime.shutdown();
         assert!(thread.join().unwrap().is_err());
         assert!(runtime.child.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn kronos_accepts_360_closed_bars_but_rejects_361() {
+        for count in [12u64, 359, 360, 361] {
+            let bars: Vec<Value> = (0..count).map(|i| json!({"timestamp":1700000100000u64 + i * 900_000,"open":100,"high":102,"low":99,"close":101})).collect();
+            let payload = json!({"symbol":"BTCUSD","timeframe":"15m","cutoffTimestamp":1700000100000u64 + count * 900_000,"candles":bars,"pred_len":12,"sample_count":6});
+            assert_eq!(validate_payload(&payload).is_ok(), count <= 360, "{count} bars");
+        }
     }
 
     #[test]

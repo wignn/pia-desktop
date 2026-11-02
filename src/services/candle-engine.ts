@@ -250,6 +250,22 @@ export class CandleEngine {
         return []
       }
 
+      // ponytail: one older page reaches 360 closed bars + a live bar without increasing rollup query size.
+      const targetLimit = Math.min(limit, 361)
+      if (targetLimit > effectiveLimit && normalizedBars.length >= effectiveLimit && normalizedBars.length < targetLimit) {
+        try {
+          const oldest = normalizedBars[0].timestamp
+          const older = await window.api.market.getCandles({ symbol, timeframe, to: oldest, limit: targetLimit - normalizedBars.length })
+          if (this.generationId !== activeGen) return []
+          this.auditKronosBars([...older, ...normalizedBars])
+          normalizedBars = this.normalizeAndSortBars([...older.filter((bar) =>
+            (bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp) < oldest), ...normalizedBars]).slice(-targetLimit)
+        } catch {
+          // Keep valid recent history when older candles are unavailable.
+        }
+      }
+      if (this.generationId !== activeGen) return []
+
       const cachedLatestTimestamp = cachedBars.length > 0 ? cachedBars[cachedBars.length - 1].timestamp : 0
       this.activeBars = normalizedBars
       this.lastLoadError = null

@@ -42,14 +42,15 @@ describe('closed Kronos input', () => {
     }
   })
   it('keys only effective closed content, not unfinished ticks or older pagination', () => {
-    const history = bars(300)
-    const cutoff = start + 299 * step
+    const history = bars(400)
+    const cutoff = start + 399 * step
     const a = input.prepareKronosInput(identity, history, cutoff)
-    const ticks = history.map((bar, i) => i === 299 ? { ...bar, close: 103 } : bar)
+    const ticks = history.map((bar, i) => i === 399 ? { ...bar, close: 103 } : bar)
     expect(input.prepareKronosInput(identity, ticks, cutoff).key).toBe(a.key)
     expect(input.prepareKronosInput(identity, history.slice(10), cutoff).key).toBe(a.key)
-    expect(input.prepareKronosInput(identity, history.map((bar, i) => i === 298 ? { ...bar, close: 102 } : bar), cutoff).key).not.toBe(a.key)
-    expect(a.bars).toHaveLength(256)
+    expect(input.prepareKronosInput(identity, history.map((bar, i) => i === 398 ? { ...bar, close: 102 } : bar), cutoff).key).not.toBe(a.key)
+    expect(a.bars).toHaveLength(360)
+    expect(a.bars[0].timestamp).toBe(start + 39 * step)
     expect(a.originTimestamp).toBe(cutoff)
   })
 })

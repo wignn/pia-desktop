@@ -30,7 +30,7 @@ def validate_payload(payload):
         raise ValueError("Forecast horizon must be between 1 and 12")
     if payload.get("sample_count") != 6:
         raise ValueError("CPU worker requires six samples")
-    # ponytail: 256 completed bars / six samples bound live CPU work; experiments stay offline.
+    # ponytail: 360 completed bars / six samples bound live CPU work; experiments stay offline.
     return {**payload, "candles": bars}
 
 
@@ -39,7 +39,7 @@ def validate_result(result, horizon, payload=None):
         raise ValueError("Model returned an invalid forecast length")
     interval = timeframe_ms(result.get("timeframe"))
     quality = result.get("quality")
-    if (type(result.get("contextBars")) is not int or not 12 <= result["contextBars"] <= 256 or
+    if (type(result.get("contextBars")) is not int or not 12 <= result["contextBars"] <= 360 or
             result.get("sampleCount") != 6 or not safe_timestamp(result.get("cutoffTimestamp")) or
             not safe_timestamp(result.get("originTimestamp")) or not finite(result.get("originPrice")) or
             not isinstance(quality, dict) or not all(type(quality.get(k)) is int and quality[k] >= 0

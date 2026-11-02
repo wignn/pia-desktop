@@ -17,7 +17,7 @@ STEP = 900000
 
 def make_smoke_payload(step_offset=0):
     bars = []
-    for i in range(256):
+    for i in range(360):
         ts = START + (i + (1 if i >= 1 else 0) + step_offset) * STEP
         bar = dict(
             timestamp=ts,
@@ -43,7 +43,7 @@ def verify_smoke_result(payload, result):
     validate_result(result, 12, payload)
     origin = payload['candles'][-1]['timestamp'] + STEP
     assert result['device'] == 'cpu', result
-    assert result['contextBars'] == 256, result
+    assert result['contextBars'] == 360, result
     assert result['originTimestamp'] == origin, result
     assert result['points'][0]['timestamp'] == origin, result
     assert result['points'][-1]['timestamp'] == origin + 11 * STEP, result

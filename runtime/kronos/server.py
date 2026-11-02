@@ -13,7 +13,7 @@ from .kronos import Kronos, KronosPredictor, KronosTokenizer
 
 DEFAULT_MODEL_ID = 'NeoQuasar/Kronos-base'
 DEFAULT_TOKENIZER_ID = 'NeoQuasar/Kronos-Tokenizer-base'
-MAX_CONTEXT = 256
+MAX_CONTEXT = 360
 _predictor_lock = threading.Lock()
 _predictor = None
 _cache = collections.OrderedDict()

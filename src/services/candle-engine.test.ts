@@ -30,6 +30,28 @@ beforeEach(() => {
 })
 
 describe('CandleEngine', () => {
+  it('loads 360 closed candles plus the live candle using a bounded older page on 1h', async () => {
+    const engine = new CandleEngine()
+    const start = Date.UTC(2026, 0, 1)
+    const all = Array.from({ length: 361 }, (_, i) => ({ timestamp: start + i * 3600000, open: 100, high: 105, low: 99, close: 101 }))
+    vi.mocked(window.api.market.getCandles).mockImplementation(async (args) =>
+      args.to ? all.slice(0, 61) : all.slice(61))
+    const loaded = await engine.setSymbolAndTimeframe('XAUUSD', '1h', 361)
+    expect(loaded).toHaveLength(361)
+    expect(loaded[0].timestamp).toBe(start)
+    expect(loaded.at(-1)?.timestamp).toBe(start + 360 * 3600000)
+    expect(window.api.market.getCandles).toHaveBeenNthCalledWith(1, { symbol: 'XAUUSD', timeframe: '1h', limit: 300 })
+    expect(window.api.market.getCandles).toHaveBeenNthCalledWith(2, { symbol: 'XAUUSD', timeframe: '1h', to: all[61].timestamp, limit: 61 })
+  })
+
+  it('keeps recent history when the optional older page fails', async () => {
+    const engine = new CandleEngine()
+    const recent = Array.from({ length: 300 }, (_, i) => ({ timestamp: Date.UTC(2026, 0, 1) + i * 3600000, open: 100, high: 105, low: 99, close: 101 }))
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce(recent).mockRejectedValueOnce(new Error('Older history unavailable'))
+    expect(await engine.setSymbolAndTimeframe('XAUUSD', '1h', 361)).toHaveLength(300)
+    expect(engine.getKronosInputState().error).toBeNull()
+  })
+
   it('audits conflicting raw duplicates before chart normalization', async () => {
     const engine = new CandleEngine()
     const bar = { timestamp: 1700000100000, open: 100, high: 105, low: 99, close: 101 }
