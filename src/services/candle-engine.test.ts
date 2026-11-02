@@ -30,6 +30,41 @@ beforeEach(() => {
 })
 
 describe('CandleEngine', () => {
+  it('audits conflicting raw duplicates before chart normalization', async () => {
+    const engine = new CandleEngine()
+    const bar = { timestamp: 1700000100000, open: 100, high: 105, low: 99, close: 101 }
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([bar, { ...bar, close: 102 }])
+    expect(await engine.setSymbolAndTimeframe('BTCUSD', '15m')).toHaveLength(1)
+    expect(engine.getKronosInputState().error).toMatch(/duplicate/i)
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([bar])
+    await engine.setSymbolAndTimeframe('BTCUSD', '15m')
+    expect(engine.getKronosInputState().error).toBeNull()
+  })
+
+  it('retains raw invalid OHLC provenance and uses only visible replay cutoff', async () => {
+    const engine = new CandleEngine()
+    const history = Array.from({ length: 20 }, (_, i) => ({ timestamp: 1700000100000 + i * 900000, open: 100, high: 105, low: 99, close: 101 }))
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([{ ...history[0], high: 98 }, ...history.slice(1)])
+    await engine.setSymbolAndTimeframe('BTCUSD', '15m')
+    expect(engine.getKronosInputState().error).toMatch(/OHLC/i)
+    engine.startReplay(13)
+    expect(engine.getKronosInputState().cutoffTimestamp).toBe(history[12].timestamp)
+    engine.stepReplayForward()
+    expect(engine.getKronosInputState().cutoffTimestamp).toBe(history[13].timestamp)
+  })
+
+  it('does not relabel previous timeframe bars while replacement history is pending', async () => {
+    const engine = new CandleEngine()
+    await engine.setSymbolAndTimeframe('BTCUSD', '15m')
+    let resolve!: (bars: CandleBar[]) => void
+    vi.mocked(window.api.market.getCandles).mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    const pending = engine.setSymbolAndTimeframe('BTCUSD', '1h')
+    expect(engine.getActiveBars()).toEqual([])
+    resolve(history)
+    await pending
+    expect(engine.getActiveBars()).toHaveLength(2)
+  })
+
   it('normalizes history, preserves the newest bar, and notifies listeners', async () => {
     const engine = new CandleEngine()
     const onHistoryLoaded = vi.fn()

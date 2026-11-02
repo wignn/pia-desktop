@@ -11,6 +11,16 @@ import {
 } from 'klinecharts'
 import { timeframeToPeriod, periodToTimeframe } from '../../utils/timeframe'
 import { candleEngine } from '../../services/candle-engine'
+import { requestKronosRollout, setActiveKronosChart, useKronosStore } from '../../services/kronos-client'
+
+function scheduleKronos(): void {
+  const { symbol, timeframe } = useMarketStore.getState()
+  const enabled = useChartStore.getState().activeIndicators.some((ind) => ind.name === 'KRONOS')
+  setActiveKronosChart(enabled && symbol ? { symbol, timeframe } : null)
+  if (enabled && symbol && candleEngine.getSymbol() === symbol && candleEngine.getTimeframe() === timeframe) {
+    requestKronosRollout({ symbol, timeframe }, candleEngine.getActiveBars(), 12, candleEngine.getKronosInputState())
+  }
+}
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useChartStore, isOverlayIndicator } from '../../stores/useChartStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -324,6 +334,15 @@ export const ChartContainer: React.FC = () => {
 
     if (!chart) return
     chartRef.current = chart
+    const unsubKronos = useKronosStore.subscribe(() => {
+      chart.overrideIndicator({ name: 'KRONOS', paneId: 'candle_pane' })
+    })
+    const unsubKronosMarket = useMarketStore.subscribe((state, previous) => {
+      if (state.symbol !== previous.symbol || state.timeframe !== previous.timeframe) {
+        const enabled = useChartStore.getState().activeIndicators.some((ind) => ind.name === 'KRONOS')
+        setActiveKronosChart(enabled && state.symbol ? { symbol: state.symbol, timeframe: state.timeframe } : null)
+      }
+    })
 
     // Configure DataLoader lifecycle
     chart.setDataLoader({
@@ -384,6 +403,7 @@ export const ChartContainer: React.FC = () => {
           if (sym.ticker !== latestSymbol || tf !== latestTf) return
 
           callback(bars, { forward: bars.length >= 300, backward: false })
+          scheduleKronos()
 
           const lastError = candleEngine.getLastLoadError()
           setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
@@ -428,6 +448,7 @@ export const ChartContainer: React.FC = () => {
         if (candleEngine.getTimeframe() && curTf && candleEngine.getTimeframe() !== curTf) {
           return
         }
+        scheduleKronos()
         setLatestBar(bars.at(-1) ?? null)
         const lastErr = candleEngine.getLastLoadError()
         setLoadError(bars.length === 0 && lastErr ? String(lastErr) : null)
@@ -453,6 +474,7 @@ export const ChartContainer: React.FC = () => {
         }
       },
       onBarUpdate: (_genId, bar): void => {
+        scheduleKronos()
         setLatestBar(bar)
         if (liveSubscriberRef.current) {
           liveSubscriberRef.current(bar)
@@ -509,6 +531,9 @@ export const ChartContainer: React.FC = () => {
 
     return (): void => {
       unsubEngine()
+      unsubKronosMarket()
+      unsubKronos()
+      setActiveKronosChart(null)
       resizeObserver.disconnect()
       clearPositionOverlays(chartRef.current, positionOverlayIdsRef)
       if (chartRef.current) {
@@ -530,6 +555,8 @@ export const ChartContainer: React.FC = () => {
     if (!chart) return
 
     setHasHistoricalBars(true)
+    const enabled = useChartStore.getState().activeIndicators.some((ind) => ind.name === 'KRONOS')
+    setActiveKronosChart(enabled && symbol ? { symbol, timeframe } : null)
 
     const targetPeriod = timeframeToPeriod(timeframe)
     const currentPeriod = chart.getPeriod()
@@ -819,6 +846,7 @@ export const ChartContainer: React.FC = () => {
     if (!chart) return
 
     const currentActiveNames = new Set(activeIndicators.map((i) => i.name))
+    scheduleKronos()
 
     // Remove indicators that are no longer active
     for (const name of renderedIndicatorsRef.current) {

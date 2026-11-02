@@ -1,3 +1,4 @@
+mod kronos;
 mod piascript;
 
 use piascript::{PiaCandle, PiaScriptEngine, PiaScriptResult};
@@ -629,6 +630,7 @@ async fn pia_native_request(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(std::sync::Arc::new(kronos::KronosRuntime::default()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
@@ -644,8 +646,16 @@ pub fn run() {
             pia_native_candles,
             pia_native_request,
             native_http_request,
-            execute_piascript
+            execute_piascript,
+            kronos::kronos_initialize,
+            kronos::kronos_forecast,
+            kronos::kronos_status
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<std::sync::Arc<kronos::KronosRuntime>>().shutdown();
+            }
+        });
 }

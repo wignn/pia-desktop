@@ -1,0 +1,8 @@
+{
+  "assets": [
+    {"repo":"NeoQuasar/Kronos-base","revision":"2b554741eca47781b64468546e77fef3e85130e6","file":"config.json","sha256":"77ebc3038b647709b92be002f801d72e1a385f4c8c2c5aa1cc6cf21fcfe44eb2","size":228},
+    {"repo":"NeoQuasar/Kronos-base","revision":"2b554741eca47781b64468546e77fef3e85130e6","file":"model.safetensors","sha256":"abff193acab6db1a0368e9773e75799d11403b6d054ee6d5f0a11aeabc5f4b83","size":409264008},
+    {"repo":"NeoQuasar/Kronos-Tokenizer-base","revision":"0e0117387f39004a9016484a186a908917e22426","file":"config.json","sha256":"2366e7ccfec76cbc19cf3c4c1b9c5d901be336ca1e83f2d2292c9bff381b77a2","size":301},
+    {"repo":"NeoQuasar/Kronos-Tokenizer-base","revision":"0e0117387f39004a9016484a186a908917e22426","file":"model.safetensors","sha256":"59d85f6af76a2c3b8240ea06cb21db4213b4eeca053f246b23e29cf832fc6bee","size":15842368}
+  ]
+}

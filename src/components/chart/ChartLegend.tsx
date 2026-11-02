@@ -2,7 +2,7 @@ import React from 'react'
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useChartStore } from '../../stores/useChartStore'
 import { candleEngine } from '../../services/candle-engine'
-import { getCachedKronosRollout, useKronosStore } from '../../services/kronos-client'
+import { getCachedKronosRollout, retryKronos, useKronosStore } from '../../services/kronos-client'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { getSymbolPrecision } from '@shared/market-utils'
 import { SymbolLogo } from '../common/SymbolLogo'
@@ -40,6 +40,9 @@ export const ChartLegend: React.FC = () => {
     return val.toFixed(2)
   }
 
+  const formatUtcOrigin = (ts: number): string =>
+    ts > 0 ? `${new Date(ts).toISOString().slice(0, 16).replace('T', ' ')} UTC` : '--'
+
   const displayBar = selectedBar ?? latestBar
   const open = displayBar?.open
   const high = displayBar?.high
@@ -51,10 +54,22 @@ export const ChartLegend: React.FC = () => {
   const changePercent =
     open !== undefined && open > 0 && close !== undefined ? (change / open) * 100 : 0
   const isUp = change >= 0
-  const kronosSteps = useKronosStore((state) => state.steps)
-  const kronosTail = isKronosActive
-    ? (getCachedKronosRollout(candleEngine.getActiveBars(), 12).at(-1) ?? kronosSteps.at(-1))
+  const kronos = useKronosStore()
+  const sameChart = Boolean(symbol && kronos.identity?.symbol === symbol && kronos.identity?.timeframe === timeframe)
+  const kronosTail = isKronosActive && sameChart && symbol
+    ? getCachedKronosRollout({ symbol, timeframe }, candleEngine.getActiveBars(), 12).at(-1)
     : undefined
+  const kronosMessage = kronos.status === 'downloading'
+    ? `Downloading local model${kronos.totalBytes ? ` ${Math.floor((kronos.downloadedBytes ?? 0) / kronos.totalBytes * 100)}%` : '…'}`
+    : kronos.status === 'loading' ? 'Loading local CPU model…'
+    : kronos.status === 'computing' ? 'Computing local CPU forecast…'
+    : kronos.status === 'error' ? kronos.error
+    : 'Waiting for chart history (12 closed candles minimum)'
+  const activeStatusNote = kronos.status === 'computing' || kronos.status === 'loading'
+    ? 'Updating forecast for new closed candle… (showing prior origin)'
+    : kronos.status === 'error'
+    ? `Replacement failed (${kronos.error}); showing prior origin`
+    : 'Waiting for current candle close'
 
   return (
     <div
@@ -189,10 +204,11 @@ export const ChartLegend: React.FC = () => {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
+            flexWrap: 'wrap',
             gap: 8,
             alignSelf: 'flex-start',
+            maxWidth: 'calc(100vw - 24px)',
             lineHeight: '18px',
-            whiteSpace: 'nowrap',
             backgroundColor: 'rgba(11, 14, 20, 0.72)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
@@ -205,19 +221,43 @@ export const ChartLegend: React.FC = () => {
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#ea580c', fontWeight: 700 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ea580c' }} />
-            Kronos AI (+12 bars)
+            Kronos (+12 bars • Local CPU)
           </span>
           {kronosTail ? (
             <>
-              <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                q50 <strong style={{ color: '#ea580c' }}>{formatPrice(kronosTail.q50)}</strong>
+              <span
+                style={{ color: THEME_TOKENS.colors.textSecondary }}
+                title="Median close trajectory across 6 sampled rollouts; neither median line nor scenario candles is observed future OHLC."
+              >
+                Median line (q50) <strong style={{ color: '#ea580c' }}>{formatPrice(kronosTail.q50)}</strong>
+              </span>
+              <span
+                style={{ color: THEME_TOKENS.colors.textSecondary }}
+                title="One complete sampled trajectory nearest the ensemble median; neither scenario candles nor median line is observed future OHLC."
+              >
+                Scenario candles <strong style={{ color: THEME_TOKENS.colors.textPrimary }}>{formatPrice(kronosTail.close)}</strong>
+              </span>
+              <span
+                style={{ color: THEME_TOKENS.colors.textSecondary }}
+                title="Pooled raw ensemble envelope across 6 sampled trajectories (closes and decoded high/low bounds), not a calibrated 80% probability interval."
+              >
+                Ensemble range (q10–q90) [{formatPrice(kronosTail.q10)} – {formatPrice(kronosTail.q90)}]
               </span>
               <span style={{ color: THEME_TOKENS.colors.textSecondary }}>
-                80% fan [{formatPrice(kronosTail.q10)} – {formatPrice(kronosTail.q90)}]
+                {kronos.contextBars} closed bars • Origin {formatUtcOrigin(kronos.originTimestamp)}
+                {kronos.quality.gapCount > 0 ? ` • ${kronos.quality.gapCount} ${kronos.quality.gapCount === 1 ? 'gap' : 'gaps'} (nominal steps)` : ''}
+                {kronos.quality.missingVolumeCount > 0 ? ` • ${kronos.quality.missingVolumeCount} missing-vol` : ''}
+              </span>
+              <span role="status" style={{ color: THEME_TOKENS.colors.textSecondary }}>
+                {activeStatusNote}
+                {kronos.status === 'error' && <button type="button" onClick={retryKronos}>Retry Kronos</button>}
               </span>
             </>
           ) : (
-            <span style={{ color: THEME_TOKENS.colors.textSecondary }}>computing CPU forecast…</span>
+            <span role="status" style={{ color: THEME_TOKENS.colors.textSecondary }}>
+              {kronosMessage}
+              {kronos.status === 'error' && <button type="button" onClick={retryKronos}>Retry Kronos</button>}
+            </span>
           )}
         </div>
       )}
