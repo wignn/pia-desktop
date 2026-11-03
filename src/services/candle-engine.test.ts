@@ -44,6 +44,50 @@ describe('CandleEngine', () => {
     expect(window.api.market.getCandles).toHaveBeenNthCalledWith(2, { symbol: 'XAUUSD', timeframe: '1h', to: all[61].timestamp, limit: 61 })
   })
 
+  it('ignores revised cross-page overlap during context loading while keeping the recent page authoritative', async () => {
+    const engine = new CandleEngine()
+    const start = Date.UTC(2026, 0, 1)
+    const all = Array.from({ length: 361 }, (_, i) => ({ timestamp: start + i * 3600000, open: 100, high: 105, low: 99, close: 101 }))
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce(all.slice(61)).mockResolvedValueOnce([
+      ...all.slice(0, 61), { ...all[61], timestamp: all[61].timestamp / 1000, close: 103 }
+    ])
+    const loaded = await engine.setSymbolAndTimeframe('XAUUSD', '1h', 361)
+    expect(loaded).toHaveLength(361)
+    expect(loaded[61].close).toBe(101)
+    expect(new Set(loaded.map((bar) => bar.timestamp)).size).toBe(361)
+    expect(engine.getKronosInputState().error).toBeNull()
+  })
+
+  it('ignores revised cross-page overlap during left pagination without poisoning later clean pages', async () => {
+    const engine = new CandleEngine()
+    const start = Date.UTC(2026, 0, 1)
+    const bar = { timestamp: start, open: 100, high: 105, low: 99, close: 101 }
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([bar])
+    await engine.setSymbolAndTimeframe('XAUUSD', '1h')
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([
+      { ...bar, timestamp: start - 3600000 }, { ...bar, timestamp: start / 1000, close: 103 }
+    ])
+    expect((await engine.fetchOlderBars(start)).bars).toHaveLength(1)
+    expect(engine.getActiveBars().at(-1)?.close).toBe(101)
+    expect(engine.getKronosInputState().error).toBeNull()
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([{ ...bar, timestamp: start - 7200000 }])
+    await engine.fetchOlderBars(start - 3600000)
+    expect(engine.getActiveBars()).toHaveLength(3)
+    expect(engine.getKronosInputState().error).toBeNull()
+  })
+
+  it('still blocks conflicting duplicates inside an older page before normalization', async () => {
+    const engine = new CandleEngine()
+    const start = Date.UTC(2026, 0, 1)
+    const bar = { timestamp: start, open: 100, high: 105, low: 99, close: 101 }
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([bar])
+    await engine.setSymbolAndTimeframe('XAUUSD', '1h')
+    const older = { ...bar, timestamp: start - 3600000 }
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([older, { ...older, close: 103 }])
+    await engine.fetchOlderBars(start)
+    expect(engine.getKronosInputState().error).toMatch(/duplicate/i)
+  })
+
   it('keeps recent history when the optional older page fails', async () => {
     const engine = new CandleEngine()
     const recent = Array.from({ length: 300 }, (_, i) => ({ timestamp: Date.UTC(2026, 0, 1) + i * 3600000, open: 100, high: 105, low: 99, close: 101 }))
