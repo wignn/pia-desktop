@@ -257,9 +257,11 @@ export class CandleEngine {
           const oldest = normalizedBars[0].timestamp
           const older = await window.api.market.getCandles({ symbol, timeframe, to: oldest, limit: targetLimit - normalizedBars.length })
           if (this.generationId !== activeGen) return []
-          this.auditKronosBars([...older, ...normalizedBars])
-          normalizedBars = this.normalizeAndSortBars([...older.filter((bar) =>
-            (bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp) < oldest), ...normalizedBars]).slice(-targetLimit)
+          this.auditKronosBars(older)
+          const olderOnly = older.filter((bar) =>
+            (bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp) < oldest)
+          this.auditKronosBars([...olderOnly, ...normalizedBars])
+          normalizedBars = this.normalizeAndSortBars([...olderOnly, ...normalizedBars]).slice(-targetLimit)
         } catch {
           // Keep valid recent history when older candles are unavailable.
         }
@@ -327,8 +329,15 @@ export class CandleEngine {
         return { bars: [], hasMore: false }
       }
 
-      this.auditKronosBars([...rawBars, ...this.activeBars])
-      const normalized = this.normalizeAndSortBars(rawBars)
+      // Audit each response before normalization; overlap across requests is not a conflicting source row.
+      this.auditKronosBars(rawBars)
+      const existingTimestamps = new Set(this.activeBars.map((b) => b.timestamp))
+      const uniqueRawBars = rawBars.filter((bar) => {
+        const timestamp = bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp
+        return timestamp < toTimestamp && !existingTimestamps.has(timestamp)
+      })
+      this.auditKronosBars([...uniqueRawBars, ...this.activeBars])
+      const normalized = this.normalizeAndSortBars(uniqueRawBars)
       const olderBars = normalized.filter((b) => b.timestamp < toTimestamp)
 
       if (olderBars.length === 0) {
@@ -336,7 +345,6 @@ export class CandleEngine {
       }
 
       // Avoid any duplicate timestamps with current active bars
-      const existingTimestamps = new Set(this.activeBars.map((b) => b.timestamp))
       const uniqueOlderBars = olderBars.filter((b) => !existingTimestamps.has(b.timestamp))
 
       if (uniqueOlderBars.length === 0) {
