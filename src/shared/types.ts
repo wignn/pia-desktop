@@ -698,6 +698,14 @@ export interface PiaScriptBacktest {
   profit_factor: number
   max_drawdown: number
   max_drawdown_percent: number
+  sharpe_ratio?: number
+  sortino_ratio?: number
+  expectancy?: number
+  avg_win?: number
+  avg_loss?: number
+  max_consecutive_wins?: number
+  max_consecutive_losses?: number
+  commission_paid?: number
   trades: PiaScriptTrade[]
   equity_curve: number[]
 }

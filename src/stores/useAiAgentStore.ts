@@ -7,16 +7,33 @@
 import { create } from 'zustand'
 import { AIMessage, ToolMessage } from '@langchain/core/messages'
 import { tool } from '@langchain/core/tools'
+import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
 import { ChatOpenAI } from '@langchain/openai'
 import { z } from 'zod'
 import { invoke } from '@tauri-apps/api/core'
 import { AiMcpEngine } from '../services/ai-mcp-engine'
+import { sharedDbService, encodeMarketRegimeVector } from '../services/database'
 import { usePaperTradingStore } from './usePaperTradingStore'
 import { useMarketStore } from './useMarketStore'
 import { getSymbolPrecision } from '@shared/market-utils'
 
 export type AiProviderType = 'builtin' | 'openai'
+export type CommitteeVerdict = 'APPROVED' | 'CAUTION' | 'VETOED'
+
+export interface RiskAssessmentSummary {
+  verdict: CommitteeVerdict
+  accountEquity: number
+  availableBalance: number
+  accountDrawdownPercent: number
+  openPositionsCount: number
+  symbolExposureLots: number
+  riskPercent: number
+  riskAmountUsd: number
+  recommendedLotSize: number
+  rewardRiskRatio: number
+  reasons: string[]
+}
 
 export interface AiAgentConfig {
   provider: AiProviderType
@@ -37,6 +54,10 @@ export interface TradePlanData {
   riskRewardRatio: string
   suggestedLotSize?: number
   rationale?: string
+  committeeVerdict?: CommitteeVerdict
+  riskAmountUsd?: number
+  riskPercent?: number
+  committeeReasons?: string[]
 }
 
 export interface CompactAnalysisSnapshot {
@@ -121,6 +142,7 @@ export function parseThinkingAndContent(raw: string): { thought?: string; conten
 
 interface AiAgentState {
   config: AiAgentConfig
+  committeeMode: boolean
   messages: AiAgentMessage[]
   analysisSnapshots: CompactAnalysisSnapshot[]
   isBusy: boolean
@@ -129,6 +151,7 @@ interface AiAgentState {
   activeAbortController: AbortController | null
 
   setConfigOpen: (open: boolean) => void
+  setCommitteeMode: (enabled: boolean) => void
   updateConfig: (updates: Partial<AiAgentConfig>) => void
   hydrateProviderCredentials: () => Promise<void>
   applyPreset: (presetKey: 'openai' | 'deepseek' | 'openrouter' | 'groq' | 'ollama') => void
@@ -213,7 +236,41 @@ export function createCompactAnalysisSnapshot(
     } else if (tool.name === 'get_news_sentiment') {
       if (result.available === true && typeof result.score === 'number') evidence.newsScore = result.score
       else unavailable.push('news sentiment')
+    } else if (tool.name === 'run_piascript_backtest') {
+      const metrics = result.metrics && typeof result.metrics === 'object' ? result.metrics : {}
+      if (typeof metrics.sharpeRatio === 'number' && Number.isFinite(metrics.sharpeRatio)) {
+        evidence.sharpeRatio = metrics.sharpeRatio
+      }
+      if (typeof metrics.winRate === 'number' && Number.isFinite(metrics.winRate)) {
+        evidence.winRate = metrics.winRate
+      }
+      if (typeof metrics.profitFactor === 'number' && Number.isFinite(metrics.profitFactor)) {
+        evidence.profitFactor = metrics.profitFactor
+      }
+    } else if (tool.name === 'get_kronos_forecast') {
+      if (typeof result.bias === 'string') {
+        evidence.kronosBias = result.bias
+      }
+      if (typeof result.expectedReturnPercent === 'number' && Number.isFinite(result.expectedReturnPercent)) {
+        evidence.kronosExpectedReturn = result.expectedReturnPercent
+      }
+    } else if (tool.name === 'search_similar_market_regimes') {
+      const stats = result.analogueStats && typeof result.analogueStats === 'object' ? result.analogueStats : {}
+      if (
+        typeof stats.historicalWinRate === 'number' &&
+        Number.isFinite(stats.historicalWinRate) &&
+        typeof stats.closedTradeCount === 'number' &&
+        stats.closedTradeCount > 0
+      ) {
+        evidence.historicalWinRate = stats.historicalWinRate
+      }
     }
+  }
+  if (tradePlan?.committeeVerdict) {
+    evidence.committeeVerdict = tradePlan.committeeVerdict
+  }
+  if (typeof tradePlan?.suggestedLotSize === 'number' && Number.isFinite(tradePlan.suggestedLotSize)) {
+    evidence.recommendedLotSize = tradePlan.suggestedLotSize
   }
   if (!('rsi14' in evidence)) unavailable.push('RSI')
   if (!('atr14' in evidence)) unavailable.push('ATR')
@@ -363,6 +420,41 @@ function createPiaAgentTools(currentSymbol: string) {
       name: 'execute_full_chart_analysis',
       description: 'Run full market and chart analysis; may draw computed levels onto the chart.',
       schema: z.object({ symbol: symbolField, applyToChart: z.boolean().optional() })
+    }),
+    tool((args) => AiMcpEngine.executeTool('run_piascript_backtest', args), {
+      name: 'run_piascript_backtest',
+      description: 'Compile and backtest a custom PiaScript quantitative strategy on the active symbol, auto-applying indicator plots and BUY/SELL/CLOSE signals onto the chart and Strategy Tester while returning institutional metrics (Sharpe, Sortino, Expectancy, Profit Factor, Max Drawdown).',
+      schema: z.object({
+        symbol: symbolField,
+        script: z.string().min(1).max(8000),
+        initialCapital: z.number().min(100).max(100_000_000).optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('get_kronos_forecast', args), {
+      name: 'get_kronos_forecast',
+      description: 'Retrieve Kronos AI multi-step probabilistic candlestick forecast (1 to 12 future bars) with q10/q50/q90 quantile bands and directional bias.',
+      schema: z.object({
+        symbol: symbolField,
+        timeframe: z.string().max(16).optional(),
+        horizon: z.number().int().min(1).max(12).optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('search_similar_market_regimes', args), {
+      name: 'search_similar_market_regimes',
+      description: 'Search local SQLite Market Memory via 7D Cosine Similarity (K-NN) to find historical setups with similar RSI, ATR%, EMA spread, orderbook imbalance, sentiment, and Kronos return, returning empirical win rate and realized R-multiples.',
+      schema: z.object({
+        symbol: symbolField,
+        k: z.number().int().min(1).max(50).optional(),
+        sameSymbolOnly: z.boolean().optional()
+      })
+    }),
+    tool((args) => AiMcpEngine.executeTool('audit_trading_journal', args), {
+      name: 'audit_trading_journal',
+      description: 'Audit closed paper-trade episodes in local SQLite Market Memory to compute win rate, profit factor, average realized R, long vs short accuracy, streak, and behavioral risk insights.',
+      schema: z.object({
+        symbol: z.string().max(32).optional(),
+        limit: z.number().int().min(1).max(500).optional()
+      })
     })
   ]
 }
@@ -608,8 +700,681 @@ export function hasExplicitTradeIntent(text: string): boolean {
   )
 }
 
+/**
+ * Smart Conditional Router (Option A):
+ * Routes fast utility commands (clear drawings, orderbook-only, sentiment-only, short chat)
+ * to single-pass execution while routing trade setup requests, backtest/forecast requests,
+ * committee queries, or forced committeeMode prompts to the 3-node StateGraph.
+ */
+export function shouldRunTradingCommittee(prompt: string, committeeMode = false): boolean {
+  const trimmed = prompt.trim()
+  if (!trimmed) return false
+  const lower = trimmed.toLowerCase()
+
+  // Destructive/utility chart clear commands always take the fast path
+  const isClearCommand =
+    /\b(clear|reset|remove|hapus|bersihkan)\b/i.test(lower) &&
+    /\b(draw|drawing|drawings|chart|garis|level|zone|trendline|semua)\b/i.test(lower)
+  if (isClearCommand) return false
+
+  if (committeeMode) return true
+
+  if (hasExplicitTradeIntent(trimmed)) return true
+
+  return /\b(committee|komite|multi-agent|backtest|piascript|kronos|forecast|prediksi|analisis\s+lengkap|full\s+analysis)\b/i.test(
+    lower
+  )
+}
+
+/**
+ * Node 3 Risk & Execution Officer calculator:
+ * Evaluates live paper-trading equity, unrealized PnL, drawdown, 1% equity risk position sizing,
+ * cent-account multiplier (100x), and institutional verdict guardrails (APPROVED / CAUTION / VETOED).
+ */
+export function computeCommitteeRiskAssessment(params: {
+  symbol: string
+  bias: 'LONG' | 'SHORT' | 'NEUTRAL'
+  entry: number
+  stopLoss: number
+  takeProfit1: number
+  sharpeRatio?: number
+  winRate?: number
+  kronosBias?: string
+  historicalWinRate?: number
+  historicalSampleCount?: number
+}): RiskAssessmentSummary {
+  const paperState = usePaperTradingStore.getState()
+  const marketPrices = useMarketStore.getState().prices || {}
+  const account = paperState.account
+  const isCent = (account.accountType || paperState.accountType) === 'cent'
+  const multiplier = isCent ? 100 : 1
+
+  let positionsValue = 0
+  let symbolExposureLots = 0
+  const targetSym = params.symbol.toUpperCase()
+
+  for (const pos of account.positions || []) {
+    const markPrice = marketPrices[pos.symbol]?.price ?? pos.entryPrice
+    const posMult = pos.accountType === 'cent' ? 100 : multiplier
+    const originalNotional = pos.size * pos.entryPrice * posMult
+    const priceDiff = pos.side === 'buy' ? markPrice - pos.entryPrice : pos.entryPrice - markPrice
+    const unrealizedPnl = priceDiff * pos.size * posMult
+    positionsValue += originalNotional + unrealizedPnl
+    if (pos.symbol.toUpperCase() === targetSym) {
+      symbolExposureLots += pos.size
+    }
+  }
+
+  const availableBalance = Math.max(0, Number.isFinite(account.balance) ? account.balance : 0)
+  const accountEquity = Math.max(0, Number((availableBalance + positionsValue).toFixed(2)))
+  const initialBalance = Math.max(1, Number.isFinite(account.initialBalance) && account.initialBalance > 0 ? account.initialBalance : 100000)
+  const accountDrawdownPercent = Math.max(0, Number((((initialBalance - accountEquity) / initialBalance) * 100).toFixed(2)))
+
+  const riskPercent = 1.0
+  const targetRiskUsd = accountEquity * (riskPercent / 100)
+  const entry = Number.isFinite(params.entry) && params.entry > 0 ? params.entry : 0
+  const stopLoss = Number.isFinite(params.stopLoss) && params.stopLoss > 0 ? params.stopLoss : entry
+  const takeProfit1 = Number.isFinite(params.takeProfit1) && params.takeProfit1 > 0 ? params.takeProfit1 : entry
+
+  const stopDistance = Math.abs(entry - stopLoss)
+  const rewardDistance = Math.abs(takeProfit1 - entry)
+  const rewardRiskRatio = stopDistance > 0 ? Number((rewardDistance / stopDistance).toFixed(2)) : 0
+
+  const rawRiskLots = stopDistance > 0 ? targetRiskUsd / (stopDistance * multiplier) : 0.01
+  const maxMarginLots = entry > 0 ? (availableBalance * 0.9) / (entry * multiplier) : 0.01
+  const unclampedLots = stopDistance > 0 ? Math.min(rawRiskLots, Math.max(0.01, maxMarginLots), 50) : 0.01
+  const recommendedLotSize = Math.max(0.01, Math.floor(unclampedLots * 100 + 1e-9) / 100)
+  const riskAmountUsd = Number((recommendedLotSize * stopDistance * multiplier).toFixed(2))
+
+  const reasons: string[] = []
+  let verdict: CommitteeVerdict = 'APPROVED'
+
+  const minNotionalRequired = entry > 0 ? 0.01 * entry * multiplier : 0
+  if (accountDrawdownPercent >= 15) {
+    verdict = 'VETOED'
+    reasons.push(`Account drawdown (${accountDrawdownPercent.toFixed(1)}%) exceeds 15% maximum threshold`)
+  }
+  if (rewardRiskRatio > 0 && rewardRiskRatio < 1.2) {
+    verdict = 'VETOED'
+    reasons.push(`Reward:Risk ratio (1:${rewardRiskRatio.toFixed(2)}) is below minimum 1:1.2 guardrail`)
+  }
+  if (entry > 0 && availableBalance < minNotionalRequired) {
+    verdict = 'VETOED'
+    reasons.push(`Insufficient free balance (${availableBalance.toFixed(2)}) for 0.01 lot margin`)
+  }
+
+  if (verdict !== 'VETOED') {
+    if (rewardRiskRatio >= 1.2 && rewardRiskRatio < 1.5) {
+      verdict = 'CAUTION'
+      reasons.push(`Reward:Risk (1:${rewardRiskRatio.toFixed(2)}) is below preferred 1:1.5 institutional target`)
+    }
+    if (params.sharpeRatio !== undefined && params.sharpeRatio < 0) {
+      verdict = 'CAUTION'
+      reasons.push(`Backtest Sharpe ratio (${params.sharpeRatio.toFixed(2)}) is negative on active bars`)
+    }
+    if (
+      params.kronosBias &&
+      ((params.bias === 'LONG' && params.kronosBias.toUpperCase() === 'BEARISH') ||
+        (params.bias === 'SHORT' && params.kronosBias.toUpperCase() === 'BULLISH'))
+    ) {
+      verdict = 'CAUTION'
+      reasons.push(`Kronos probabilistic forecast (${params.kronosBias}) diverges from ${params.bias} technical bias`)
+    }
+    if (accountDrawdownPercent >= 8) {
+      verdict = 'CAUTION'
+      reasons.push(`Elevated portfolio drawdown (${accountDrawdownPercent.toFixed(1)}%) requires reduced sizing`)
+    }
+    if (
+      params.historicalSampleCount !== undefined &&
+      params.historicalSampleCount >= 3 &&
+      params.historicalWinRate !== undefined &&
+      Number.isFinite(params.historicalWinRate)
+    ) {
+      if (params.historicalWinRate < 35) {
+        verdict = 'CAUTION'
+        reasons.push(
+          `Historical Memory RAG: Low win rate (${params.historicalWinRate.toFixed(0)}% across ${params.historicalSampleCount} similar setups)`
+        )
+      } else if (params.historicalWinRate >= 60) {
+        reasons.push(
+          `Historical Memory RAG: Strong win rate (${params.historicalWinRate.toFixed(0)}% across ${params.historicalSampleCount} similar setups)`
+        )
+      }
+    }
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(
+      `R:R 1:${rewardRiskRatio.toFixed(2)} and 1% equity sizing (${recommendedLotSize} Lot) satisfy all risk guardrails`
+    )
+  }
+
+  return {
+    verdict,
+    accountEquity,
+    availableBalance,
+    accountDrawdownPercent,
+    openPositionsCount: (account.positions || []).length,
+    symbolExposureLots: Number(symbolExposureLots.toFixed(2)),
+    riskPercent,
+    riskAmountUsd,
+    recommendedLotSize,
+    rewardRiskRatio,
+    reasons
+  }
+}
+
+export async function runTradingCommitteeGraph(params: {
+  prompt: string
+  symbol: string
+  provider: AiProviderType
+  config: AiAgentConfig
+  priorMessages?: Array<{ role: string; content: string }>
+  abortSignal?: AbortSignal
+  onStepUpdate?: (steps: AgentStepTrace[], statusMessage: string) => void
+}): Promise<{
+  content: string
+  thought: string
+  steps: AgentStepTrace[]
+  toolCalls: ToolCallExecution[]
+  tradePlan?: TradePlanData
+  riskAssessment: RiskAssessmentSummary
+}> {
+  const { prompt, symbol, provider, config, abortSignal, onStepUpdate } = params
+  const timeframe = useMarketStore.getState().timeframe || '15m'
+
+  const CommitteeState = Annotation.Root({
+    technicalAnalysis: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    marketSnapshot: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    draftPlan: Annotation<TradePlanData | undefined>({ reducer: (_x, y) => y, default: () => undefined }),
+    backtestResult: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    kronosResult: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    sentimentResult: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    memoryResult: Annotation<any>({ reducer: (_x, y) => y, default: () => null }),
+    steps: Annotation<AgentStepTrace[]>({ reducer: (x, y) => [...x, ...y], default: () => [] }),
+    riskAssessment: Annotation<RiskAssessmentSummary | null>({ reducer: (_x, y) => y, default: () => null }),
+    finalContent: Annotation<string>({ reducer: (_x, y) => y, default: () => '' }),
+    finalThought: Annotation<string>({ reducer: (_x, y) => y, default: () => '' })
+  })
+
+  const accumulatedSteps: AgentStepTrace[] = []
+
+  const graph = new StateGraph(CommitteeState)
+    .addNode('technical_analyst', async () => {
+      if (abortSignal?.aborted) throw new DOMException('Generation stopped', 'AbortError')
+      const startTs = performance.now()
+      onStepUpdate?.([...accumulatedSteps], '[1/3] Technical Analyst: Mapping structure & chart levels...')
+
+      const toolCalls: ToolCallExecution[] = []
+      let technicalAnalysis: any = null
+      let marketSnapshot: any = null
+
+      const t1 = performance.now()
+      try {
+        technicalAnalysis = await AiMcpEngine.executeFullChartAnalysis(symbol, true)
+        toolCalls.push({
+          id: `tc-tech-full-${Date.now()}`,
+          name: 'execute_full_chart_analysis',
+          args: { symbol, applyToChart: true },
+          result: technicalAnalysis,
+          durationMs: Math.max(1, Math.round(performance.now() - t1))
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-tech-full-${Date.now()}`,
+          name: 'execute_full_chart_analysis',
+          args: { symbol, applyToChart: true },
+          result: { error: err?.message || 'Technical analysis failed' },
+          durationMs: Math.max(1, Math.round(performance.now() - t1)),
+          isError: true
+        })
+      }
+
+      const t2 = performance.now()
+      try {
+        marketSnapshot = await AiMcpEngine.getMarketSnapshot(symbol)
+        toolCalls.push({
+          id: `tc-tech-snap-${Date.now()}`,
+          name: 'get_market_snapshot',
+          args: { symbol },
+          result: marketSnapshot,
+          durationMs: Math.max(1, Math.round(performance.now() - t2))
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-tech-snap-${Date.now()}`,
+          name: 'get_market_snapshot',
+          args: { symbol },
+          result: { error: err?.message || 'Snapshot unavailable' },
+          durationMs: Math.max(1, Math.round(performance.now() - t2)),
+          isError: true
+        })
+      }
+
+      const livePrice =
+        useMarketStore.getState().prices[symbol]?.price ||
+        marketSnapshot?.price ||
+        technicalAnalysis?.currentPrice ||
+        100
+      const { pricePrecision } = getSymbolPrecision(symbol, undefined, livePrice)
+      const roundP = (n: number) => Number(Math.round(Number(n + 'e' + pricePrecision)) + 'e-' + pricePrecision)
+
+      const rawPlan = technicalAnalysis?.tradePlan
+      const bias: 'LONG' | 'SHORT' | 'NEUTRAL' = rawPlan?.bias || 'LONG'
+      const atr = technicalAnalysis?.indicators?.atr14 || livePrice * 0.01
+      const entry = roundP(rawPlan?.entry ?? rawPlan?.suggestedEntry ?? livePrice)
+      const stopLoss = roundP(rawPlan?.stopLoss ?? (bias === 'SHORT' ? entry + atr : entry - atr))
+      const takeProfit1 = roundP(rawPlan?.takeProfit1 ?? (bias === 'SHORT' ? entry - atr * 2 : entry + atr * 2))
+      const takeProfit2 = roundP(rawPlan?.takeProfit2 ?? (bias === 'SHORT' ? entry - atr * 3 : entry + atr * 3))
+      const stopDist = Math.abs(entry - stopLoss)
+      const rrRatio = stopDist > 0 ? `1:${(Math.abs(takeProfit1 - entry) / stopDist).toFixed(2)}` : '1:2.00'
+
+      const draftPlan: TradePlanData = {
+        symbol,
+        bias,
+        orderType: rawPlan?.orderType || (bias === 'SHORT' ? 'SELL_LIMIT' : 'BUY_LIMIT'),
+        entry,
+        stopLoss,
+        takeProfit1,
+        takeProfit2,
+        riskRewardRatio: rawPlan?.riskRewardRatio || rrRatio,
+        rationale: rawPlan?.rationale || `${technicalAnalysis?.trend || 'Structural'} setup mapped by Technical Analyst`
+      }
+
+      const step1: AgentStepTrace = {
+        step: 1,
+        title: '[1/3] Technical & Structure Analyst',
+        thought: `Structure: ${String(technicalAnalysis?.trend || 'NEUTRAL').toUpperCase()} | Spot: ${formatCleanPrice(livePrice, pricePrecision)} | RSI(14): ${technicalAnalysis?.indicators?.rsi14 ?? '--'} | ATR(14): ${technicalAnalysis?.indicators?.atr14 ?? '--'} | Candidate ${draftPlan.bias} @ ${formatCleanPrice(draftPlan.entry, pricePrecision)} (SL ${formatCleanPrice(draftPlan.stopLoss, pricePrecision)}, TP1 ${formatCleanPrice(draftPlan.takeProfit1, pricePrecision)})`,
+        toolCalls,
+        durationMs: Math.max(1, Math.round(performance.now() - startTs)),
+        timestamp: Date.now()
+      }
+      accumulatedSteps.push(step1)
+      onStepUpdate?.([...accumulatedSteps], '[2/3] Quant & Forecast Specialist: Running PiaScript backtest & Kronos rollout...')
+
+      return {
+        technicalAnalysis,
+        marketSnapshot,
+        draftPlan,
+        steps: [step1]
+      }
+    })
+    .addNode('quant_forecast_specialist', async () => {
+      if (abortSignal?.aborted) throw new DOMException('Generation stopped', 'AbortError')
+      const startTs = performance.now()
+      const toolCalls: ToolCallExecution[] = []
+      let backtestResult: any = null
+      let kronosResult: any = null
+      let sentimentResult: any = null
+
+      const script = [
+        'fast = ema(close, 8)',
+        'slow = ema(close, 21)',
+        'mom = rsi(close, 14)',
+        'plot(fast, color="#38bdf8", title="EMA 8")',
+        'plot(slow, color="#f59e0b", title="EMA 21")',
+        'if crossover(fast, slow):',
+        '    buy(1)',
+        'if crossunder(fast, slow):',
+        '    close()'
+      ].join('\n')
+
+      const initialCap = Math.max(1000, usePaperTradingStore.getState().account.initialBalance || 100000)
+
+      const tBt = performance.now()
+      try {
+        backtestResult = await AiMcpEngine.executeTool('run_piascript_backtest', {
+          symbol,
+          script,
+          initialCapital: initialCap
+        })
+        toolCalls.push({
+          id: `tc-quant-bt-${Date.now()}`,
+          name: 'run_piascript_backtest',
+          args: { symbol, initialCapital: initialCap },
+          result: backtestResult,
+          durationMs: Math.max(1, Math.round(performance.now() - tBt)),
+          isError: Boolean(backtestResult && backtestResult.success === false)
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-quant-bt-${Date.now()}`,
+          name: 'run_piascript_backtest',
+          args: { symbol, initialCapital: initialCap },
+          result: { error: err?.message || 'Backtest execution error' },
+          durationMs: Math.max(1, Math.round(performance.now() - tBt)),
+          isError: true
+        })
+      }
+
+      const tKr = performance.now()
+      try {
+        kronosResult = await AiMcpEngine.executeTool('get_kronos_forecast', {
+          symbol,
+          timeframe,
+          horizon: 6
+        })
+        toolCalls.push({
+          id: `tc-quant-kr-${Date.now()}`,
+          name: 'get_kronos_forecast',
+          args: { symbol, timeframe, horizon: 6 },
+          result: kronosResult,
+          durationMs: Math.max(1, Math.round(performance.now() - tKr))
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-quant-kr-${Date.now()}`,
+          name: 'get_kronos_forecast',
+          args: { symbol, timeframe, horizon: 6 },
+          result: { error: err?.message || 'Kronos forecast unavailable' },
+          durationMs: Math.max(1, Math.round(performance.now() - tKr)),
+          isError: true
+        })
+      }
+
+      const tSent = performance.now()
+      try {
+        sentimentResult = await AiMcpEngine.getNewsSentiment(symbol, 6)
+        toolCalls.push({
+          id: `tc-quant-sent-${Date.now()}`,
+          name: 'get_news_sentiment',
+          args: { symbol, limit: 6 },
+          result: sentimentResult,
+          durationMs: Math.max(1, Math.round(performance.now() - tSent))
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-quant-sent-${Date.now()}`,
+          name: 'get_news_sentiment',
+          args: { symbol, limit: 6 },
+          result: { error: err?.message || 'News sentiment unavailable' },
+          durationMs: Math.max(1, Math.round(performance.now() - tSent)),
+          isError: true
+        })
+      }
+
+      let memoryResult: any = null
+      const tMem = performance.now()
+      try {
+        memoryResult = await AiMcpEngine.executeTool('search_similar_market_regimes', {
+          symbol,
+          k: 5,
+          sameSymbolOnly: true
+        })
+        toolCalls.push({
+          id: `tc-quant-mem-${Date.now()}`,
+          name: 'search_similar_market_regimes',
+          args: { symbol, k: 5, sameSymbolOnly: true },
+          result: memoryResult,
+          durationMs: Math.max(1, Math.round(performance.now() - tMem))
+        })
+      } catch (err: any) {
+        toolCalls.push({
+          id: `tc-quant-mem-${Date.now()}`,
+          name: 'search_similar_market_regimes',
+          args: { symbol, k: 5, sameSymbolOnly: true },
+          result: { error: err?.message || 'Market memory search unavailable' },
+          durationMs: Math.max(1, Math.round(performance.now() - tMem)),
+          isError: true
+        })
+      }
+
+      const metrics = backtestResult?.metrics || {}
+      const histWinRate = memoryResult?.analogueStats?.historicalWinRate
+      const histClosedCount = memoryResult?.analogueStats?.closedTradeCount ?? 0
+      const step2: AgentStepTrace = {
+        step: 2,
+        title: '[2/3] Quant & Kronos Forecast Specialist',
+        thought: `PiaScript Backtest: Sharpe ${metrics.sharpeRatio ?? '--'} | Sortino ${metrics.sortinoRatio ?? '--'} | Win Rate ${metrics.winRate !== undefined ? `${metrics.winRate}%` : '--'} | Expectancy $${metrics.expectancy ?? '--'} | Kronos 6-Bar Bias: ${kronosResult?.bias ?? 'UNAVAILABLE'} (q50: ${kronosResult?.quantiles?.q50 ?? '--'}) | News Score: ${sentimentResult?.score ?? '--'} | Memory RAG: ${histClosedCount > 0 ? `${histWinRate}% (${histClosedCount} setups)` : 'Cold start'}`,
+        toolCalls,
+        durationMs: Math.max(1, Math.round(performance.now() - startTs)),
+        timestamp: Date.now()
+      }
+      accumulatedSteps.push(step2)
+      onStepUpdate?.([...accumulatedSteps], '[3/3] Risk & Execution Officer: Computing 1% equity sizing & guardrails...')
+
+      return {
+        backtestResult,
+        kronosResult,
+        sentimentResult,
+        memoryResult,
+        steps: [step2]
+      }
+    })
+    .addNode('risk_execution_officer', async (state) => {
+      if (abortSignal?.aborted) throw new DOMException('Generation stopped', 'AbortError')
+      const startTs = performance.now()
+      const candidate = state.draftPlan || {
+        symbol,
+        bias: 'LONG' as const,
+        orderType: 'BUY_LIMIT' as const,
+        entry: 100,
+        stopLoss: 98,
+        takeProfit1: 104,
+        takeProfit2: 106,
+        riskRewardRatio: '1:2.00'
+      }
+
+      const metrics = state.backtestResult?.metrics || {}
+      const analogueStats = state.memoryResult?.analogueStats
+      const riskAssessment = computeCommitteeRiskAssessment({
+        symbol,
+        bias: candidate.bias,
+        entry: candidate.entry,
+        stopLoss: candidate.stopLoss,
+        takeProfit1: candidate.takeProfit1,
+        sharpeRatio: typeof metrics.sharpeRatio === 'number' ? metrics.sharpeRatio : undefined,
+        winRate: typeof metrics.winRate === 'number' ? metrics.winRate : undefined,
+        kronosBias: typeof state.kronosResult?.bias === 'string' ? state.kronosResult.bias : undefined,
+        historicalWinRate:
+          typeof analogueStats?.historicalWinRate === 'number' ? analogueStats.historicalWinRate : undefined,
+        historicalSampleCount:
+          typeof analogueStats?.closedTradeCount === 'number' ? analogueStats.closedTradeCount : undefined
+      })
+
+      const enrichedPlan: TradePlanData = {
+        ...candidate,
+        suggestedLotSize: riskAssessment.recommendedLotSize,
+        riskRewardRatio: `1:${riskAssessment.rewardRiskRatio.toFixed(2)}`,
+        committeeVerdict: riskAssessment.verdict,
+        riskAmountUsd: riskAssessment.riskAmountUsd,
+        riskPercent: riskAssessment.riskPercent,
+        committeeReasons: riskAssessment.reasons
+      }
+
+      try {
+        const indicators = state.technicalAnalysis?.indicators || {}
+        const featureVec = encodeMarketRegimeVector({
+          price: state.technicalAnalysis?.currentPrice || enrichedPlan.entry,
+          rsi14: indicators.rsi14,
+          atr14: indicators.atr14,
+          ema20: indicators.ema20,
+          ema50: indicators.ema50,
+          orderbookImbalance: state.marketSnapshot?.orderbook?.imbalanceRatio,
+          newsScore: state.sentimentResult?.score,
+          kronosExpectedReturnPercent: state.kronosResult?.expectedReturnPercent,
+          trendDirection: enrichedPlan.bias
+        })
+        sharedDbService.saveMarketMemoryEpisode({
+          id: `ep-committee-${symbol}-${Date.now()}`,
+          symbol,
+          timeframe,
+          source: 'committee_snapshot',
+          side: enrichedPlan.bias,
+          entryPrice: enrichedPlan.entry,
+          stopLoss: enrichedPlan.stopLoss,
+          takeProfit: enrichedPlan.takeProfit1,
+          size: enrichedPlan.suggestedLotSize,
+          outcome: 'OPEN',
+          featureVector: featureVec,
+          metadata: {
+            verdict: riskAssessment.verdict,
+            sharpeRatio: metrics.sharpeRatio,
+            kronosBias: state.kronosResult?.bias,
+            rsi14: indicators.rsi14
+          },
+          createdAt: Date.now()
+        })
+      } catch {
+        // Non-blocking memory snapshot
+      }
+
+      await AiMcpEngine.plotTradePlanLevels(enrichedPlan).catch(() => false)
+
+      const step3: AgentStepTrace = {
+        step: 3,
+        title: '[3/3] Risk & Execution Officer',
+        thought: `Verdict: ${riskAssessment.verdict} | Equity: $${riskAssessment.accountEquity.toLocaleString()} (DD: ${riskAssessment.accountDrawdownPercent}%) | 1% Risk Sizing: ${riskAssessment.recommendedLotSize} Lot ($${riskAssessment.riskAmountUsd} risk) | Guardrails: ${riskAssessment.reasons.join('; ')}`,
+        toolCalls: [
+          {
+            id: `tc-risk-${Date.now()}`,
+            name: 'evaluate_portfolio_risk_and_sizing',
+            args: { symbol, riskPercent: 1.0, entry: enrichedPlan.entry, stopLoss: enrichedPlan.stopLoss },
+            result: riskAssessment,
+            durationMs: Math.max(1, Math.round(performance.now() - startTs))
+          }
+        ],
+        durationMs: Math.max(1, Math.round(performance.now() - startTs)),
+        timestamp: Date.now()
+      }
+      accumulatedSteps.push(step3)
+      onStepUpdate?.([...accumulatedSteps], 'Synthesizing final Trading Committee briefing...')
+
+      const { pricePrecision } = getSymbolPrecision(symbol, undefined, enrichedPlan.entry)
+      const formatP = (n?: number) => formatCleanPrice(n, pricePrecision)
+      const isIndonesian =
+        /(?:menurut|kamu|anda|saya|suport|support|resis|resist|resistance|supply|demand|mana|paling|kuat|lemah|kenapa|mengapa|apakah|bisa|gimana|bagaimana|naik|turun|arah|tren|trend|hari|ini|kira|sarannya|dong|lah|kah|kok|ya|nih|tuh|kan|dan|di|ke|dari|untuk|yang|ini|itu|ada|gak|nggak|enggak|tidak|mau|akan|udah|sudah|belum|lagi|sedang|terus|sekarang|posisi|beli|jual|pasang|taktis|halo|hai|tolong|masuk|ambil|order|open|jenuh|koreksi|pantulan|buatkan|komite|analisis|prediksi)/i.test(
+          prompt
+        )
+
+      let finalContent = ''
+      if (provider === 'openai' && (config.apiKey || config.baseUrl.includes('localhost') || config.baseUrl.includes('127.0.0.1'))) {
+        try {
+          const normalizedBaseUrl = config.baseUrl.trim().replace(/\/+$/, '')
+          const endpoint = `${normalizedBaseUrl}/chat/completions`
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+          if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`
+          const res = await universalFetch(endpoint, {
+            method: 'POST',
+            headers,
+            signal: abortSignal,
+            body: JSON.stringify({
+              model: config.model,
+              temperature: config.temperature ?? 0.1,
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are the Chair of the PIA Institutional Trading Committee for ${symbol}. Synthesize the 3-specialist findings (1. Technical & Structure Analyst, 2. Quant & Kronos Forecast Specialist, 3. Risk & Execution Officer) into a concise executive briefing in the user's language.`
+                },
+                {
+                  role: 'user',
+                  content: JSON.stringify({
+                    userPrompt: prompt,
+                    technical: {
+                      trend: state.technicalAnalysis?.trend,
+                      indicators: state.technicalAnalysis?.indicators,
+                      levels: state.technicalAnalysis?.levels
+                    },
+                    quant: {
+                      backtestMetrics: metrics,
+                      kronosForecast: {
+                        bias: state.kronosResult?.bias,
+                        expectedReturnPercent: state.kronosResult?.expectedReturnPercent,
+                        quantiles: state.kronosResult?.quantiles
+                      }
+                    },
+                    riskAndExecution: {
+                      verdict: riskAssessment.verdict,
+                      recommendedLotSize: riskAssessment.recommendedLotSize,
+                      riskAmountUsd: riskAssessment.riskAmountUsd,
+                      accountEquity: riskAssessment.accountEquity,
+                      reasons: riskAssessment.reasons,
+                      tradePlan: enrichedPlan
+                    }
+                  })
+                }
+              ]
+            })
+          })
+          if (res.ok) {
+            const data = await res.json()
+            const rawText = data?.choices?.[0]?.message?.content || ''
+            finalContent = parseThinkingAndContent(rawText).content.trim()
+          }
+        } catch {
+          // Fall back to deterministic institutional formatter below if LLM synthesis fails
+        }
+      }
+
+      if (!finalContent) {
+        const orderLabel = (enrichedPlan.orderType || 'BUY_LIMIT').replace('_', ' ')
+        finalContent = isIndonesian
+          ? `### Keputusan Komite Kuantitatif (${symbol}): **${riskAssessment.verdict}**
+
+#### 1. Technical & Structure Analyst
+- **Struktur Tren:** **${String(state.technicalAnalysis?.trend || 'NEUTRAL').toUpperCase()}** | RSI(14): **${state.technicalAnalysis?.indicators?.rsi14 ?? '--'}** | ATR(14): **${formatP(state.technicalAnalysis?.indicators?.atr14)}**
+- **Level Kunci:** Entry **${formatP(enrichedPlan.entry)}** (${orderLabel}) | Stop Loss **${formatP(enrichedPlan.stopLoss)}** | Target 1 **${formatP(enrichedPlan.takeProfit1)}** | Target 2 **${formatP(enrichedPlan.takeProfit2)}**
+
+#### 2. Quant & Kronos Forecast Specialist
+- **PiaScript Backtest (Otomatis Diterapkan ke Chart):** Sharpe Ratio **${metrics.sharpeRatio ?? '--'}** | Sortino **${metrics.sortinoRatio ?? '--'}** | Win Rate **${metrics.winRate !== undefined ? `${metrics.winRate}%` : '--'}** | Expectancy **$${metrics.expectancy ?? '--'}**
+- **Proyeksi Probabilistik Kronos (6 Bar):** Bias **${state.kronosResult?.bias ?? 'N/A'}** (${state.kronosResult?.expectedReturnPercent !== undefined ? `${state.kronosResult.expectedReturnPercent > 0 ? '+' : ''}${state.kronosResult.expectedReturnPercent}%` : '--'}) | Kuantil \`q10: ${formatP(state.kronosResult?.quantiles?.q10)} | q50: ${formatP(state.kronosResult?.quantiles?.q50)} | q90: ${formatP(state.kronosResult?.quantiles?.q90)}\`
+
+#### 3. Risk & Execution Officer
+- **Status Guardrail:** **${riskAssessment.verdict}** — ${riskAssessment.reasons.join(' • ')}
+- **Ekuitas Portofolio:** **$${riskAssessment.accountEquity.toLocaleString()}** (Drawdown: **${riskAssessment.accountDrawdownPercent}%**)
+- **Ukuran Posisi Dinamis (1% Risiko Ekuitas):** **${riskAssessment.recommendedLotSize} Lot** (Risiko terukur: **$${riskAssessment.riskAmountUsd.toFixed(2)}** | R:R **${enrichedPlan.riskRewardRatio}**)`
+          : `### Institutional Trading Committee Verdict (${symbol}): **${riskAssessment.verdict}**
+
+#### 1. Technical & Structure Analyst
+- **Market Structure:** **${String(state.technicalAnalysis?.trend || 'NEUTRAL').toUpperCase()}** | RSI(14): **${state.technicalAnalysis?.indicators?.rsi14 ?? '--'}** | ATR(14): **${formatP(state.technicalAnalysis?.indicators?.atr14)}**
+- **Key Levels:** Entry **${formatP(enrichedPlan.entry)}** (${orderLabel}) | Stop Loss **${formatP(enrichedPlan.stopLoss)}** | Target 1 **${formatP(enrichedPlan.takeProfit1)}** | Target 2 **${formatP(enrichedPlan.takeProfit2)}**
+
+#### 2. Quant & Kronos Forecast Specialist
+- **PiaScript Backtest (Synced to Chart):** Sharpe **${metrics.sharpeRatio ?? '--'}** | Sortino **${metrics.sortinoRatio ?? '--'}** | Win Rate **${metrics.winRate !== undefined ? `${metrics.winRate}%` : '--'}** | Expectancy **$${metrics.expectancy ?? '--'}**
+- **Kronos 6-Bar Rollout:** Bias **${state.kronosResult?.bias ?? 'N/A'}** (${state.kronosResult?.expectedReturnPercent !== undefined ? `${state.kronosResult.expectedReturnPercent > 0 ? '+' : ''}${state.kronosResult.expectedReturnPercent}%` : '--'}) | Quantiles \`q10: ${formatP(state.kronosResult?.quantiles?.q10)} | q50: ${formatP(state.kronosResult?.quantiles?.q50)} | q90: ${formatP(state.kronosResult?.quantiles?.q90)}\`
+
+#### 3. Risk & Execution Officer
+- **Guardrail Status:** **${riskAssessment.verdict}** — ${riskAssessment.reasons.join(' • ')}
+- **Portfolio Equity:** **$${riskAssessment.accountEquity.toLocaleString()}** (Drawdown: **${riskAssessment.accountDrawdownPercent}%**)
+- **Dynamic Position Sizing (1% Equity Risk):** **${riskAssessment.recommendedLotSize} Lot** (Dollar Risk: **$${riskAssessment.riskAmountUsd.toFixed(2)}** | R:R **${enrichedPlan.riskRewardRatio}**)`
+      }
+
+      const combinedThought = [step1ThoughtFromSteps(accumulatedSteps)].join('\n\n')
+      return {
+        draftPlan: enrichedPlan,
+        riskAssessment,
+        finalContent,
+        finalThought: combinedThought,
+        steps: [step3]
+      }
+    })
+    .addEdge(START, 'technical_analyst')
+    .addEdge('technical_analyst', 'quant_forecast_specialist')
+    .addEdge('quant_forecast_specialist', 'risk_execution_officer')
+    .addEdge('risk_execution_officer', END)
+    .compile()
+
+  const finalState = await graph.invoke({})
+  const allSteps = finalState.steps || accumulatedSteps
+  const allToolCalls = allSteps.flatMap((s) => s.toolCalls || [])
+
+  return {
+    content: finalState.finalContent,
+    thought: finalState.finalThought,
+    steps: allSteps,
+    toolCalls: allToolCalls,
+    tradePlan: finalState.draftPlan,
+    riskAssessment: finalState.riskAssessment!
+  }
+}
+
+function step1ThoughtFromSteps(steps: AgentStepTrace[]): string {
+  return steps.map((s) => `${s.title}:\n${s.thought || ''}`).join('\n\n')
+}
+
 export const useAiAgentStore = create<AiAgentState>((set, get) => ({
   config: loadInitialConfig(),
+  committeeMode: false,
   analysisSnapshots: loadAnalysisSnapshots(),
   messages: [
     {
@@ -626,6 +1391,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
   activeAbortController: null,
 
   setConfigOpen: (open) => set({ isConfigOpen: open }),
+  setCommitteeMode: (enabled) => set({ committeeMode: enabled }),
 
   updateConfig: (updates) => {
     const next = { ...get().config, ...updates }
@@ -852,7 +1618,123 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       activeAbortController: abortController
     }))
 
-    const { config, messages } = get()
+    const { config, messages, committeeMode } = get()
+    const runCommittee = shouldRunTradingCommittee(prompt, committeeMode)
+
+    // ==========================================
+    // COMMITTEE PATH: 3-Specialist StateGraph
+    // ==========================================
+    if (runCommittee) {
+      if (config.provider === 'openai' && !config.apiKey && !config.baseUrl.includes('localhost') && !config.baseUrl.includes('127.0.0.1')) {
+        set((state) => ({
+          isBusy: false,
+          statusMessage: null,
+          activeAbortController: null,
+          messages: [
+            ...state.messages,
+            {
+              id: `err-${Date.now()}`,
+              role: 'assistant',
+              content:
+                '[Configuration Error] API Key is missing. Open Provider Settings to configure your key or switch to the Built-in Quant Engine.',
+              timestamp: Date.now()
+            }
+          ]
+        }))
+        return
+      }
+
+      const asstMsgId = `asst-${Date.now()}`
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          {
+            id: asstMsgId,
+            role: 'assistant',
+            content: '',
+            steps: [],
+            toolCalls: [],
+            isStreaming: true,
+            timestamp: Date.now()
+          }
+        ]
+      }))
+
+      try {
+        const committeeRes = await runTradingCommitteeGraph({
+          prompt,
+          symbol: currentSymbol,
+          provider: config.provider,
+          config,
+          priorMessages: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+          abortSignal: abortController.signal,
+          onStepUpdate: (steps, statusMessage) => {
+            set((state) => ({
+              statusMessage,
+              messages: state.messages.map((m) => (m.id === asstMsgId ? { ...m, steps } : m))
+            }))
+          }
+        })
+
+        const analysis = createCompactAnalysisSnapshot(
+          currentSymbol,
+          useMarketStore.getState().timeframe,
+          committeeRes.content,
+          committeeRes.steps,
+          committeeRes.tradePlan
+        )
+        const analysisSnapshots = persistAnalysisSnapshot(analysis, get().analysisSnapshots)
+
+        set((state) => ({
+          analysisSnapshots,
+          messages: state.messages.map((m) =>
+            m.id === asstMsgId
+              ? {
+                  ...m,
+                  thought: committeeRes.thought,
+                  content: committeeRes.content,
+                  steps: committeeRes.steps,
+                  toolCalls: committeeRes.toolCalls,
+                  tradePlan: committeeRes.tradePlan,
+                  analysis,
+                  isStreaming: false
+                }
+              : m
+          ),
+          isBusy: false,
+          statusMessage: null,
+          activeAbortController: null
+        }))
+        return
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || abortController.signal.aborted) {
+          set((state) => ({
+            messages: state.messages.map((m) =>
+              m.id === asstMsgId ? { ...m, isStreaming: false, content: m.content || 'Generation stopped.' } : m
+            ),
+            isBusy: false,
+            statusMessage: null,
+            activeAbortController: null
+          }))
+          return
+        }
+        set((state) => ({
+          isBusy: false,
+          statusMessage: null,
+          activeAbortController: null,
+          messages: state.messages.map((m) =>
+            m.id === asstMsgId
+              ? {
+                  ...m,
+                  isStreaming: false,
+                  content: `[Committee Execution Error] ${err?.message || 'Unexpected error during multi-agent execution'}`
+                }
+              : m
+          )
+        }))
+        return
+      }
+    }
 
     // ==========================================
     // PATH 1: Institutional OpenAI-Compatible LLM
@@ -905,7 +1787,8 @@ AGENTIC PROTOCOL & MULTI-TURN REASONING LOOP:
      * User intent & context (informational query vs tactical trade request)
      * Microstructure hypothesis (orderbook bid/ask imbalance, liquidity walls, spread)
      * Technical indicators & macro context (EMA alignment, RSI momentum/divergence, ATR volatility, news sentiment)
-   - To inspect real market telemetry or project drawings onto the active chart, call available tools ('get_market_snapshot', 'compute_technical_analysis', 'get_news_sentiment', 'get_macro_context', 'draw_trendline_on_chart', 'draw_level_on_chart', 'execute_full_chart_analysis').
+   - To inspect real market telemetry, run quantitative backtests, query Kronos probabilistic forecasts, or project drawings onto the active chart, call available tools ('get_market_snapshot', 'compute_technical_analysis', 'get_news_sentiment', 'get_macro_context', 'draw_trendline_on_chart', 'draw_level_on_chart', 'execute_full_chart_analysis', 'run_piascript_backtest', 'get_kronos_forecast').
+   - When writing PiaScript for 'run_piascript_backtest', use only supported DSL functions: ema(src, period), sma(src, period), rsi(src, period), atr(period), macd(src, fast, slow), macd_signal(src, fast, slow, sig), bb_upper(src, period, mult), bb_lower(src, period, mult), highest(src, period), lowest(src, period), crossover(a, b), crossunder(a, b), plot(series, color="#00bcd4", title="..."), buy(1, sl=..., tp=...), sell(1, sl=..., tp=...), close(). If 'run_piascript_backtest' returns { success: false, error, supportedFunctions }, self-correct the script syntax and re-run.
    - NEVER invent or guess orderbook depth, spreads, or indicator values.
 2. Step-by-Step Refinement:
    - After tool outputs are returned, evaluate the data in your next step before proceeding.

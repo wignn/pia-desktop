@@ -9,6 +9,8 @@ import { TIMEFRAMES, type Timeframe } from '@shared/types'
 import { SymbolLogo } from '../common/SymbolLogo'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
+import orcaLogoDark from '../../assets/orca-logo-dark.png'
+import orcaLogoLight from '../../assets/orca-logo-light.png'
 
 export const TopToolbar: React.FC = () => {
   const symbol = useMarketStore((state) => state.symbol)
@@ -190,9 +192,16 @@ export const TopToolbar: React.FC = () => {
               fontSize: 12
             }}
           >
-            <div style={{ padding: '8px 14px', borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
-              <div style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright }}>PIA Terminal Pro</div>
-              <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>v2.0 · TradingView Edition</div>
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img
+                src={theme === 'light' ? orcaLogoLight : orcaLogoDark}
+                alt="ORCA"
+                style={{ width: 26, height: 26, objectFit: 'contain', flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, letterSpacing: '0.02em' }}>ORCA</div>
+                <div style={{ fontSize: 10.5, color: THEME_TOKENS.colors.textSecondary }}>Orderflow · Risk · Committee · Alpha</div>
+              </div>
             </div>
 
             <div
@@ -974,7 +983,7 @@ export const TopToolbar: React.FC = () => {
                     textTransform: 'uppercase'
                   }}
                 >
-                  {(credentials?.name || credentials?.email || 'P').charAt(0)}
+                  {(credentials?.name || credentials?.email || 'O').charAt(0)}
                 </div>
               )}
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -988,7 +997,7 @@ export const TopToolbar: React.FC = () => {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {credentials?.name || (credentials?.isLoggedIn ? 'Google Account' : 'PIA Terminal')}
+                  {credentials?.name || (credentials?.isLoggedIn ? 'Google Account' : 'ORCA')}
                 </div>
                 <div
                   style={{

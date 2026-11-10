@@ -17,11 +17,124 @@ import type {
   UserProfile
 } from '@shared/types'
 
+export interface MarketRegimeFeatureInput {
+  price?: number
+  rsi14?: number
+  atr14?: number
+  ema20?: number
+  ema50?: number
+  orderbookImbalance?: number
+  newsScore?: number
+  kronosExpectedReturnPercent?: number
+  trendDirection?: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'LONG' | 'SHORT' | string
+}
+
+export interface MarketMemoryEpisode {
+  id: string
+  symbol: string
+  timeframe: string
+  source: 'paper_trade' | 'committee_snapshot'
+  side: 'LONG' | 'SHORT' | 'NEUTRAL'
+  entryPrice: number
+  exitPrice?: number
+  stopLoss?: number
+  takeProfit?: number
+  size?: number
+  realizedPnl?: number
+  realizedR?: number
+  outcome: 'WIN' | 'LOSS' | 'BREAKEVEN' | 'OPEN'
+  featureVector: number[]
+  metadata: Record<string, unknown>
+  createdAt: number
+}
+
+function clampNorm(value: number, min = -1, max = 1): number {
+  if (!Number.isFinite(value)) return 0
+  return Number(Math.min(max, Math.max(min, value)).toFixed(4))
+}
+
+export function encodeMarketRegimeVector(input: MarketRegimeFeatureInput): number[] {
+  const safePrice = typeof input.price === 'number' && Number.isFinite(input.price) && input.price > 0 ? input.price : 0
+
+  const rsiNorm =
+    typeof input.rsi14 === 'number' && Number.isFinite(input.rsi14)
+      ? clampNorm((input.rsi14 - 50) / 50, -1, 1)
+      : 0
+
+  const atrPctNorm =
+    safePrice > 0 && typeof input.atr14 === 'number' && Number.isFinite(input.atr14) && input.atr14 >= 0
+      ? clampNorm(((input.atr14 / safePrice) * 100) / 2.5, 0, 1)
+      : 0
+
+  const emaSpreadNorm =
+    safePrice > 0 &&
+    typeof input.ema20 === 'number' &&
+    Number.isFinite(input.ema20) &&
+    typeof input.ema50 === 'number' &&
+    Number.isFinite(input.ema50)
+      ? clampNorm((((input.ema20 - input.ema50) / safePrice) * 100) / 1.5, -1, 1)
+      : 0
+
+  const obImbalanceNorm =
+    typeof input.orderbookImbalance === 'number' && Number.isFinite(input.orderbookImbalance)
+      ? clampNorm((input.orderbookImbalance - 1) / 1.5, -1, 1)
+      : 0
+
+  const sentimentNorm =
+    typeof input.newsScore === 'number' && Number.isFinite(input.newsScore)
+      ? clampNorm(input.newsScore / 100, -1, 1)
+      : 0
+
+  const kronosReturnNorm =
+    typeof input.kronosExpectedReturnPercent === 'number' && Number.isFinite(input.kronosExpectedReturnPercent)
+      ? clampNorm(input.kronosExpectedReturnPercent / 2.0, -1, 1)
+      : 0
+
+  const dirUpper = String(input.trendDirection || '').toUpperCase()
+  const trendDirectionNorm =
+    dirUpper === 'BULLISH' || dirUpper === 'LONG'
+      ? 1
+      : dirUpper === 'BEARISH' || dirUpper === 'SHORT'
+        ? -1
+        : 0
+
+  return [
+    rsiNorm,
+    atrPctNorm,
+    emaSpreadNorm,
+    obImbalanceNorm,
+    sentimentNorm,
+    kronosReturnNorm,
+    trendDirectionNorm
+  ]
+}
+
+export function computeCosineSimilarity(a: number[], b: number[]): number {
+  const len = Math.min(a?.length || 0, b?.length || 0)
+  if (len === 0) return 0
+
+  let dot = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < len; i++) {
+    const va = Number.isFinite(a[i]) ? a[i] : 0
+    const vb = Number.isFinite(b[i]) ? b[i] : 0
+    dot += va * vb
+    normA += va * va
+    normB += vb * vb
+  }
+
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  if (!Number.isFinite(denom) || denom <= 1e-12) return 0
+  return clampNorm(dot / denom, -1, 1)
+}
+
 export class DatabaseService {
   private db: SqlJsDatabase | null = null
   private saveTimeout: ReturnType<typeof setTimeout> | null = null
   private pendingSave: Promise<void> | null = null
   private isInitialized = false
+  private memoryEpisodes: MarketMemoryEpisode[] = []
 
   constructor() {}
 
@@ -220,6 +333,33 @@ export class DatabaseService {
         this.db.run(`ALTER TABLE user_profile ADD COLUMN plan TEXT DEFAULT 'enterprise';`)
       } catch {}
       this.db.run(`INSERT OR REPLACE INTO schema_version (version) VALUES (4);`)
+      this.scheduleDiskWrite(0)
+    }
+
+    if (currentVersion < 5) {
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS market_memory_episodes (
+          id TEXT PRIMARY KEY,
+          symbol TEXT NOT NULL,
+          timeframe TEXT NOT NULL,
+          source TEXT NOT NULL,
+          side TEXT NOT NULL,
+          entry_price REAL NOT NULL,
+          exit_price REAL,
+          stop_loss REAL,
+          take_profit REAL,
+          size REAL,
+          realized_pnl REAL,
+          realized_r REAL,
+          outcome TEXT NOT NULL,
+          feature_vector_json TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_market_memory_symbol ON market_memory_episodes (symbol, created_at DESC);
+        INSERT OR REPLACE INTO schema_version (version) VALUES (5);
+      `)
       this.scheduleDiskWrite(0)
     }
   }
@@ -706,4 +846,131 @@ export class DatabaseService {
       return false
     }
   }
+
+  // --- Market Memory & Smart Trading Journal RAG API ---
+
+  public saveMarketMemoryEpisode(episode: MarketMemoryEpisode): boolean {
+    const normalized: MarketMemoryEpisode = {
+      ...episode,
+      symbol: episode.symbol.toUpperCase(),
+      featureVector: Array.isArray(episode.featureVector)
+        ? episode.featureVector.map((v) => (Number.isFinite(v) ? Number(v.toFixed(4)) : 0))
+        : [0, 0, 0, 0, 0, 0, 0],
+      metadata: episode.metadata || {},
+      createdAt: episode.createdAt || Date.now()
+    }
+
+    this.memoryEpisodes = [
+      normalized,
+      ...this.memoryEpisodes.filter((e) => e.id !== normalized.id)
+    ]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 500)
+
+    if (!this.db) return true
+
+    try {
+      this.db.run(
+        `INSERT OR REPLACE INTO market_memory_episodes (
+          id, symbol, timeframe, source, side, entry_price, exit_price,
+          stop_loss, take_profit, size, realized_pnl, realized_r,
+          outcome, feature_vector_json, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          normalized.id,
+          normalized.symbol,
+          normalized.timeframe,
+          normalized.source,
+          normalized.side,
+          normalized.entryPrice,
+          normalized.exitPrice ?? null,
+          normalized.stopLoss ?? null,
+          normalized.takeProfit ?? null,
+          normalized.size ?? null,
+          normalized.realizedPnl ?? null,
+          normalized.realizedR ?? null,
+          normalized.outcome,
+          JSON.stringify(normalized.featureVector),
+          JSON.stringify(normalized.metadata),
+          normalized.createdAt
+        ]
+      )
+      this.scheduleDiskWrite()
+      return true
+    } catch (err) {
+      console.error('Error saving market memory episode:', err)
+      return true
+    }
+  }
+
+  public getMarketMemoryEpisodes(symbol?: string, limit = 200): MarketMemoryEpisode[] {
+    const cleanSymbol = symbol?.trim().toUpperCase()
+    const safeLimit = Math.max(1, Math.min(500, limit))
+
+    if (this.db && typeof (this.db as any).prepare === 'function') {
+      try {
+        const query = cleanSymbol
+          ? 'SELECT id, symbol, timeframe, source, side, entry_price, exit_price, stop_loss, take_profit, size, realized_pnl, realized_r, outcome, feature_vector_json, metadata_json, created_at FROM market_memory_episodes WHERE symbol = ? ORDER BY created_at DESC LIMIT ?'
+          : 'SELECT id, symbol, timeframe, source, side, entry_price, exit_price, stop_loss, take_profit, size, realized_pnl, realized_r, outcome, feature_vector_json, metadata_json, created_at FROM market_memory_episodes ORDER BY created_at DESC LIMIT ?'
+        const stmt = this.db.prepare(query)
+        stmt.bind(cleanSymbol ? [cleanSymbol, safeLimit] : [safeLimit])
+        const rows: MarketMemoryEpisode[] = []
+        while (stmt.step()) {
+          const row = stmt.getAsObject()
+          rows.push({
+            id: String(row.id),
+            symbol: String(row.symbol),
+            timeframe: String(row.timeframe),
+            source: (row.source as 'paper_trade' | 'committee_snapshot') || 'paper_trade',
+            side: (row.side as 'LONG' | 'SHORT' | 'NEUTRAL') || 'NEUTRAL',
+            entryPrice: Number(row.entry_price),
+            exitPrice: row.exit_price !== null && row.exit_price !== undefined ? Number(row.exit_price) : undefined,
+            stopLoss: row.stop_loss !== null && row.stop_loss !== undefined ? Number(row.stop_loss) : undefined,
+            takeProfit: row.take_profit !== null && row.take_profit !== undefined ? Number(row.take_profit) : undefined,
+            size: row.size !== null && row.size !== undefined ? Number(row.size) : undefined,
+            realizedPnl: row.realized_pnl !== null && row.realized_pnl !== undefined ? Number(row.realized_pnl) : undefined,
+            realizedR: row.realized_r !== null && row.realized_r !== undefined ? Number(row.realized_r) : undefined,
+            outcome: (row.outcome as 'WIN' | 'LOSS' | 'BREAKEVEN' | 'OPEN') || 'OPEN',
+            featureVector: JSON.parse(String(row.feature_vector_json || '[]')),
+            metadata: JSON.parse(String(row.metadata_json || '{}')),
+            createdAt: Number(row.created_at)
+          })
+        }
+        stmt.free()
+        if (rows.length > 0) return rows
+      } catch (err) {
+        console.error('Error querying market_memory_episodes:', err)
+      }
+    }
+
+    const filtered = cleanSymbol
+      ? this.memoryEpisodes.filter((e) => e.symbol === cleanSymbol)
+      : this.memoryEpisodes
+    return [...filtered].sort((a, b) => b.createdAt - a.createdAt).slice(0, safeLimit)
+  }
+
+  public clearMarketMemoryEpisodes(symbol?: string): boolean {
+    const cleanSymbol = symbol?.trim().toUpperCase()
+    if (cleanSymbol) {
+      this.memoryEpisodes = this.memoryEpisodes.filter((e) => e.symbol !== cleanSymbol)
+    } else {
+      this.memoryEpisodes = []
+    }
+
+    if (this.db && typeof (this.db as any).run === 'function') {
+      try {
+        if (cleanSymbol) {
+          this.db.run('DELETE FROM market_memory_episodes WHERE symbol = ?', [cleanSymbol])
+        } else {
+          this.db.run('DELETE FROM market_memory_episodes')
+        }
+        this.scheduleDiskWrite()
+      } catch (err) {
+        console.error('Error clearing market_memory_episodes:', err)
+      }
+    }
+    return true
+  }
 }
+
+export const sharedDbService = new DatabaseService()

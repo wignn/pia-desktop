@@ -60,6 +60,22 @@ pub struct PiaBacktestSummary {
     pub profit_factor: f64,
     pub max_drawdown: f64,
     pub max_drawdown_percent: f64,
+    #[serde(default)]
+    pub sharpe_ratio: f64,
+    #[serde(default)]
+    pub sortino_ratio: f64,
+    #[serde(default)]
+    pub expectancy: f64,
+    #[serde(default)]
+    pub avg_win: f64,
+    #[serde(default)]
+    pub avg_loss: f64,
+    #[serde(default)]
+    pub max_consecutive_wins: usize,
+    #[serde(default)]
+    pub max_consecutive_losses: usize,
+    #[serde(default)]
+    pub commission_paid: f64,
     pub trades: Vec<PiaTrade>,
     pub equity_curve: Vec<f64>,
 }
@@ -590,6 +606,14 @@ impl<'a> PiaScriptEngine<'a> {
                 profit_factor: 1.0,
                 max_drawdown: 0.0,
                 max_drawdown_percent: 0.0,
+                sharpe_ratio: 0.0,
+                sortino_ratio: 0.0,
+                expectancy: 0.0,
+                avg_win: 0.0,
+                avg_loss: 0.0,
+                max_consecutive_wins: 0,
+                max_consecutive_losses: 0,
+                commission_paid: 0.0,
                 trades: Vec::new(),
                 equity_curve: vec![initial_capital; n],
             };
@@ -616,6 +640,7 @@ impl<'a> PiaScriptEngine<'a> {
         let mut trades = Vec::new();
         let mut gross_profit = 0.0;
         let mut gross_loss = 0.0;
+        let mut commission_paid = 0.0;
         let mut equity_curve = Vec::with_capacity(n);
 
         let mut sig_idx = 0;
@@ -633,8 +658,9 @@ impl<'a> PiaScriptEngine<'a> {
                         if let Some(sl) = pos.stop_loss {
                             if candle.low <= sl {
                                 let exit_price = sl.min(candle.open);
-                                let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
                                 equity += pnl;
+                                commission_paid += fee;
                                 if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                                 trades.push(PiaTrade {
                                     entry_time: pos.entry_time,
@@ -654,8 +680,9 @@ impl<'a> PiaScriptEngine<'a> {
                             if let Some(tp) = pos.take_profit {
                                 if candle.high >= tp {
                                     let exit_price = tp.max(candle.open);
-                                    let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                    let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
                                     equity += pnl;
+                                    commission_paid += fee;
                                     if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                                     trades.push(PiaTrade {
                                         entry_time: pos.entry_time,
@@ -676,8 +703,9 @@ impl<'a> PiaScriptEngine<'a> {
                         if let Some(sl) = pos.stop_loss {
                             if candle.high >= sl {
                                 let exit_price = sl.max(candle.open);
-                                let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
                                 equity += pnl;
+                                commission_paid += fee;
                                 if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                                 trades.push(PiaTrade {
                                     entry_time: pos.entry_time,
@@ -697,8 +725,9 @@ impl<'a> PiaScriptEngine<'a> {
                             if let Some(tp) = pos.take_profit {
                                 if candle.low <= tp {
                                     let exit_price = tp.min(candle.open);
-                                    let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
+                                    let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, exit_price);
                                     equity += pnl;
+                                    commission_paid += fee;
                                     if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                                     trades.push(PiaTrade {
                                         entry_time: pos.entry_time,
@@ -729,8 +758,9 @@ impl<'a> PiaScriptEngine<'a> {
 
                 if sig.action == "CLOSE" {
                     if let Some(pos) = current_pos.take() {
-                        let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
+                        let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
                         equity += pnl;
+                        commission_paid += fee;
                         if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                         trades.push(PiaTrade {
                             entry_time: pos.entry_time,
@@ -747,8 +777,9 @@ impl<'a> PiaScriptEngine<'a> {
                     // If short open, close it first
                     if let Some(pos) = current_pos.take() {
                         if pos.action == "SELL" {
-                            let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
+                            let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
                             equity += pnl;
+                            commission_paid += fee;
                             if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                             trades.push(PiaTrade {
                                 entry_time: pos.entry_time,
@@ -778,8 +809,9 @@ impl<'a> PiaScriptEngine<'a> {
                     // If long open, close it first
                     if let Some(pos) = current_pos.take() {
                         if pos.action == "BUY" {
-                            let (pnl, pnl_pct) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
+                            let (pnl, pnl_pct, fee) = calc_trade_pnl(&pos.action, pos.entry_price, candle.close);
                             equity += pnl;
+                            commission_paid += fee;
                             if pnl > 0.0 { gross_profit += pnl; } else { gross_loss += pnl.abs(); }
                             trades.push(PiaTrade {
                                 entry_time: pos.entry_time,
@@ -822,10 +854,72 @@ impl<'a> PiaScriptEngine<'a> {
         let total_trades = trades.len();
         let win_trades = trades.iter().filter(|t| t.pnl > 0.0).count();
         let loss_trades = trades.iter().filter(|t| t.pnl <= 0.0).count();
-        let win_rate = if total_trades > 0 { (win_trades as f64 / total_trades as f64) * 100.0 } else { 0.0 };
+        let win_rate_fraction = if total_trades > 0 { win_trades as f64 / total_trades as f64 } else { 0.0 };
+        let win_rate = win_rate_fraction * 100.0;
         let profit_factor = if gross_loss > 0.0 { gross_profit / gross_loss } else if gross_profit > 0.0 { 99.9 } else { 1.0 };
         let net_profit = equity - initial_capital;
         let net_profit_percent = if initial_capital > 0.0 { (net_profit / initial_capital) * 100.0 } else { 0.0 };
+
+        let avg_win = if win_trades > 0 { gross_profit / win_trades as f64 } else { 0.0 };
+        let avg_loss = if loss_trades > 0 { gross_loss / loss_trades as f64 } else { 0.0 };
+        let expectancy = if total_trades > 0 {
+            (win_rate_fraction * avg_win) - ((1.0 - win_rate_fraction) * avg_loss)
+        } else {
+            0.0
+        };
+
+        let mut max_consecutive_wins = 0usize;
+        let mut max_consecutive_losses = 0usize;
+        let mut cur_wins = 0usize;
+        let mut cur_losses = 0usize;
+        for t in &trades {
+            if t.pnl > 0.0 {
+                cur_wins += 1;
+                cur_losses = 0;
+                if cur_wins > max_consecutive_wins {
+                    max_consecutive_wins = cur_wins;
+                }
+            } else {
+                cur_losses += 1;
+                cur_wins = 0;
+                if cur_losses > max_consecutive_losses {
+                    max_consecutive_losses = cur_losses;
+                }
+            }
+        }
+
+        let (sharpe_ratio, sortino_ratio) = if total_trades >= 2 {
+            let n_f = total_trades as f64;
+            let mean_ret: f64 = trades.iter().map(|t| t.pnl_percent).sum::<f64>() / n_f;
+            let variance: f64 = trades
+                .iter()
+                .map(|t| (t.pnl_percent - mean_ret).powi(2))
+                .sum::<f64>()
+                / (n_f - 1.0);
+            let std_dev = variance.sqrt();
+            let sharpe = if std_dev > 1e-9 {
+                ((mean_ret / std_dev) * n_f.sqrt()).clamp(-99.99, 99.99)
+            } else {
+                0.0
+            };
+
+            let downside_sq: f64 = trades
+                .iter()
+                .map(|t| t.pnl_percent.min(0.0).powi(2))
+                .sum::<f64>()
+                / n_f;
+            let downside_dev = downside_sq.sqrt();
+            let sortino = if downside_dev > 1e-9 {
+                ((mean_ret / downside_dev) * n_f.sqrt()).clamp(-99.99, 99.99)
+            } else if mean_ret > 0.0 {
+                99.99
+            } else {
+                0.0
+            };
+            (sharpe, sortino)
+        } else {
+            (0.0, 0.0)
+        };
 
         PiaBacktestSummary {
             initial_capital,
@@ -839,25 +933,36 @@ impl<'a> PiaScriptEngine<'a> {
             profit_factor,
             max_drawdown: max_dd,
             max_drawdown_percent: max_dd_pct,
+            sharpe_ratio,
+            sortino_ratio,
+            expectancy,
+            avg_win,
+            avg_loss,
+            max_consecutive_wins,
+            max_consecutive_losses,
+            commission_paid,
             trades,
             equity_curve,
         }
     }
 }
 
-fn calc_trade_pnl(action: &str, entry: f64, exit: f64) -> (f64, f64) {
+fn calc_trade_pnl(action: &str, entry: f64, exit: f64) -> (f64, f64, f64) {
     if entry <= 0.0 {
-        return (0.0, 0.0);
+        return (0.0, 0.0, 0.0);
     }
+    let fee = entry * 0.0005;
     // Using standard unit size 1.0
     if action == "BUY" {
-        let pnl = exit - entry;
+        let raw_pnl = exit - entry;
+        let pnl = raw_pnl - fee;
         let pct = (pnl / entry) * 100.0;
-        (pnl, pct)
+        (pnl, pct, fee)
     } else {
-        let pnl = entry - exit;
+        let raw_pnl = entry - exit;
+        let pnl = raw_pnl - fee;
         let pct = (pnl / entry) * 100.0;
-        (pnl, pct)
+        (pnl, pct, fee)
     }
 }
 
@@ -1344,5 +1449,86 @@ mod tests {
         assert!(res.backtest.is_some());
         let bt = res.backtest.unwrap();
         assert_eq!(bt.initial_capital, 25_000.0);
+    }
+
+    fn sample_wave_candles() -> Vec<PiaCandle> {
+        let prices = [
+            100.0, 99.0, 98.0, 97.0, 99.0, 102.0, 106.0, 110.0, 108.0, 104.0,
+            100.0, 96.0, 95.0, 98.0, 103.0, 109.0, 114.0, 118.0, 115.0, 110.0,
+            104.0, 99.0, 97.0, 101.0, 107.0, 113.0, 119.0, 124.0, 118.0, 108.0,
+            98.0, 94.0,
+        ];
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| PiaCandle {
+                timestamp: 1_700_000_000_000 + (i as i64) * 60_000,
+                open: p - 0.5,
+                high: p + 1.5,
+                low: p - 1.5,
+                close: p,
+                volume: Some(1000.0),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn computes_institutional_backtest_metrics_and_commissions() {
+        let candles = sample_wave_candles();
+        let script = r#"
+fast = ema(close, 3)
+slow = ema(close, 6)
+if crossover(fast, slow):
+    buy(1)
+if crossunder(fast, slow):
+    close()
+"#;
+        let mut engine = PiaScriptEngine::new(&candles);
+        let res = engine.execute(script, Some(10_000.0));
+        assert!(res.success);
+        let bt = res.backtest.expect("backtest summary present");
+        assert!(bt.total_trades >= 2);
+        assert!(bt.commission_paid > 0.0);
+        assert!(bt.sharpe_ratio.is_finite());
+        assert!(bt.sortino_ratio.is_finite());
+        assert!(bt.expectancy.is_finite());
+        assert!(bt.avg_win >= 0.0);
+        assert!(bt.avg_loss >= 0.0);
+        assert!(bt.max_consecutive_wins >= 1 || bt.max_consecutive_losses >= 1);
+    }
+
+    #[test]
+    fn handles_zero_and_single_trade_without_nan_ratios() {
+        let candles = sample_wave_candles();
+        let mut engine = PiaScriptEngine::new(&candles);
+        let empty_res = engine.execute("fast = ema(close, 5)\nplot(fast)", Some(10_000.0));
+        let empty_bt = empty_res.backtest.unwrap();
+        assert_eq!(empty_bt.total_trades, 0);
+        assert_eq!(empty_bt.sharpe_ratio, 0.0);
+        assert_eq!(empty_bt.sortino_ratio, 0.0);
+        assert_eq!(empty_bt.expectancy, 0.0);
+        assert_eq!(empty_bt.commission_paid, 0.0);
+
+        // Single closed trade: sharpe & sortino must be 0.0 (never NaN/Inf)
+        let mut engine_one = PiaScriptEngine::new(&candles[0..8]);
+        let one_res = engine_one.execute(
+            "if close < 98.0:\n    buy(1)\nif close > 108.0:\n    close()",
+            Some(10_000.0),
+        );
+        let one_bt = one_res.backtest.unwrap();
+        assert_eq!(one_bt.total_trades, 1);
+        assert_eq!(one_bt.sharpe_ratio, 0.0);
+        assert_eq!(one_bt.sortino_ratio, 0.0);
+
+        // All-winning multi-trade backtest: sortino clamps to 99.99 when downside deviation is 0
+        let mut engine_wins = PiaScriptEngine::new(&candles);
+        let win_res = engine_wins.execute(
+            "if close <= 97.0:\n    buy(1)\nif close >= 110.0:\n    close()",
+            Some(10_000.0),
+        );
+        let win_bt = win_res.backtest.unwrap();
+        assert!(win_bt.total_trades >= 2);
+        assert_eq!(win_bt.loss_trades, 0);
+        assert_eq!(win_bt.sortino_ratio, 99.99);
     }
 }

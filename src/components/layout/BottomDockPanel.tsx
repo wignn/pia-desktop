@@ -642,6 +642,55 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
                         from ${scriptResult.backtest.initial_capital.toFixed(2)}
                       </div>
                     </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Sharpe / Sortino</div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color:
+                            (scriptResult.backtest.sharpe_ratio ?? 0) >= 1.5
+                              ? THEME_TOKENS.colors.bullish
+                              : (scriptResult.backtest.sharpe_ratio ?? 0) < 0.5
+                                ? THEME_TOKENS.colors.bearish
+                                : THEME_TOKENS.colors.textBright,
+                          marginTop: 4
+                        }}
+                      >
+                        {(scriptResult.backtest.sharpe_ratio ?? 0).toFixed(2)} / {(scriptResult.backtest.sortino_ratio ?? 0).toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        Fees: ${(scriptResult.backtest.commission_paid ?? 0).toFixed(2)}
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Expectancy / Trade</div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: (scriptResult.backtest.expectancy ?? 0) >= 0 ? THEME_TOKENS.colors.bullish : THEME_TOKENS.colors.bearish,
+                          marginTop: 4
+                        }}
+                      >
+                        {(scriptResult.backtest.expectancy ?? 0) >= 0 ? '+' : ''}${(scriptResult.backtest.expectancy ?? 0).toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        Avg W/L: ${(scriptResult.backtest.avg_win ?? 0).toFixed(2)} / -${(scriptResult.backtest.avg_loss ?? 0).toFixed(2)}
+                      </div>
+                    </div>
+
+                    <div style={{ backgroundColor: THEME_TOKENS.colors.bgSurface, padding: 10, borderRadius: 4, border: `1px solid ${THEME_TOKENS.colors.borderSubtle}` }}>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textMuted }}>Max Win / Loss Streak</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME_TOKENS.colors.textBright, marginTop: 4 }}>
+                        {scriptResult.backtest.max_consecutive_wins ?? 0}W / {scriptResult.backtest.max_consecutive_losses ?? 0}L
+                      </div>
+                      <div style={{ fontSize: 10, color: THEME_TOKENS.colors.textSecondary }}>
+                        Consecutive trades
+                      </div>
+                    </div>
                   </div>
 
                   {/* Closed Trades List */}

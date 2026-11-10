@@ -1,6 +1,8 @@
 import React from 'react'
 import { THEME_TOKENS } from '../../theme/tokens'
-import piaLogo from '../../assets/logo.png'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import orcaLogoDark from '../../assets/orca-logo-dark.png'
+import orcaLogoLight from '../../assets/orca-logo-light.png'
 
 interface SplashScreenProps {
   statusText?: string
@@ -15,7 +17,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   statusText = 'Preparing your terminal…',
   progressPercent,
   isIndeterminate = true,
-  version = '4.1.1',
+  version = '4.2.0',
   state,
   availableVersion
 }) => {
@@ -23,8 +25,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   const isDownloading = state === 'downloading'
   const isInstalling = state === 'installing'
   const isBusy = isIndeterminate || isDownloading || isInstalling
+  const theme = useWorkspaceStore((state) => state.theme)
+  const orcaLogo = theme === 'light' ? orcaLogoLight : orcaLogoDark
   const colors = THEME_TOKENS.colors
-  let title = 'Starting PIA Terminal'
+  let title = 'Starting ORCA'
   if (isDownloading) title = `Downloading v${availableVersion || 'update'}`
   else if (isInstalling) title = 'Installing update'
   else if (state === 'downloaded') title = 'Update ready to install'
@@ -75,9 +79,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 14 }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-          <img src={piaLogo} alt="PIA" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'cover' }} />
+          <img src={orcaLogo} alt="ORCA" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'contain' }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 650, letterSpacing: '-0.02em' }}>PIA Terminal</div>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>ORCA</div>
             <div style={{ marginTop: 2, color: colors.textMuted, fontSize: 10 }}>v{version}</div>
           </div>
         </header>

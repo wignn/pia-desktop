@@ -231,7 +231,7 @@ export const UpdateNotificationBanner: React.FC<{ top?: number }> = ({ top = 52 
               lineHeight: 1.4
             }}
           >
-            PIA Terminal v{version} has been downloaded and verified. Restart to apply update.
+            ORCA v{version} has been downloaded and verified. Restart to apply update.
           </p>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

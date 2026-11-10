@@ -2799,7 +2799,7 @@ dependencies = [
 
 [[package]]
 name = "pia"
-version = "4.1.1"
+version = "4.2.0"
 dependencies = [
  "keyring",
  "pia-sdk",

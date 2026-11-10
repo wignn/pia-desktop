@@ -7,6 +7,86 @@
 import { create } from 'zustand'
 import type { CustomEntryDraft, PaperAccount, PaperOrder, PaperOrderType, PaperPosition, PriceQuote } from '@shared/types'
 import { playOrderFilledSound } from '../utils/sound'
+import { sharedDbService, encodeMarketRegimeVector } from '../services/database'
+import { candleEngine } from '../services/candle-engine'
+import { useMarketStore } from './useMarketStore'
+
+function recordClosedPositionEpisode(pos: PaperPosition, closePrice: number, realizedPnl: number): void {
+  try {
+    const priceDiff = pos.side === 'buy' ? closePrice - pos.entryPrice : pos.entryPrice - closePrice
+    const riskUnitPrice =
+      pos.stopLoss !== undefined && Math.abs(pos.entryPrice - pos.stopLoss) > 0
+        ? Math.abs(pos.entryPrice - pos.stopLoss)
+        : Math.max(pos.entryPrice * 0.01, 1e-8)
+    const realizedR = Number((priceDiff / riskUnitPrice).toFixed(2))
+    const outcome: 'WIN' | 'LOSS' | 'BREAKEVEN' =
+      realizedPnl > 0 ? 'WIN' : realizedPnl < 0 ? 'LOSS' : 'BREAKEVEN'
+
+    const marketState = useMarketStore.getState()
+    const timeframe = marketState.timeframe || '15m'
+    const isSameChartSymbol = (marketState.symbol || '').toUpperCase() === pos.symbol.toUpperCase()
+    const rawBars = isSameChartSymbol
+      ? candleEngine.getActiveBars().length > 0
+        ? candleEngine.getActiveBars()
+        : candleEngine.getBars()
+      : []
+    const closes = rawBars.map((b) => b.close)
+    const lastPrice = closes[closes.length - 1] || closePrice || pos.entryPrice
+    const prevPrice = closes.length > 0 ? closes[Math.max(0, closes.length - 10)] : pos.entryPrice
+    const trendDirection =
+      lastPrice > prevPrice ? 'BULLISH' : lastPrice < prevPrice ? 'BEARISH' : 'NEUTRAL'
+
+    let rsi14 = 50
+    if (closes.length > 14) {
+      let gains = 0
+      let losses = 0
+      for (let i = closes.length - 14; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1]
+        if (diff >= 0) gains += diff
+        else losses -= diff
+      }
+      rsi14 = losses === 0 ? 100 : Number((100 - 100 / (1 + gains / losses)).toFixed(1))
+    }
+
+    const featureVector = encodeMarketRegimeVector({
+      price: closePrice || pos.entryPrice,
+      rsi14,
+      atr14: Math.abs(closePrice - pos.entryPrice) || pos.entryPrice * 0.005,
+      ema20: closePrice,
+      ema50: prevPrice,
+      orderbookImbalance: 1,
+      newsScore: 0,
+      kronosExpectedReturnPercent: 0,
+      trendDirection
+    })
+
+    sharedDbService.saveMarketMemoryEpisode({
+      id: `ep-trade-${pos.id}-${Date.now()}`,
+      symbol: pos.symbol.toUpperCase(),
+      timeframe,
+      source: 'paper_trade',
+      side: pos.side === 'buy' ? 'LONG' : 'SHORT',
+      entryPrice: pos.entryPrice,
+      exitPrice: closePrice,
+      stopLoss: pos.stopLoss,
+      takeProfit: pos.takeProfit,
+      size: pos.size,
+      realizedPnl: Number(realizedPnl.toFixed(2)),
+      realizedR,
+      outcome,
+      featureVector,
+      metadata: {
+        positionId: pos.id,
+        accountType: pos.accountType || 'standard',
+        comment: pos.comment,
+        rsi14
+      },
+      createdAt: Date.now()
+    })
+  } catch {
+    // Non-blocking episode telemetry
+  }
+}
 
 interface PaperTradingState {
   account: PaperAccount
@@ -428,6 +508,7 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     try {
       const success = await window.api.paper.saveAccount(updatedAccount)
       if (success) {
+        recordClosedPositionEpisode(targetPos, currentPrice, realizedPnl)
         playOrderFilledSound()
         set({
           account: updatedAccount,
@@ -452,6 +533,7 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     if (positionsToClose.length === 0) return true
 
     let totalReturnedFunds = 0
+    const closedBatch: Array<{ pos: PaperPosition; closePrice: number; realizedPnl: number }> = []
     for (const pos of positionsToClose) {
       const closePrice = currentPrice !== undefined && currentPrice > 0 ? currentPrice : pos.entryPrice
       const priceDiff =
@@ -463,6 +545,7 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
       const realizedPnl = priceDiff * pos.size * multiplier
       const originalNotional = pos.size * pos.entryPrice * multiplier
       totalReturnedFunds += originalNotional + realizedPnl
+      closedBatch.push({ pos, closePrice, realizedPnl })
     }
 
     const updatedBalance = Math.max(0, account.balance + totalReturnedFunds)
@@ -480,6 +563,9 @@ export const usePaperTradingStore = create<PaperTradingState>((set, get) => ({
     try {
       const success = await window.api.paper.saveAccount(updatedAccount)
       if (success) {
+        for (const item of closedBatch) {
+          recordClosedPositionEpisode(item.pos, item.closePrice, item.realizedPnl)
+        }
         if (positionsToClose.length > 0) {
           playOrderFilledSound()
         }
