@@ -32,7 +32,7 @@ export function formatUpdateMessage(status: AppUpdateStatus): string {
     return `Version ${status.availableVersion} is available. ${status.releaseNotes || ''}`.trim()
   }
   if (status.state === 'up-to-date') {
-    return 'You are using the latest version of PIA Terminal.'
+    return 'You are using the latest version of ORCA.'
   }
   if (status.state === 'downloading') {
     return `Downloading update (${status.progressPercent ?? 0}%)...`

@@ -9,7 +9,23 @@ export const AnalysisSnapshotCard: React.FC<{ snapshot: CompactAnalysisSnapshot 
     ['RSI (14)', snapshot.evidence.rsi14],
     ['ATR (14)', snapshot.evidence.atr14],
     ['Spread', snapshot.evidence.spread],
-    ['News score', snapshot.evidence.newsScore]
+    ['News score', snapshot.evidence.newsScore],
+    ['Sharpe', snapshot.evidence.sharpeRatio],
+    [
+      'Win rate',
+      snapshot.evidence.winRate !== undefined && snapshot.evidence.winRate !== null
+        ? `${snapshot.evidence.winRate}%`
+        : undefined
+    ],
+    [
+      'Hist. Win Rate',
+      snapshot.evidence.historicalWinRate !== undefined && snapshot.evidence.historicalWinRate !== null
+        ? `${snapshot.evidence.historicalWinRate}%`
+        : undefined
+    ],
+    ['Kronos', snapshot.evidence.kronosBias],
+    ['Verdict', snapshot.evidence.committeeVerdict],
+    ['Lot (1% Risk)', snapshot.evidence.recommendedLotSize]
   ].filter((row) => row[1] !== undefined && row[1] !== null)
 
   return (

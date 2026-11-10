@@ -36,6 +36,7 @@ import {
   type ToolCallExecution,
   type AgentStepTrace
 } from '../../stores/useAiAgentStore'
+import { useSentinelStore } from '../../stores/useSentinelStore'
 
 // ==========================================
 // Institutional Markdown & Content Formatter
@@ -304,6 +305,12 @@ const TacticalTradeTicket: React.FC<{
   const [selectedLot, setSelectedLot] = useState<number>(plan.suggestedLotSize || 0.1)
   const { executePaperOrderFromPlan, replotTradePlan } = useAiAgentStore()
 
+  useEffect(() => {
+    if (typeof plan.suggestedLotSize === 'number' && Number.isFinite(plan.suggestedLotSize)) {
+      setSelectedLot(plan.suggestedLotSize)
+    }
+  }, [plan.suggestedLotSize])
+
   const { pricePrecision } = getSymbolPrecision(plan.symbol, undefined, plan.entry)
   const formatP = (v?: number) => formatCleanPrice(v, pricePrecision)
 
@@ -316,7 +323,7 @@ const TacticalTradeTicket: React.FC<{
   const orderTypeLabel = orderType.replace('_', ' ')
 
   const handleCopy = async (): Promise<void> => {
-    const text = `PIA TRADE SETUP: ${plan.symbol}
+    const text = `ORCA TRADE SETUP: ${plan.symbol}
 ORDER TYPE: ${orderType}
 BIAS: ${plan.bias}
 ENTRY: ${formatP(plan.entry)}
@@ -357,6 +364,19 @@ SIZE: ${selectedLot} Lot`
   const isShort = plan.bias === 'SHORT'
   const biasColor = isLong ? '#10B981' : isShort ? '#F43F5E' : '#F59E0B'
   const isLimit = orderType.includes('LIMIT')
+  const verdictColor =
+    plan.committeeVerdict === 'APPROVED'
+      ? '#10B981'
+      : plan.committeeVerdict === 'VETOED'
+        ? '#F43F5E'
+        : '#F59E0B'
+  const presetLots = [0.05, 0.1, 0.25, 0.5]
+  const lotOptions =
+    typeof plan.suggestedLotSize === 'number' &&
+    Number.isFinite(plan.suggestedLotSize) &&
+    !presetLots.includes(plan.suggestedLotSize)
+      ? [plan.suggestedLotSize, ...presetLots]
+      : presetLots
 
   return (
     <div
@@ -373,7 +393,7 @@ SIZE: ${selectedLot} Lot`
       }}
     >
       {/* Header Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span
             style={{
@@ -409,25 +429,60 @@ SIZE: ${selectedLot} Lot`
             {orderTypeLabel}
           </span>
 
+          {plan.committeeVerdict && (
+            <span
+              style={{
+                padding: '2px 7px',
+                borderRadius: 4,
+                backgroundColor: `${verdictColor}18`,
+                border: `1px solid ${verdictColor}40`,
+                color: verdictColor,
+                fontWeight: 800,
+                fontSize: 9.5,
+                letterSpacing: '0.04em'
+              }}
+            >
+              {plan.committeeVerdict}
+            </span>
+          )}
+
           <span style={{ fontWeight: 700, fontSize: 11, color: '#F8FAFC', fontFamily: THEME_TOKENS.typography.fontMono }}>
             {plan.symbol}
           </span>
         </div>
 
-        <span
-          style={{
-            fontSize: 9.5,
-            fontFamily: THEME_TOKENS.typography.fontMono,
-            color: '#FDE68A',
-            backgroundColor: 'rgba(253, 230, 138, 0.1)',
-            border: '1px solid rgba(253, 230, 138, 0.2)',
-            padding: '2px 6px',
-            borderRadius: 4,
-            fontWeight: 700
-          }}
-        >
-          R:R {plan.riskRewardRatio}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {typeof plan.riskAmountUsd === 'number' && Number.isFinite(plan.riskAmountUsd) && (
+            <span
+              style={{
+                fontSize: 9.5,
+                fontFamily: THEME_TOKENS.typography.fontMono,
+                color: '#38BDF8',
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.22)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontWeight: 700
+              }}
+            >
+              1% Risk: ${plan.riskAmountUsd.toFixed(2)}
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: 9.5,
+              fontFamily: THEME_TOKENS.typography.fontMono,
+              color: '#FDE68A',
+              backgroundColor: 'rgba(253, 230, 138, 0.1)',
+              border: '1px solid rgba(253, 230, 138, 0.2)',
+              padding: '2px 6px',
+              borderRadius: 4,
+              fontWeight: 700
+            }}
+          >
+            R:R {plan.riskRewardRatio}
+          </span>
+        </div>
       </div>
 
       {/* 4-Metric Grid */}
@@ -481,10 +536,10 @@ SIZE: ${selectedLot} Lot`
           fontSize: 9.5
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#838896' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#838896', flexWrap: 'wrap' }}>
           <span>Order Size:</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[0.05, 0.1, 0.25, 0.5].map((val) => (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {lotOptions.map((val) => (
               <button
                 key={val}
                 type="button"
@@ -851,6 +906,8 @@ export const IntelligencePanel: React.FC = () => {
     isBusy,
     statusMessage,
     isConfigOpen,
+    committeeMode,
+    setCommitteeMode,
     setConfigOpen,
     updateConfig,
     applyPreset,
@@ -859,6 +916,16 @@ export const IntelligencePanel: React.FC = () => {
     clearChat,
     testConnection
   } = useAiAgentStore()
+  const sentinelHookState = useSentinelStore()
+  const sentinelLiveState = useSentinelStore.getState()
+  const sentinelEnabled = sentinelLiveState.enabled ?? sentinelHookState.enabled
+  const sentinelAlerts =
+    sentinelLiveState.alerts.length > 0 ? sentinelLiveState.alerts : sentinelHookState.alerts
+  const setSentinelEnabled = sentinelHookState.setEnabled
+  const scanSymbol = sentinelHookState.scanSymbol
+  const dismissAlert = sentinelHookState.dismissAlert
+  const triggerCommitteeHandoff = sentinelHookState.triggerCommitteeHandoff
+  const activeSentinelAlerts = sentinelAlerts.filter((a) => !a.dismissed)
   const selectedSnapshot = analysisSnapshots.find((snapshot) => snapshot.id === selectedSnapshotId)
   const latestSnapshot = analysisSnapshots[0] ?? null
   const comparisonSnapshot = selectedSnapshot && latestSnapshot?.id !== selectedSnapshot.id && latestSnapshot?.symbol === selectedSnapshot.symbol
@@ -926,6 +993,18 @@ export const IntelligencePanel: React.FC = () => {
       cancelled = true
     }
   }, [symbol])
+
+  // Background Autonomous Sentinel confluence watcher (30s interval when enabled)
+  useEffect(() => {
+    if (!sentinelEnabled || !symbol || isBusy) return
+    void scanSymbol(symbol)
+    const timer = setInterval(() => {
+      if (!useAiAgentStore.getState().isBusy) {
+        void useSentinelStore.getState().scanSymbol(symbol)
+      }
+    }, 30_000)
+    return () => clearInterval(timer)
+  }, [sentinelEnabled, symbol, isBusy, scanSymbol])
 
   const handleSend = async (e?: React.FormEvent): Promise<void> => {
     e?.preventDefault()
@@ -1025,7 +1104,7 @@ export const IntelligencePanel: React.FC = () => {
                 transition: 'all 0.15s ease'
               }}
             >
-              PIA Agent
+              ORCA Agent
             </button>
             <button
               type="button"
@@ -1060,6 +1139,67 @@ export const IntelligencePanel: React.FC = () => {
           >
             {symbol}
           </span>
+
+          <button
+            type="button"
+            aria-pressed={committeeMode}
+            onClick={() => setCommitteeMode(!committeeMode)}
+            title="Toggle 3-Agent Trading Committee (Technical + Quant + Risk)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 9.5,
+              padding: '2px 7px',
+              borderRadius: 4,
+              backgroundColor: committeeMode ? 'rgba(212, 175, 55, 0.16)' : 'rgba(255, 255, 255, 0.04)',
+              border: committeeMode ? '1px solid rgba(212, 175, 55, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+              color: committeeMode ? '#FDE68A' : '#94A3B8',
+              fontFamily: THEME_TOKENS.typography.fontMono,
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            <ShieldCheck size={10} color={committeeMode ? '#FDE68A' : '#64748B'} />
+            <span>Committee</span>
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={sentinelEnabled}
+            onClick={() => setSentinelEnabled(!sentinelEnabled)}
+            title="Toggle Autonomous Sentinel (Background Multi-Factor Confluence Watcher)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 9.5,
+              padding: '2px 7px',
+              borderRadius: 4,
+              backgroundColor: sentinelEnabled ? 'rgba(16, 185, 129, 0.16)' : 'rgba(255, 255, 255, 0.04)',
+              border: sentinelEnabled ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+              color: sentinelEnabled ? '#6EE7B7' : '#94A3B8',
+              fontFamily: THEME_TOKENS.typography.fontMono,
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            <Activity size={10} color={sentinelEnabled ? '#6EE7B7' : '#64748B'} />
+            <span>Sentinel</span>
+            {activeSentinelAlerts.length > 0 && (
+              <span
+                style={{
+                  fontSize: 8.5,
+                  padding: '0 4px',
+                  borderRadius: 3,
+                  backgroundColor: 'rgba(16, 185, 129, 0.25)',
+                  color: '#A7F3D0'
+                }}
+              >
+                {activeSentinelAlerts.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* AI Provider Config Trigger */}
@@ -1104,6 +1244,92 @@ export const IntelligencePanel: React.FC = () => {
               gap: 12
             }}
           >
+            {activeSentinelAlerts.length > 0 && (
+              <section
+                aria-label="Sentinel confluence alerts"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  backgroundColor: 'rgba(16, 185, 129, 0.08)'
+                }}
+              >
+                {activeSentinelAlerts.slice(0, 3).map((alert) => (
+                  <div
+                    key={alert.id}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: '#6EE7B7'
+                        }}
+                      >
+                        <Zap size={11} />
+                        Sentinel · {alert.symbol} ({alert.timeframe}) · {alert.bias} · {alert.score}/100
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void triggerCommitteeHandoff(alert.id)}
+                          style={{
+                            fontSize: 9.5,
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: 4,
+                            border: '1px solid rgba(212, 175, 55, 0.5)',
+                            backgroundColor: 'rgba(212, 175, 55, 0.18)',
+                            color: '#FDE68A',
+                            cursor: isBusy ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          Run Committee
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dismissAlert(alert.id)}
+                          style={{
+                            fontSize: 9.5,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                            backgroundColor: 'transparent',
+                            color: '#94A3B8',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: '#CBD5E1' }}>
+                      {alert.reasons.join(' · ')}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+
             {analysisSnapshots.length > 0 && (
               <section aria-label="Recent analysis history" style={{ padding: 8, border: '1px solid var(--border-subtle)', borderRadius: 6, background: 'var(--bg-surface)' }}>
                 <label htmlFor="ai-analysis-history" style={{ display: 'block', marginBottom: 5, color: 'var(--text-secondary)', fontSize: 10, fontWeight: 700 }}>
@@ -1175,7 +1401,7 @@ export const IntelligencePanel: React.FC = () => {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <Terminal size={12} color="#38BDF8" />
-                          <span style={{ letterSpacing: '0.04em' }}>PIA AGENT</span>
+                          <span style={{ letterSpacing: '0.04em' }}>ORCA AGENT</span>
                           <span style={{ color: '#64748B', fontWeight: 400, fontFamily: THEME_TOKENS.typography.fontMono, fontSize: 9 }}>
                             [{config.provider === 'openai' ? config.model : 'Quant Engine'}]
                           </span>
@@ -1734,7 +1960,7 @@ export const IntelligencePanel: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Settings size={14} color="#D4AF37" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#F4F6FC' }}>
-                  PIA Agent Configuration
+                  ORCA Agent Configuration
                 </span>
               </div>
               <button
@@ -1999,7 +2225,7 @@ export const IntelligencePanel: React.FC = () => {
               >
                 <ShieldCheck size={16} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  <strong>Zero Configuration:</strong> Powered by PIA built-in quantitative engine. No external API key required. Ingests news sentiment, orderbook depth, and projects support/resistance and trendlines directly to the chart.
+                  <strong>Zero Configuration:</strong> Powered by ORCA built-in quantitative engine. No external API key required. Ingests news sentiment, orderbook depth, and projects support/resistance and trendlines directly to the chart.
                 </span>
               </div>
             )}

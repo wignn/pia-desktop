@@ -77,7 +77,34 @@ interface PiaScriptState {
   setAppliedToChart: (applied: boolean) => void
   toggleApplyToChart: () => void
   runScript: () => Promise<PiaScriptResult | null>
+  executeCustomScript: (script: string, initialCapital?: number) => Promise<PiaScriptResult | null>
 }
+
+const ALLOWED_PIASCRIPT_FUNCTIONS = new Set([
+  'ema',
+  'sma',
+  'rsi',
+  'atr',
+  'macd',
+  'macd_signal',
+  'macd_hist',
+  'bb_upper',
+  'bb_lower',
+  'bb_basis',
+  'stdev',
+  'highest',
+  'lowest',
+  'crossover',
+  'crossunder',
+  'input',
+  'abs',
+  'max',
+  'min',
+  'plot',
+  'buy',
+  'sell',
+  'close'
+])
 
 export const usePiaScriptStore = create<PiaScriptState>((set, get) => ({
   script: DEFAULT_SCRIPT,
@@ -91,6 +118,15 @@ export const usePiaScriptStore = create<PiaScriptState>((set, get) => ({
   setInitialCapital: (initialCapital: number) => set({ initialCapital }),
   setAppliedToChart: (isAppliedToChart: boolean) => set({ isAppliedToChart }),
   toggleApplyToChart: () => set((s) => ({ isAppliedToChart: !s.isAppliedToChart })),
+
+  executeCustomScript: async (script: string, initialCapital?: number): Promise<PiaScriptResult | null> => {
+    const nextCap =
+      typeof initialCapital === 'number' && Number.isFinite(initialCapital) && initialCapital > 0
+        ? initialCapital
+        : get().initialCapital
+    set({ script, initialCapital: nextCap })
+    return get().runScript()
+  },
 
   runScript: async (): Promise<PiaScriptResult | null> => {
     const { script, initialCapital } = get()
@@ -143,6 +179,25 @@ export const usePiaScriptStore = create<PiaScriptState>((set, get) => ({
 }))
 
 function mockExecutePiaScript(script: string, candles: any[], initialCapital: number): PiaScriptResult {
+  // Validate function calls against allowed PiaScript DSL functions
+  const lines = script.split('\n')
+  for (let idx = 0; idx < lines.length; idx++) {
+    const codePart = lines[idx].split('#')[0].replace(/"[^"]*"|'[^']*'/g, '""')
+    const fnMatches = codePart.matchAll(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g)
+    for (const match of fnMatches) {
+      const fnName = match[1]
+      if (!ALLOWED_PIASCRIPT_FUNCTIONS.has(fnName)) {
+        return {
+          success: false,
+          error: `Line ${idx + 1}: Unknown function: ${fnName}`,
+          plots: [],
+          signals: [],
+          backtest: null
+        }
+      }
+    }
+  }
+
   // Safe simple fallback when running outside Tauri desktop runtime
   const n = candles.length
   const closes = candles.map((c) => c.close)
@@ -167,6 +222,71 @@ function mockExecutePiaScript(script: string, candles: any[], initialCapital: nu
     }
   }
 
+  const trades = signals.map((s, idx) => {
+    const entryPrice = s.price * 0.98
+    const fee = entryPrice * 0.0005
+    const pnl = (idx % 3 === 2 ? -8.25 : 15.5) - fee
+    const pnlPercent = (pnl / entryPrice) * 100
+    return {
+      entry_time: s.timestamp - 3600000,
+      exit_time: s.timestamp,
+      action: s.action,
+      entry_price: entryPrice,
+      exit_price: s.price,
+      pnl,
+      pnl_percent: pnlPercent,
+      exit_reason: idx % 2 === 0 ? 'Take Profit Hit' : 'Signal'
+    }
+  })
+
+  const totalTrades = trades.length
+  const winTrades = trades.filter((t) => t.pnl > 0).length
+  const lossTrades = trades.filter((t) => t.pnl <= 0).length
+  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0
+  const grossProfit = trades.filter((t) => t.pnl > 0).reduce((acc, t) => acc + t.pnl, 0)
+  const grossLoss = trades.filter((t) => t.pnl <= 0).reduce((acc, t) => acc + Math.abs(t.pnl), 0)
+  const avgWin = winTrades > 0 ? grossProfit / winTrades : 0
+  const avgLoss = lossTrades > 0 ? grossLoss / lossTrades : 0
+  const winFrac = totalTrades > 0 ? winTrades / totalTrades : 0
+  const expectancy = totalTrades > 0 ? winFrac * avgWin - (1 - winFrac) * avgLoss : 0
+  const commissionPaid = trades.reduce((acc, t) => acc + t.entry_price * 0.0005, 0)
+
+  let maxConsecutiveWins = 0
+  let maxConsecutiveLosses = 0
+  let curWins = 0
+  let curLosses = 0
+  for (const t of trades) {
+    if (t.pnl > 0) {
+      curWins++
+      curLosses = 0
+      if (curWins > maxConsecutiveWins) maxConsecutiveWins = curWins
+    } else {
+      curLosses++
+      curWins = 0
+      if (curLosses > maxConsecutiveLosses) maxConsecutiveLosses = curLosses
+    }
+  }
+
+  let sharpeRatio = 0
+  let sortinoRatio = 0
+  if (totalTrades >= 2) {
+    const meanRet = trades.reduce((acc, t) => acc + t.pnl_percent, 0) / totalTrades
+    const variance =
+      trades.reduce((acc, t) => acc + Math.pow(t.pnl_percent - meanRet, 2), 0) / (totalTrades - 1)
+    const stdDev = Math.sqrt(variance)
+    sharpeRatio =
+      stdDev > 1e-9 ? Math.max(-99.99, Math.min(99.99, (meanRet / stdDev) * Math.sqrt(totalTrades))) : 0
+    const downsideSq =
+      trades.reduce((acc, t) => acc + Math.pow(Math.min(0, t.pnl_percent), 2), 0) / totalTrades
+    const downsideDev = Math.sqrt(downsideSq)
+    sortinoRatio =
+      downsideDev > 1e-9
+        ? Math.max(-99.99, Math.min(99.99, (meanRet / downsideDev) * Math.sqrt(totalTrades)))
+        : meanRet > 0
+          ? 99.99
+          : 0
+  }
+
   return {
     success: true,
     plots: [
@@ -179,24 +299,23 @@ function mockExecutePiaScript(script: string, candles: any[], initialCapital: nu
       final_equity: initialCapital + 420.5,
       net_profit: 420.5,
       net_profit_percent: 4.2,
-      total_trades: signals.length,
-      win_trades: Math.ceil(signals.length * 0.6),
-      loss_trades: Math.floor(signals.length * 0.4),
-      win_rate: 60.0,
-      profit_factor: 1.85,
+      total_trades: totalTrades,
+      win_trades: winTrades,
+      loss_trades: lossTrades,
+      win_rate: winRate,
+      profit_factor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99.9 : 1.0,
       max_drawdown: 180.0,
       max_drawdown_percent: 1.8,
-      trades: signals.map((s, idx) => ({
-        entry_time: s.timestamp - 3600000,
-        exit_time: s.timestamp,
-        action: s.action,
-        entry_price: s.price * 0.98,
-        exit_price: s.price,
-        pnl: 15.5,
-        pnl_percent: 1.5,
-        exit_reason: idx % 2 === 0 ? 'Take Profit Hit' : 'Signal'
-      })),
-      equity_curve: candles.map((_, i) => initialCapital + (i * 1.5))
+      sharpe_ratio: sharpeRatio,
+      sortino_ratio: sortinoRatio,
+      expectancy,
+      avg_win: avgWin,
+      avg_loss: avgLoss,
+      max_consecutive_wins: maxConsecutiveWins,
+      max_consecutive_losses: maxConsecutiveLosses,
+      commission_paid: commissionPaid,
+      trades,
+      equity_curve: candles.map((_, i) => initialCapital + i * 1.5)
     }
   }
 }

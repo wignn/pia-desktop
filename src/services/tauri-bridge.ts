@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { CredentialManager } from './credentials'
-import { DatabaseService } from './database'
+import { DatabaseService, sharedDbService } from './database'
 import { PiaProvider } from './pia-provider'
 import { AiMcpEngine } from './ai-mcp-engine'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -48,7 +48,7 @@ export async function createTauriApi(): Promise<TerminalAPI> {
   const credManager = new CredentialManager()
   await credManager.initialize()
 
-  const dbService = new DatabaseService()
+  const dbService: DatabaseService = sharedDbService
   await dbService.initialize()
 
   const piaProvider = new PiaProvider(credManager)

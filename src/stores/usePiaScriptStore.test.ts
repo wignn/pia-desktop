@@ -38,4 +38,23 @@ describe('usePiaScriptStore', () => {
     usePiaScriptStore.getState().toggleApplyToChart()
     expect(usePiaScriptStore.getState().isAppliedToChart).toBe(!cur)
   })
+
+  it('populates institutional quant metrics (sharpe, sortino, expectancy, streaks) on backtest', async () => {
+    const result = await usePiaScriptStore.getState().runScript()
+    expect(result?.success).toBe(true)
+    expect(typeof result?.backtest?.sharpe_ratio).toBe('number')
+    expect(typeof result?.backtest?.sortino_ratio).toBe('number')
+    expect(typeof result?.backtest?.expectancy).toBe('number')
+    expect(typeof result?.backtest?.avg_win).toBe('number')
+    expect(typeof result?.backtest?.avg_loss).toBe('number')
+    expect(typeof result?.backtest?.commission_paid).toBe('number')
+  })
+
+  it('returns structured syntax error when script contains an unsupported function', async () => {
+    const res = await usePiaScriptStore
+      .getState()
+      .executeCustomScript('x = unknown_indicator(close, 14)\nplot(x)', 10000)
+    expect(res?.success).toBe(false)
+    expect(res?.error).toContain('Unknown function: unknown_indicator')
+  })
 })

@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useUpdaterStore } from '../../stores/useUpdaterStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { THEME_TOKENS } from '../../theme/tokens'
 import { UpdateNotificationBanner } from '../layout/UpdateNotificationBanner'
-import piaLogo from '../../assets/logo.png'
+import orcaLogoDark from '../../assets/orca-logo-dark.png'
+import orcaLogoLight from '../../assets/orca-logo-light.png'
 
 export function AuthGateway(): React.JSX.Element {
   const [apiKeyInput, setApiKeyInput] = useState('')
@@ -11,6 +13,8 @@ export function AuthGateway(): React.JSX.Element {
   const [isApiKeySubmitting, setIsApiKeySubmitting] = useState(false)
   const { loginWithGoogle, saveApiKey, isSaving, errorMessage } = useSettingsStore()
   const updaterStatus = useUpdaterStore((state) => state.status)
+  const theme = useWorkspaceStore((state) => state.theme)
+  const orcaLogo = theme === 'light' ? orcaLogoLight : orcaLogoDark
   const colors = THEME_TOKENS.colors
 
   const handleApiKeySubmit = async (event: React.FormEvent): Promise<void> => {
@@ -55,9 +59,9 @@ export function AuthGateway(): React.JSX.Element {
       <div data-tauri-drag-region style={{ position: 'absolute', inset: '0 0 auto', height: 30 }} />
 
       <header style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 24 }}>
-        <img src={piaLogo} alt="PIA" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'cover' }} />
+        <img src={orcaLogo} alt="ORCA" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'contain' }} />
         <div>
-          <div style={{ fontSize: 14, fontWeight: 650, letterSpacing: '-0.02em' }}>PIA Terminal</div>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>ORCA</div>
           <div style={{ marginTop: 2, color: colors.textMuted, fontSize: 10 }}>v{updaterStatus.currentVersion}</div>
         </div>
         <button
@@ -77,7 +81,7 @@ export function AuthGateway(): React.JSX.Element {
         <div>
           <h1 style={{ margin: '0 0 5px', fontSize: 19, fontWeight: 620, letterSpacing: '-0.025em' }}>Sign in to continue</h1>
           <p style={{ margin: 0, color: colors.textSecondary, fontSize: 12, lineHeight: 1.5 }}>
-            Use your Google account to connect to PIA Terminal.
+            Use your Google account to connect to ORCA.
           </p>
         </div>
 
