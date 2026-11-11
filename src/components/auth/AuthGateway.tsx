@@ -59,9 +59,9 @@ export function AuthGateway(): React.JSX.Element {
       <div data-tauri-drag-region style={{ position: 'absolute', inset: '0 0 auto', height: 30 }} />
 
       <header style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 24 }}>
-        <img src={orcaLogo} alt="ORCA" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'contain' }} />
+        <img src={orcaLogo} alt="ORCA Alpha" style={{ width: 34, height: 34, borderRadius: 7, objectFit: 'contain' }} />
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>ORCA</div>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em' }}>ORCA Alpha</div>
           <div style={{ marginTop: 2, color: colors.textMuted, fontSize: 10 }}>v{updaterStatus.currentVersion}</div>
         </div>
         <button
@@ -81,7 +81,7 @@ export function AuthGateway(): React.JSX.Element {
         <div>
           <h1 style={{ margin: '0 0 5px', fontSize: 19, fontWeight: 620, letterSpacing: '-0.025em' }}>Sign in to continue</h1>
           <p style={{ margin: 0, color: colors.textSecondary, fontSize: 12, lineHeight: 1.5 }}>
-            Use your Google account to connect to ORCA.
+            Use your Google account to connect to ORCA Alpha.
           </p>
         </div>
 

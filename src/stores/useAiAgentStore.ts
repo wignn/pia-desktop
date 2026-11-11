@@ -1559,7 +1559,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
         size,
         stopLoss: plan.stopLoss,
         takeProfit: plan.takeProfit1,
-        comment: `PIA Agent ${plan.orderType.replace('_', ' ')} (${plan.riskRewardRatio})`
+        comment: `ORCA Alpha ${plan.orderType.replace('_', ' ')} (${plan.riskRewardRatio})`
       })
     }
 
@@ -1575,7 +1575,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       price: plan.orderType === 'MARKET' ? livePrice! : plan.entry,
       stopLoss: plan.stopLoss,
       takeProfit: plan.takeProfit1,
-      comment: `PIA Agent Market (${plan.riskRewardRatio})`,
+      comment: `ORCA Alpha Market (${plan.riskRewardRatio})`,
       source: 'manual'
     })
   },
@@ -1760,7 +1760,7 @@ export const useAiAgentStore = create<AiAgentState>((set, get) => ({
       }
 
       try {
-        const systemPrompt = `You are PIA Agent, an elite autonomous quantitative trading & market research agent (Claude Code / OpenCode / Hermes style) embedded inside PIA Terminal.
+        const systemPrompt = `You are ORCA Alpha Agent, an elite autonomous quantitative trading & market research agent (Claude Code / OpenCode / Hermes style) embedded inside ORCA Alpha.
 Active Chart Symbol: ${currentSymbol}.
 
 CORE MISSION & INTENT RECOGNITION:
@@ -2230,7 +2230,7 @@ ${
       } else if (isGreeting && !isExplicitSetupRequest) {
         thought = `1. Intent: Friendly greeting / assistance inquiry for ${currentSymbol}`
         content = isIndonesian
-          ? `Halo! Saya **PIA Agent**, asisten kuantitatif pasar Anda.
+          ? `Halo! Saya **ORCA Alpha**, asisten kuantitatif pasar Anda.
 
 Saat ini kita sedang memantau instrumen **${currentSymbol}** di harga **${formatP(livePrice)}** (Tren: **${analysis.trend.toUpperCase()}**, RSI: **${analysis.indicators.rsi14}**).
 
@@ -2239,7 +2239,7 @@ Anda bisa bertanya seputar kondisi pasar saat ini, misalnya:
 - *"Resistance terdekat di berapa?"*
 - *"Apakah aman buy sekarang?"*
 - *"Minta rekomendasi order taktis"*`
-          : `Hello! I am **PIA Agent**, your institutional quantitative agent. Active symbol: **${currentSymbol}** at **${formatP(livePrice)}** (Trend: **${analysis.trend.toUpperCase()}**). How can I assist your trading analysis today?`
+          : `Hello! I am **ORCA Alpha**, your institutional quantitative agent. Active symbol: **${currentSymbol}** at **${formatP(livePrice)}** (Trend: **${analysis.trend.toUpperCase()}**). How can I assist your trading analysis today?`
       } else {
         let bias: 'LONG' | 'SHORT' | 'NEUTRAL' = analysis.tradePlan.bias
         let orderType: 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP' | 'MARKET' =
