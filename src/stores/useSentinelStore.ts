@@ -250,7 +250,7 @@ function dispatchDesktopNotification(alert: SentinelAlert): void {
   try {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (window.Notification.permission === 'granted') {
-        new window.Notification(`ORCA Sentinel · ${alert.symbol} ${alert.bias} (${alert.score}/100)`, {
+        new window.Notification(`ORCA Alpha Sentinel · ${alert.symbol} ${alert.bias} (${alert.score}/100)`, {
           body: alert.reasons.slice(0, 2).join(' · ')
         })
       }

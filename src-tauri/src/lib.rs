@@ -350,7 +350,7 @@ fn save_ai_provider_credentials(content: String) -> Result<(), String> {
 
 fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, description: &str) -> Vec<u8> {
     let accent = if is_success { "#10b981" } else { "#f43f5e" };
-    let action = if is_success { "You can return to ORCA." } else { "Close this tab and return to ORCA." };
+    let action = if is_success { "You can return to ORCA Alpha." } else { "Close this tab and return to ORCA Alpha." };
     let countdown = if is_success {
         r#"<p class="countdown">This tab will close in <span id="seconds">3</span> seconds.</p>"#
     } else {
@@ -362,7 +362,7 @@ fn render_oauth_callback_html(status_code: &str, is_success: bool, title: &str, 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ORCA — {title}</title>
+<title>ORCA Alpha — {title}</title>
 <style>
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #0b0e14; color: #f4f6fc; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
@@ -378,7 +378,7 @@ button:focus-visible {{ outline: 2px solid #3b82f6; outline-offset: 2px; }}
 </head>
 <body>
 <main>
-  <div class="brand">ORCA</div>
+  <div class="brand">ORCA Alpha</div>
   <svg class="status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{icon}</svg>
   <h1>{title}</h1>
   <p>{description} {action}</p>
@@ -462,7 +462,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                     "400 Bad Request",
                                     false,
                                     "Invalid Request",
-                                    "The authorization request could not be processed. Please return to PIA Terminal.",
+                                    "The authorization request could not be processed. Please return to ORCA Alpha.",
                                 ))
                                 .ok();
                             continue;
@@ -497,7 +497,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                     "400 Bad Request",
                                     false,
                                     "Invalid Callback",
-                                    "The callback URL parameters were malformed. Please try signing in again from PIA Terminal.",
+                                    "The callback URL parameters were malformed. Please try signing in again from ORCA Alpha.",
                                 ))
                                 .ok();
                             continue;
@@ -514,7 +514,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                     "400 Bad Request",
                                     false,
                                     "Session Mismatch",
-                                    "The OAuth security state validation failed. Please return to PIA Terminal and retry.",
+                                    "The OAuth security state validation failed. Please return to ORCA Alpha and retry.",
                                 ))
                                 .ok();
                             continue;
@@ -525,7 +525,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                     "400 Bad Request",
                                     false,
                                     "Sign-In Cancelled",
-                                    "Google sign-in was cancelled. You can safely close this tab and return to PIA Terminal.",
+                                    "Google sign-in was cancelled. You can safely close this tab and return to ORCA Alpha.",
                                 ))
                                 .ok();
                             return Err("Google sign-in was cancelled".into());
@@ -543,7 +543,7 @@ fn google_oauth_callback(url: String, expected_state: String) -> Result<serde_js
                                 "200 OK",
                                 true,
                                 "Authentication Successful",
-                                "Google sign-in is complete. You can return to PIA Terminal now.",
+                                "Google sign-in is complete. You can return to ORCA Alpha now.",
                             ))
                             .ok();
                         return Ok(serde_json::json!({"code": code, "state": expected_state}));

@@ -1,4 +1,4 @@
-name: Release PIA Terminal
+name: Release ORCA Alpha
 
 on:
   push:
@@ -99,8 +99,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: 'PIA Terminal v__VERSION__'
-          releaseBody: 'Automated release for PIA Terminal v__VERSION__. Includes auto-update manifest and signed installers for Windows, macOS, and Linux.'
+          releaseName: 'ORCA Alpha v__VERSION__'
+          releaseBody: 'Automated release for ORCA Alpha v__VERSION__. Includes auto-update manifest and signed installers for Windows, macOS, and Linux.'
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

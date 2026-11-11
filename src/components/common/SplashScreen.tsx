@@ -28,7 +28,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   const theme = useWorkspaceStore((state) => state.theme)
   const orcaLogo = theme === 'light' ? orcaLogoLight : orcaLogoDark
   const colors = THEME_TOKENS.colors
-  let title = 'Starting ORCA'
+  let title = 'Starting ORCA Alpha'
   if (isDownloading) title = `Downloading v${availableVersion || 'update'}`
   else if (isInstalling) title = 'Installing update'
   else if (state === 'downloaded') title = 'Update ready to install'
@@ -79,9 +79,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 14 }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-          <img src={orcaLogo} alt="ORCA" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'contain' }} />
+          <img src={orcaLogo} alt="ORCA Alpha" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'contain' }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>ORCA</div>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em' }}>ORCA Alpha</div>
             <div style={{ marginTop: 2, color: colors.textMuted, fontSize: 10 }}>v{version}</div>
           </div>
         </header>

@@ -323,7 +323,7 @@ const TacticalTradeTicket: React.FC<{
   const orderTypeLabel = orderType.replace('_', ' ')
 
   const handleCopy = async (): Promise<void> => {
-    const text = `ORCA TRADE SETUP: ${plan.symbol}
+    const text = `ORCA ALPHA TRADE SETUP: ${plan.symbol}
 ORDER TYPE: ${orderType}
 BIAS: ${plan.bias}
 ENTRY: ${formatP(plan.entry)}
@@ -1104,7 +1104,7 @@ export const IntelligencePanel: React.FC = () => {
                 transition: 'all 0.15s ease'
               }}
             >
-              ORCA Agent
+              ORCA Alpha
             </button>
             <button
               type="button"
@@ -1401,7 +1401,7 @@ export const IntelligencePanel: React.FC = () => {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <Terminal size={12} color="#38BDF8" />
-                          <span style={{ letterSpacing: '0.04em' }}>ORCA AGENT</span>
+                          <span style={{ letterSpacing: '0.04em' }}>ORCA ALPHA</span>
                           <span style={{ color: '#64748B', fontWeight: 400, fontFamily: THEME_TOKENS.typography.fontMono, fontSize: 9 }}>
                             [{config.provider === 'openai' ? config.model : 'Quant Engine'}]
                           </span>
@@ -1960,7 +1960,7 @@ export const IntelligencePanel: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Settings size={14} color="#D4AF37" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#F4F6FC' }}>
-                  ORCA Agent Configuration
+                  ORCA Alpha Configuration
                 </span>
               </div>
               <button
@@ -2225,7 +2225,7 @@ export const IntelligencePanel: React.FC = () => {
               >
                 <ShieldCheck size={16} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  <strong>Zero Configuration:</strong> Powered by ORCA built-in quantitative engine. No external API key required. Ingests news sentiment, orderbook depth, and projects support/resistance and trendlines directly to the chart.
+                  <strong>Zero Configuration:</strong> Powered by ORCA Alpha built-in quantitative engine. No external API key required. Ingests news sentiment, orderbook depth, and projects support/resistance and trendlines directly to the chart.
                 </span>
               </div>
             )}

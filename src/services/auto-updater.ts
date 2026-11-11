@@ -32,7 +32,7 @@ export function formatUpdateMessage(status: AppUpdateStatus): string {
     return `Version ${status.availableVersion} is available. ${status.releaseNotes || ''}`.trim()
   }
   if (status.state === 'up-to-date') {
-    return 'You are using the latest version of ORCA.'
+    return 'You are using the latest version of ORCA Alpha.'
   }
   if (status.state === 'downloading') {
     return `Downloading update (${status.progressPercent ?? 0}%)...`

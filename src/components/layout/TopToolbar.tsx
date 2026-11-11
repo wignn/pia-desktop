@@ -195,11 +195,11 @@ export const TopToolbar: React.FC = () => {
             <div style={{ padding: '10px 14px', borderBottom: `1px solid ${THEME_TOKENS.colors.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 10 }}>
               <img
                 src={theme === 'light' ? orcaLogoLight : orcaLogoDark}
-                alt="ORCA"
+                alt="ORCA Alpha"
                 style={{ width: 26, height: 26, objectFit: 'contain', flexShrink: 0 }}
               />
               <div>
-                <div style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, letterSpacing: '0.02em' }}>ORCA</div>
+                <div style={{ fontWeight: 700, color: THEME_TOKENS.colors.textBright, letterSpacing: '-0.01em' }}>ORCA Alpha</div>
                 <div style={{ fontSize: 10.5, color: THEME_TOKENS.colors.textSecondary }}>Orderflow · Risk · Committee · Alpha</div>
               </div>
             </div>
@@ -997,7 +997,7 @@ export const TopToolbar: React.FC = () => {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {credentials?.name || (credentials?.isLoggedIn ? 'Google Account' : 'ORCA')}
+                  {credentials?.name || (credentials?.isLoggedIn ? 'Google Account' : 'ORCA Alpha')}
                 </div>
                 <div
                   style={{
