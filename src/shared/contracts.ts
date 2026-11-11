@@ -420,6 +420,7 @@ export interface TerminalAPI {
     get: (params?: GetNewsInput) => Promise<NewsArticle[]>
     getLatest: () => Promise<NewsArticle[]>
     getById: (id: string) => Promise<NewsDetailData | null>
+    onUpdate?: (callback: (article: NewsArticle | NewsArticle[]) => void) => () => void
   }
   economic: {
     getIndicators: () => Promise<EconomicMetadataData>

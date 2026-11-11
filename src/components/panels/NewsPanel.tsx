@@ -15,20 +15,22 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
   const category = useNewsStore((state) => state.category)
   const fetchNews = useNewsStore((state) => state.fetchNews)
   const setCategory = useNewsStore((state) => state.setCategory)
+  const startRealtimeSync = useNewsStore((state) => state.startRealtimeSync)
 
   const articles = customArticles ?? storeArticles
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(() => Date.now())
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    fetchNews()
-  }, [fetchNews])
+    if (customArticles) return
+    return startRealtimeSync(15_000)
+  }, [customArticles, startRealtimeSync])
 
   // Periodic clock tick to refresh relative time without impure Date.now() during render
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTimestamp(Date.now())
-    }, 30000)
+    }, 15_000)
     return (): void => clearInterval(timer)
   }, [])
 

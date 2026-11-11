@@ -1,31 +1,17 @@
-import React, { useState, useEffect } from 'react'
-import type { NewsArticle } from '@shared/types'
+import React, { useEffect } from 'react'
+import { useNewsStore } from '../../../stores/useNewsStore'
 import { THEME_TOKENS } from '../../../theme/tokens'
 
 export const NewsWireWidget: React.FC = () => {
-  const [articles, setArticles] = useState<NewsArticle[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const articles = useNewsStore((state) => state.articles)
+  const isLoading = useNewsStore((state) => state.isLoading)
+  const startRealtimeSync = useNewsStore((state) => state.startRealtimeSync)
 
   useEffect(() => {
-    let cancelled = false
-    setIsLoading(true)
+    return startRealtimeSync(15_000)
+  }, [startRealtimeSync])
 
-    window.api.news
-      .get({ limit: 20 })
-      .then((res) => {
-        if (cancelled) return
-        const list = Array.isArray(res) ? res : (res as any)?.items || (res as any)?.articles || []
-        setArticles(list)
-        setIsLoading(false)
-      })
-      .catch(() => {
-        if (!cancelled) setIsLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const visibleArticles = articles.slice(0, 20)
 
   return (
     <div
@@ -38,12 +24,12 @@ export const NewsWireWidget: React.FC = () => {
         overflowY: 'auto'
       }}
     >
-      {isLoading && (
+      {isLoading && visibleArticles.length === 0 && (
         <div style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary, textAlign: 'center', padding: 20 }}>
           Streaming news wire...
         </div>
       )}
-      {articles.map((art) => (
+      {visibleArticles.map((art) => (
         <div
           key={art.id}
           style={{

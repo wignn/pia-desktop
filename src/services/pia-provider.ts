@@ -358,6 +358,11 @@ export class PiaProvider {
       this.lastActivityAt = Date.now()
       const candidate = this.extractRealtimeError(payload)
       if (candidate) this.realtimeErrorDetail = candidate
+
+      const realtimeNews = this.extractRealtimeNews(payload)
+      if (realtimeNews.length > 0) {
+        this.broadcast(IPC_CHANNELS.NEWS_ON_UPDATE, realtimeNews)
+      }
     })
 
     rt.on('error', (err: unknown) => {
@@ -1214,23 +1219,12 @@ export class PiaProvider {
         }
         return DEFAULT_MARKET_NEWS
       }
-      return res.items.map((item: any, idx: number) => ({
-        id: item.id || `news-${idx}`,
-        title: item.title || item.original_title || 'Market Update',
-        summary: item.summary || item.content || '',
-        url: item.url || item.original_url || 'https://wign.dev',
-        source: item.source_name || item.source || 'Financial Wire',
-        publishedAt: item.published_at ? new Date(item.published_at).getTime() : Date.now(),
-        category: item.category,
-        imageUrl:
-          item.media_url ||
-          item.image_url ||
-          item.imageUrl ||
-          item.image ||
-          item.thumbnail ||
-          item.urlToImage ||
-          resolveNewsImage(item.title, item.summary, item.category, idx)
-      }))
+      return res.items.map((item: any, idx: number) =>
+        this.normalizeNewsArticle(
+          item,
+          `news-${idx}-${item?.published_at || item?.title || idx}`
+        )
+      )
     } catch (err) {
       console.warn('getNews unavailable:', this.formatProviderError(err))
       return DEFAULT_MARKET_NEWS
@@ -1241,12 +1235,26 @@ export class PiaProvider {
     if (!this.client) return []
     try {
       const response = (await this.client.news.getLatest()) as Record<string, unknown>
-      const items = Array.isArray(response.items)
-        ? response.items
-        : Array.isArray(response.articles)
-          ? response.articles
-          : []
-      return items.map((item, index) => this.normalizeNewsArticle(item, `latest-${index}`))
+      const rawData =
+        response && typeof response.data === 'object' && response.data !== null
+          ? (response.data as Record<string, unknown>)
+          : response
+      const items = Array.isArray(response)
+        ? response
+        : Array.isArray(rawData?.items)
+          ? rawData.items
+          : Array.isArray(rawData?.articles)
+            ? rawData.articles
+            : Array.isArray(rawData?.events)
+              ? rawData.events
+              : Array.isArray(response?.data)
+                ? response.data
+                : rawData && typeof rawData.title === 'string'
+                  ? [rawData]
+                  : []
+      return items.map((item, index) =>
+        this.normalizeNewsArticle(item as Record<string, unknown>, `latest-${index}`)
+      )
     } catch (err) {
       console.warn('[PiaProvider] news.getLatest failed:', this.formatProviderError(err))
       return []
@@ -1384,6 +1392,38 @@ export class PiaProvider {
     }
   }
 
+  private extractRealtimeNews(payload: unknown): NewsArticle[] {
+    if (!payload || typeof payload !== 'object') return []
+    const record = payload as Record<string, unknown>
+    const event = typeof record.event === 'string' ? record.event.toLowerCase() : ''
+    const type = typeof record.type === 'string' ? record.type.toLowerCase() : ''
+    const channel = typeof record.channel === 'string' ? record.channel.toLowerCase() : ''
+
+    const isNewsEvent =
+      event.startsWith('news') || type === 'news' || channel === 'news' || channel.startsWith('news.')
+    if (!isNewsEvent) return []
+
+    const data =
+      record.data && typeof record.data === 'object'
+        ? (record.data as Record<string, unknown>)
+        : record
+    const rawItems = Array.isArray(record.data)
+      ? record.data
+      : Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.articles)
+          ? data.articles
+          : data.article && typeof data.article === 'object'
+            ? [data.article]
+            : typeof data.title === 'string' || typeof data.original_title === 'string'
+              ? [data]
+              : []
+
+    return rawItems
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item, idx) => this.normalizeNewsArticle(item, `rt-news-${Date.now()}-${idx}`))
+  }
+
   private normalizeNewsArticle(item: Record<string, unknown>, fallbackId: string): NewsArticle {
     const raw = item as Record<string, any>
     const source =
@@ -1391,7 +1431,43 @@ export class PiaProvider {
         ? raw.source_name
         : typeof raw.source === 'string' && raw.source.trim()
           ? raw.source
-          : 'PIA News'
+          : 'Financial Wire'
+    const title =
+      typeof raw.title === 'string' && raw.title.trim()
+        ? raw.title
+        : typeof raw.original_title === 'string' && raw.original_title.trim()
+          ? raw.original_title
+          : 'Market Update'
+    const summary =
+      typeof raw.summary === 'string'
+        ? raw.summary
+        : typeof raw.content === 'string'
+          ? raw.content
+          : ''
+    const url =
+      typeof raw.url === 'string' && raw.url
+        ? raw.url
+        : typeof raw.original_url === 'string' && raw.original_url
+          ? raw.original_url
+          : 'https://wign.dev'
+    const rawPublished =
+      raw.published_at ?? raw.publishedAt ?? raw.created_at ?? raw.timestamp ?? undefined
+    let publishedAt = Date.now()
+    if (typeof rawPublished === 'number' && Number.isFinite(rawPublished)) {
+      publishedAt = rawPublished < 1e11 ? rawPublished * 1000 : rawPublished
+    } else if (typeof rawPublished === 'string' && rawPublished.trim()) {
+      const parsed = new Date(rawPublished).getTime()
+      if (!Number.isNaN(parsed)) publishedAt = parsed
+    }
+
+    const rawId = raw.id ?? raw.article_id ?? raw.event_id
+    const id =
+      rawId !== undefined && rawId !== null && String(rawId).trim() !== ''
+        ? String(rawId)
+        : url && url !== 'https://wign.dev'
+          ? `news-${url}`
+          : fallbackId
+
     const imageUrl =
       typeof raw.media_url === 'string' && raw.media_url.trim()
         ? raw.media_url
@@ -1403,25 +1479,21 @@ export class PiaProvider {
               ? raw.image
               : typeof raw.thumbnail === 'string' && raw.thumbnail.trim()
                 ? raw.thumbnail
-                : resolveNewsImage(
-                    typeof raw.title === 'string' ? raw.title : '',
-                    typeof raw.summary === 'string' ? raw.summary : '',
-                    typeof raw.category === 'string' ? raw.category : ''
-                  )
+                : typeof raw.urlToImage === 'string' && raw.urlToImage.trim()
+                  ? raw.urlToImage
+                  : resolveNewsImage(
+                      title,
+                      summary,
+                      typeof raw.category === 'string' ? raw.category : ''
+                    )
 
     return {
-      id: typeof raw.id === 'string' ? raw.id : fallbackId,
-      title: typeof raw.title === 'string' ? raw.title : 'Market News',
-      summary: typeof raw.summary === 'string' ? raw.summary : '',
-      url:
-        typeof raw.url === 'string' && raw.url
-          ? raw.url
-          : typeof raw.original_url === 'string'
-            ? raw.original_url
-            : '',
+      id,
+      title,
+      summary,
+      url,
       source,
-      publishedAt:
-        typeof raw.published_at === 'string' ? new Date(raw.published_at).getTime() : Date.now(),
+      publishedAt,
       category: typeof raw.category === 'string' ? raw.category : undefined,
       imageUrl
     }

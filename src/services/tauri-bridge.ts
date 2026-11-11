@@ -199,7 +199,9 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     news: {
       get: (params?: GetNewsInput) => piaProvider.getNews(params),
       getLatest: () => piaProvider.getLatestNews(),
-      getById: (id: string) => piaProvider.getNewsById(id)
+      getById: (id: string) => piaProvider.getNewsById(id),
+      onUpdate: (callback: (article: any) => void) =>
+        piaProvider.on(IPC_CHANNELS.NEWS_ON_UPDATE, callback)
     },
 
     economic: {

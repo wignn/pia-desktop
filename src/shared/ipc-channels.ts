@@ -63,6 +63,7 @@ export const IPC_CHANNELS = {
   NEWS_GET: 'news:get',
   NEWS_GET_LATEST: 'news:get-latest',
   NEWS_GET_BY_ID: 'news:get-by-id',
+  NEWS_ON_UPDATE: 'news:on-update',
   ECONOMIC_GET_INDICATORS: 'economic:get-indicators',
   ECONOMIC_GET_CATEGORIES: 'economic:get-categories',
   ECONOMIC_GET_COUNTRIES: 'economic:get-countries',
