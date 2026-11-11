@@ -53,6 +53,8 @@ export interface PriceQuote {
   price: number
   /** Local receipt time; distinguishes stale provider timestamps from a fresh delivery. */
   receivedAt?: number
+  /** True when no source event time was provided; cannot prove freshness or ordering. */
+  timestampEstimated?: boolean
   bid?: number
   ask?: number
   timestamp: number

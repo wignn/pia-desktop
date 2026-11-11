@@ -11,6 +11,7 @@ import {
 } from 'klinecharts'
 import { timeframeToPeriod, periodToTimeframe } from '../../utils/timeframe'
 import { candleEngine } from '../../services/candle-engine'
+import { createLiveBarScheduler } from '../../services/live-bar-scheduler'
 import { requestKronosRollout, setActiveKronosChart, useKronosStore } from '../../services/kronos-client'
 
 function scheduleKronos(): void {
@@ -334,11 +335,20 @@ export const ChartContainer: React.FC = () => {
 
     if (!chart) return
     chartRef.current = chart
+    const liveBars = createLiveBarScheduler((bar) => {
+      scheduleKronos()
+      setLatestBar(bar)
+      liveSubscriberRef.current?.(bar)
+    }, () => {
+      const state = useMarketStore.getState()
+      return state.symbol === candleEngine.getSymbol() && state.timeframe === candleEngine.getTimeframe()
+    })
     const unsubKronos = useKronosStore.subscribe(() => {
       chart.overrideIndicator({ name: 'KRONOS', paneId: 'candle_pane' })
     })
     const unsubKronosMarket = useMarketStore.subscribe((state, previous) => {
       if (state.symbol !== previous.symbol || state.timeframe !== previous.timeframe) {
+        liveBars.cancel()
         const enabled = useChartStore.getState().activeIndicators.some((ind) => ind.name === 'KRONOS')
         setActiveKronosChart(enabled && state.symbol ? { symbol: state.symbol, timeframe: state.timeframe } : null)
       }
@@ -434,6 +444,7 @@ export const ChartContainer: React.FC = () => {
       },
       unsubscribeBar: (): void => {
         liveSubscriberRef.current = null
+        liveBars.cancel()
       }
     })
 
@@ -473,12 +484,8 @@ export const ChartContainer: React.FC = () => {
           }
         }
       },
-      onBarUpdate: (_genId, bar): void => {
-        scheduleKronos()
-        setLatestBar(bar)
-        if (liveSubscriberRef.current) {
-          liveSubscriberRef.current(bar)
-        }
+      onBarUpdate: (genId, bar): void => {
+        liveBars.push(genId, bar)
       }
     })
 
@@ -530,6 +537,7 @@ export const ChartContainer: React.FC = () => {
     resizeObserver.observe(container)
 
     return (): void => {
+      liveBars.cancel()
       unsubEngine()
       unsubKronosMarket()
       unsubKronos()

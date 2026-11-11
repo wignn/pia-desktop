@@ -11,6 +11,11 @@ import { useAlertsStore } from './useAlertsStore'
 import { usePaperTradingStore } from './usePaperTradingStore'
 import type { KLineData } from 'klinecharts'
 
+function isOlderQuote(quote: PriceQuote, previous?: PriceQuote): boolean {
+  return Boolean(previous && !previous.timestampEstimated &&
+    (quote.timestampEstimated || quote.timestamp < previous.timestamp))
+}
+
 interface MarketState {
   symbol: string | null
   timeframe: Timeframe
@@ -195,7 +200,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     try {
       const quote = await window.api.market.getPrice(symbol)
       if (quote) {
-        set((state) => ({ prices: { ...state.prices, [quote.symbol]: quote } }))
+        set((state) => isOlderQuote(quote, state.prices[quote.symbol])
+          ? state : { prices: { ...state.prices, [quote.symbol]: quote } })
       }
     } catch (err) {
       console.warn(`[MarketStore] Failed to refresh ${symbol}:`, err)
@@ -227,6 +233,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     // Publish visual quote state once per frame. Candle, alert, and position
     // evaluation below still receives every tick synchronously.
     const cleanupPrices = window.api.market.onPriceUpdate((quote: PriceQuote) => {
+      const previous = pendingPrices[quote.symbol] ?? get().prices[quote.symbol]
+      if (!Number.isFinite(quote.price) || quote.price <= 0 || !Number.isFinite(quote.timestamp) ||
+        isOlderQuote(quote, previous)) return
       if (get().connectionState.status !== 'connected') {
         set({
           connectionState: {
@@ -241,33 +250,67 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       schedulePriceFlush()
 
       dispatchCandleTick(quote)
+      if (quote.timestampEstimated) return
       useAlertsStore.getState().checkPriceAlerts(quote)
       usePaperTradingStore.getState().checkPositionsSLTP(quote)
     })
 
+    let disposed = false
     let fallbackInFlight = false
+    let lastRecoveryAt = 0
+    let lastReconnectAt = 0
+    let sessionSymbol = ''
+    let sessionCheckedAt = 0
+    let sessionOpen: boolean | undefined
     const fallbackTimer = setInterval(async () => {
       const { symbol, connectionState, prices } = get()
-      if (!symbol || document.hidden || fallbackInFlight) return
-      const quote = prices[symbol]
-      const staleAfterMs = 20_000
-      const receivedAt = quote?.receivedAt ?? quote?.timestamp ?? 0
-      const isStale = !receivedAt || Date.now() - receivedAt > staleAfterMs
+      const now = Date.now()
+      if (!symbol || document.hidden || fallbackInFlight || now - lastRecoveryAt < 5000) return
+      const quote = pendingPrices[symbol] ?? prices[symbol]
+      const isStale = !quote || quote.timestampEstimated || now - quote.timestamp > 5000
 
       if (connectionState.status !== 'connected' || isStale) {
         fallbackInFlight = true
+        lastRecoveryAt = now
+        let needsReconnect = false
+        let streamBeforeRefresh: PriceQuote | undefined
         try {
+          if (sessionSymbol !== symbol || now - sessionCheckedAt >= 60000) {
+            const session = await window.api.market.getSession(symbol)
+            sessionSymbol = symbol
+            sessionCheckedAt = now
+            sessionOpen = session?.sessionOpen
+          }
+          if (disposed || get().symbol !== symbol || sessionOpen === false) return
           const refreshed = await window.api.market.getPrice(symbol)
+          needsReconnect = !refreshed || Boolean(quote && !quote.timestampEstimated && !refreshed.timestampEstimated &&
+            refreshed.timestamp > quote.timestamp && (refreshed.price !== quote.price || refreshed.bid !== quote.bid || refreshed.ask !== quote.ask))
+          if (disposed) return
+          streamBeforeRefresh = pendingPrices[symbol] ?? get().prices[symbol]
           if (refreshed) {
-            set((state) => ({ prices: { ...state.prices, [refreshed.symbol]: refreshed } }))
+            const previous = pendingPrices[symbol] ?? get().prices[symbol]
+            if (!isOlderQuote(refreshed, previous)) {
+              delete pendingPrices[symbol]
+              set((state) => ({ prices: { ...state.prices, [refreshed.symbol]: refreshed } }))
+            }
           }
         } catch (err) {
+          streamBeforeRefresh = pendingPrices[symbol] ?? get().prices[symbol]
+          needsReconnect = true
           console.warn(`[MarketStore] Fallback price refresh failed for ${symbol}:`, err)
         } finally {
           fallbackInFlight = false
+          const streamAdvanced = streamBeforeRefresh && !streamBeforeRefresh.timestampEstimated && streamBeforeRefresh !== quote
+          if (!disposed && get().symbol === symbol && sessionOpen !== false && needsReconnect && !streamAdvanced &&
+            Date.now() - lastReconnectAt >= 30000) {
+            lastReconnectAt = Date.now()
+            void window.api.market.reconnect?.().catch((err) => {
+              console.warn('[MarketStore] Feed recovery failed:', err)
+            })
+          }
         }
       }
-    }, 15_000)
+    }, 1000)
 
     const handleVisibilityChange = (): void => {
       if (!document.hidden) {
@@ -294,6 +337,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     if (activeSymbol) void window.api.market.subscribePrice(activeSymbol)
 
     return () => {
+      disposed = true
       cleanupPrices()
       cleanupConn()
       clearInterval(fallbackTimer)

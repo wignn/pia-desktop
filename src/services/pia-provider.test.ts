@@ -7,7 +7,7 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     const mockCredManager = {
-      getApiKey: vi.fn().mockReturnValue('mock-api-key'),
+      getApiKey: vi.fn().mockReturnValue(''),
       getBaseUrl: vi.fn().mockReturnValue('https://api.pia.test'),
       getWsUrl: vi.fn().mockReturnValue('wss://ws.pia.test')
     } as any
@@ -45,6 +45,38 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('does not publish an older REST quote after a newer stream quote', async () => {
+    const now = Date.now()
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    normalize({ symbol: 'XAUUSD', price: 3010, trade_time_ms: now })
+    ;(provider as any).client = { market: { getPrice: async () => ({ symbol: 'XAUUSD', price: 2990, trade_time_ms: now - 180000 }) } }
+    const updates: unknown[] = []
+    provider.on('market:on-price-update', (quote) => updates.push(quote))
+
+    expect(await provider.getPrice('XAUUSD')).toBeNull()
+    expect(updates).toEqual([])
+    expect((provider as any).latestQuotes.get('XAUUSD').price).toBe(3010)
+  })
+
+  it('does not let timestamp-less REST data block a subsequent source-timed tick', () => {
+    const now = Date.now()
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    const unknown = normalize({ symbol: 'XAUUSD', price: 2990 })
+    expect(unknown.timestampEstimated).toBe(true)
+    const streamed = normalize({ symbol: 'XAUUSD', price: 3010, trade_time_ms: now - 1000 })
+    expect(streamed?.price).toBe(3010)
+    expect(normalize({ symbol: 'XAUUSD', price: 2991 })).toBeNull()
+  })
+
+  it('prefers source trade time and rejects invalid or future source timestamps', () => {
+    const now = Date.now()
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    expect(normalize({ symbol: 'XAUUSD', price: 3000, timestamp: now, trade_time_ms: now - 180000 }).timestamp).toBe(now - 180000)
+    expect(normalize({ symbol: 'EURUSD', price: 1.1, trade_time_ms: NaN })).toBeNull()
+    expect(normalize({ symbol: 'EURUSD', price: Infinity, trade_time_ms: now })).toBeNull()
+    expect(normalize({ symbol: 'EURUSD', price: 1.1, trade_time_ms: now + 3600000 })).toBeNull()
   })
 
   it('correctly aggregates three 5m bars into one 15m candle', () => {

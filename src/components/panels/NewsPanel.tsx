@@ -17,7 +17,10 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({ customArticles }) => {
   const setCategory = useNewsStore((state) => state.setCategory)
   const startRealtimeSync = useNewsStore((state) => state.startRealtimeSync)
 
-  const articles = customArticles ?? storeArticles
+  const selectedArticle = useNewsStore((state) => state.selectedArticle)
+  const articles = customArticles ?? (selectedArticle
+    ? [selectedArticle, ...storeArticles.filter((item) => item.id !== selectedArticle.id && item.url !== selectedArticle.url)]
+    : storeArticles)
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(() => Date.now())
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
 

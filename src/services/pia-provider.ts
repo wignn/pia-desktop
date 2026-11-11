@@ -504,20 +504,19 @@ export class PiaProvider {
     }
     const cleanSymbol = raw.symbol.trim().toUpperCase()
     const price = Number(raw.price)
-    if (isNaN(price) || price <= 0) return null
+    if (!Number.isFinite(price) || price <= 0) return null
 
-    let rawTs: number | undefined
-    if (raw.timestamp !== undefined && raw.timestamp !== null) {
-      rawTs = Number(raw.timestamp)
-    } else if (rawValue.trade_time_ms !== undefined && rawValue.trade_time_ms !== null) {
-      rawTs = Number(rawValue.trade_time_ms)
-    } else if (rawValue.received_at) {
-      const parsed = Date.parse(rawValue.received_at)
-      if (!isNaN(parsed)) rawTs = parsed
-    }
-
-    let ts = rawTs !== undefined && !isNaN(rawTs) ? rawTs : Date.now()
+    const receivedAt = Date.now()
+    const sourceTime = rawValue.trade_time_ms ?? raw.timestamp
+    const timestampEstimated = sourceTime === undefined || sourceTime === null
+    let ts = sourceTime !== undefined && sourceTime !== null
+      ? Number(sourceTime)
+      : rawValue.received_at ? Date.parse(rawValue.received_at) : receivedAt
     if (ts < 1e11) ts *= 1000
+    if (!Number.isSafeInteger(ts) || ts <= 0 || ts > receivedAt + 5000) return null
+    const previous = this.latestQuotes.get(cleanSymbol)
+    if (previous && !previous.timestampEstimated &&
+      (timestampEstimated || ts < previous.timestamp)) return null
 
     let change24h: number | undefined
     let change24hPercent: number | undefined
@@ -547,7 +546,8 @@ export class PiaProvider {
     const quote: PriceQuote = {
       symbol: cleanSymbol,
       price,
-      receivedAt: Date.now(),
+      receivedAt,
+      ...(timestampEstimated ? { timestampEstimated: true } : {}),
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
       timestamp: ts,

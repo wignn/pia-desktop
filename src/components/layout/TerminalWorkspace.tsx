@@ -28,6 +28,8 @@ import { SettingsModal } from '../modals/SettingsModal'
 import { SnapshotModal } from '../modals/SnapshotModal'
 import { ImportPositionsModal } from '../modals/ImportPositionsModal'
 import { UpdateNotificationBanner } from './UpdateNotificationBanner'
+import { NewsNotificationBanner } from './NewsNotificationBanner'
+import { useNewsStore } from '../../stores/useNewsStore'
 
 import { useMarketStore } from '../../stores/useMarketStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -93,6 +95,29 @@ export function TerminalWorkspace(): React.JSX.Element {
   const setActiveTool = useChartStore((state) => state.setActiveTool)
   const lastTriggeredAlert = useAlertsStore((state) => state.lastTriggeredAlert)
   const dismissBanner = useAlertsStore((state) => state.dismissBanner)
+
+  const startNewsSync = useNewsStore((state) => state.startRealtimeSync)
+  const newsNotification = useNewsStore((state) => state.notifications[0])
+  const dismissNewsNotification = useNewsStore((state) => state.dismissNotification)
+
+  useEffect(() => startNewsSync(), [startNewsSync])
+
+  useEffect(() => {
+    if (!newsNotification) return
+    const timer = setTimeout(() => dismissNewsNotification(newsNotification.id), 6000)
+    return () => clearTimeout(timer)
+  }, [newsNotification, dismissNewsNotification])
+
+  const openNewsNotification = (): void => {
+    if (!newsNotification) return
+    useNewsStore.getState().selectNotification(newsNotification.id)
+    const tabState = useTabStore.getState()
+    const chartTab = tabState.tabs.find((tab) => tab.id === tabState.activeTabId && tab.type === 'chart')
+      ?? tabState.tabs.find((tab) => tab.type === 'chart')
+    if (chartTab) tabState.setActiveTabId(chartTab.id)
+    else tabState.addTab({ type: 'chart', title: 'Live Chart' })
+    useWorkspaceStore.setState({ activeTab: 'news', isRightPanelOpen: true })
+  }
 
   const [dockWidth, setDockWidth] = useState(320)
   const isDraggingDockRef = useRef(false)
@@ -397,6 +422,13 @@ export function TerminalWorkspace(): React.JSX.Element {
       <BottomStatusBar />
 
       {/* Modal Dialogues */}
+      {newsNotification && (
+        <NewsNotificationBanner
+          article={newsNotification}
+          onOpen={openNewsNotification}
+          onDismiss={() => dismissNewsNotification(newsNotification.id)}
+        />
+      )}
       <UpdateNotificationBanner />
       <SymbolSearchModal />
       <IndicatorModal />

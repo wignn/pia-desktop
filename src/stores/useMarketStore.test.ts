@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PriceQuote } from '@shared/types'
 import { useAlertsStore } from './useAlertsStore'
 import { useMarketStore } from './useMarketStore'
@@ -47,6 +47,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     api: {
       market: {
+        getSession: vi.fn().mockResolvedValue({ symbol: 'XAUUSD', sessionOpen: true, timestamp: Date.now() }),
         subscribePrice: vi.fn().mockResolvedValue(undefined),
         unsubscribePrice: vi.fn().mockResolvedValue(undefined),
         onPriceUpdate: vi.fn((listener: (quote: PriceQuote) => void) => {
@@ -67,7 +68,140 @@ beforeEach(() => {
   })
 })
 
+afterEach(() => vi.useRealTimers())
+
 describe('useMarketStore realtime prices', () => {
+  it('recovers continuously delivered stale source prices without overlapping refreshes', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    let finish!: (quote: PriceQuote) => void
+    window.api.market.getPrice = vi.fn(() => new Promise<PriceQuote>((resolve) => { finish = resolve }))
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      priceListener?.({ symbol: 'XAUUSD', price: 2990, timestamp: Date.now() - 180000, receivedAt: Date.now() })
+      frameCallback?.(16)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(window.api.market.getPrice).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(window.api.market.getPrice).toHaveBeenCalledTimes(1)
+      finish({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now(), receivedAt: Date.now() })
+      await Promise.resolve()
+      expect(useMarketStore.getState().prices.XAUUSD.price).toBe(3010)
+    } finally { unsubscribe() }
+  })
+
+  it('keeps a newer in-frame stream price when a recovery REST response arrives late', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    let finish!: (quote: PriceQuote) => void
+    window.api.market.getPrice = vi.fn(() => new Promise<PriceQuote>((resolve) => { finish = resolve }))
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      const restTimestamp = Date.now()
+      await vi.advanceTimersByTimeAsync(1000)
+      priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now() })
+      finish({ symbol: 'XAUUSD', price: 2990, timestamp: restTimestamp })
+      await Promise.resolve()
+      frameCallback?.(16)
+      expect(useMarketStore.getState().prices.XAUUSD.price).toBe(3010)
+    } finally { unsubscribe() }
+  })
+
+  it('reconnects a stale feed with a cooldown when REST cannot supply a fresh quote', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    window.api.market.getPrice = vi.fn().mockResolvedValue(null)
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(window.api.market.reconnect).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(window.api.market.reconnect).toHaveBeenCalledTimes(1)
+    } finally { unsubscribe() }
+  })
+
+  it('does not repeatedly recover a closed market or reconnect a quiet unchanged quote', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    const quote = { symbol: 'XAUUSD', price: 3000, timestamp: Date.now() - 60000 }
+    useMarketStore.setState({ connectionState: { status: 'connected' }, prices: { XAUUSD: quote } })
+    window.api.market.getSession = vi.fn().mockResolvedValue({ symbol: 'XAUUSD', sessionOpen: false, timestamp: Date.now() })
+    window.api.market.getPrice = vi.fn().mockResolvedValue(quote)
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(45000)
+      expect(window.api.market.getPrice).not.toHaveBeenCalled()
+      expect(window.api.market.reconnect).not.toHaveBeenCalled()
+      vi.mocked(window.api.market.getSession).mockResolvedValue({ symbol: 'XAUUSD', sessionOpen: true, timestamp: Date.now() })
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(window.api.market.getPrice).toHaveBeenCalled()
+      expect(window.api.market.reconnect).not.toHaveBeenCalled()
+    } finally { unsubscribe() }
+  })
+
+  it('does not treat an estimated timestamp as proof of source freshness', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' }, prices: {
+      XAUUSD: { symbol: 'XAUUSD', price: 3000, timestamp: Date.now(), timestampEstimated: true } as PriceQuote
+    } })
+    window.api.market.getPrice = vi.fn().mockResolvedValue(null)
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(window.api.market.getPrice).toHaveBeenCalledOnce()
+    } finally { unsubscribe() }
+  })
+
+  it('does not reconnect after the stream recovers while REST is in flight', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    let finish!: (quote: PriceQuote | null) => void
+    window.api.market.getPrice = vi.fn(() => new Promise<PriceQuote | null>((resolve) => { finish = resolve }))
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now() })
+      finish(null)
+      await Promise.resolve()
+      expect(window.api.market.reconnect).not.toHaveBeenCalled()
+    } finally { unsubscribe() }
+  })
+
+  it('recovers the socket even when the fallback HTTP request fails', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    window.api.market.getPrice = vi.fn().mockRejectedValue(new Error('offline'))
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(window.api.market.reconnect).toHaveBeenCalledTimes(1)
+    } finally { unsubscribe(); warning.mockRestore() }
+  })
+
+  it('does not roll back an in-frame quote with an older tick', () => {
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: 2000 })
+      priceListener?.({ symbol: 'XAUUSD', price: 2990, timestamp: 1000 })
+      frameCallback?.(16)
+      expect(useMarketStore.getState().prices.XAUUSD.price).toBe(3010)
+    } finally { unsubscribe() }
+  })
+
   it('publishes only the latest quote per symbol once per frame', () => {
     const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
     const first = { symbol: 'XAUUSD', price: 2600, timestamp: 1 }

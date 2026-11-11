@@ -19,6 +19,7 @@ export class CandleEngine {
   private generationId = 0
   private isLoading = false
   private tickBuffer: PriceQuote[] = []
+  private lastTickTimestamp = 0
   private activeBars: KLineData[] = []
   private listeners = new Set<CandleEngineListener>()
   private inFlightKey = ''
@@ -182,6 +183,7 @@ export class CandleEngine {
       if (isNewSymbol) {
         this.kronosInputError = null
         this.activeBars = []
+        this.lastTickTimestamp = 0
       }
       this.isReplayMode = false
       this.replayBars = []
@@ -250,24 +252,6 @@ export class CandleEngine {
         return []
       }
 
-      // ponytail: one older page reaches 360 closed bars + a live bar without increasing rollup query size.
-      const targetLimit = Math.min(limit, 361)
-      if (targetLimit > effectiveLimit && normalizedBars.length >= effectiveLimit && normalizedBars.length < targetLimit) {
-        try {
-          const oldest = normalizedBars[0].timestamp
-          const older = await window.api.market.getCandles({ symbol, timeframe, to: oldest, limit: targetLimit - normalizedBars.length })
-          if (this.generationId !== activeGen) return []
-          this.auditKronosBars(older)
-          const olderOnly = older.filter((bar) =>
-            (bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp) < oldest)
-          this.auditKronosBars([...olderOnly, ...normalizedBars])
-          normalizedBars = this.normalizeAndSortBars([...olderOnly, ...normalizedBars]).slice(-targetLimit)
-        } catch {
-          // Keep valid recent history when older candles are unavailable.
-        }
-      }
-      if (this.generationId !== activeGen) return []
-
       const cachedLatestTimestamp = cachedBars.length > 0 ? cachedBars[cachedBars.length - 1].timestamp : 0
       this.activeBars = normalizedBars
       this.lastLoadError = null
@@ -287,6 +271,25 @@ export class CandleEngine {
       }
 
       this.isLoading = false
+      const targetLimit = Math.min(limit, 361)
+      if (targetLimit > effectiveLimit && this.activeBars.length >= effectiveLimit && this.activeBars.length < targetLimit) {
+        // Publish recent history before waiting for optional forecast context.
+        onCachedBars?.([...this.activeBars])
+        for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, [...this.activeBars])
+        try {
+          const oldest = this.activeBars[0].timestamp
+          const older = await window.api.market.getCandles({ symbol, timeframe, to: oldest, limit: targetLimit - this.activeBars.length })
+          if (this.generationId !== activeGen) return []
+          this.auditKronosBars(older)
+          const olderOnly = older.filter((bar) =>
+            (bar.timestamp < 1e11 ? bar.timestamp * 1000 : bar.timestamp) < oldest)
+          this.auditKronosBars([...olderOnly, ...this.activeBars])
+          this.activeBars = this.normalizeAndSortBars([...olderOnly, ...this.activeBars])
+        } catch {
+          // Keep recent history and live updates if optional context fails.
+        }
+      }
+      if (this.generationId !== activeGen) return []
       const result = [...this.activeBars]
       this.writeSnapshot(symbol, timeframe, result)
       for (const listener of this.listeners) listener.onHistoryLoaded(activeGen, result)
@@ -368,7 +371,7 @@ export class CandleEngine {
    * Handle incoming realtime price tick from WebSocket
    */
   public handleTick(quote: PriceQuote): void {
-    if (!quote || !quote.symbol) return
+    if (!quote || !quote.symbol || quote.timestampEstimated) return
     const quoteSym = quote.symbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     const curSym = this.currentSymbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     if (quoteSym !== curSym) {
@@ -400,6 +403,8 @@ export class CandleEngine {
     let ts = quote.timestamp
     if (ts < 1e11) ts *= 1000
 
+    const price = quote.price
+    if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(ts) || ts < this.lastTickTimestamp) return
     const currentGen = this.generationId
 
     // History is expected before live reconciliation. Never turn a delayed
@@ -411,19 +416,9 @@ export class CandleEngine {
     const lastBarIndex = this.activeBars.length - 1
     const lastBar = this.activeBars[lastBarIndex]
 
-    // Discard truly stale historical ticks (> 2 candle intervals behind)
-    if (ts < lastBar.timestamp - intervalMs * 2) {
-      return
-    }
-
-    // Tolerate minor client/exchange clock skew by clamping within the active window
-    const effectiveTs = Math.max(ts, lastBar.timestamp)
-    const barStartTimestamp = Math.floor(effectiveTs / intervalMs) * intervalMs
-    const price = quote.price
-    if (!Number.isFinite(price) || !Number.isSafeInteger(ts)) {
-      this.kronosInputError = 'Invalid live OHLC input'
-      return
-    }
+    if (ts < lastBar.timestamp - 5000) return
+    this.lastTickTimestamp = ts
+    const barStartTimestamp = Math.floor(Math.max(ts, lastBar.timestamp) / intervalMs) * intervalMs
 
     if (barStartTimestamp === lastBar.timestamp) {
       // Update current active bar

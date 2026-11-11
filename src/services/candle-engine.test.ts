@@ -30,6 +30,47 @@ beforeEach(() => {
 })
 
 describe('CandleEngine', () => {
+  it('does not use estimated quote time to roll candles or reject real source ticks', async () => {
+    const engine = new CandleEngine()
+    await engine.setSymbolAndTimeframe('XAUUSD', '15m')
+    const start = engine.getBars().at(-1)!.timestamp
+    engine.handleTick({ symbol: 'XAUUSD', price: 90, timestamp: start + 240000, timestampEstimated: true })
+    engine.handleTick({ symbol: 'XAUUSD', price: 110, timestamp: start + 60000 })
+    expect(engine.getBars().at(-1)?.close).toBe(110)
+  })
+
+  it('never moves the live close backwards in tick time', async () => {
+    const engine = new CandleEngine()
+    await engine.setSymbolAndTimeframe('XAUUSD', '15m')
+    const start = engine.getBars().at(-1)!.timestamp
+    engine.handleTick({ symbol: 'XAUUSD', price: 110, timestamp: start + 240000 })
+    engine.handleTick({ symbol: 'XAUUSD', price: 90, timestamp: start + 60000 })
+    expect(engine.getBars().at(-1)?.close).toBe(110)
+    engine.handleTick({ symbol: 'XAUUSD', price: 111, timestamp: start + 240000 })
+    expect(engine.getBars().at(-1)?.close).toBe(111)
+  })
+
+  it('streams recent candles while the optional older context page is pending', async () => {
+    const engine = new CandleEngine()
+    const start = Date.UTC(2026, 0, 1)
+    const recent = Array.from({ length: 300 }, (_, i) => ({ timestamp: start + i * 3600000, open: 100, high: 105, low: 99, close: 101 }))
+    let finishOlder!: (bars: CandleBar[]) => void
+    const older = new Promise<CandleBar[]>((resolve) => { finishOlder = resolve })
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce(recent).mockReturnValueOnce(older)
+    const initialDelivery = vi.fn()
+    const loading = engine.setSymbolAndTimeframe('XAUUSD', '1h', 361, initialDelivery)
+    await Promise.resolve()
+    await Promise.resolve()
+    engine.handleTick({ symbol: 'XAUUSD', price: 120, timestamp: start + 299 * 3600000 + 1000 })
+    const liveClose = engine.getBars().at(-1)?.close
+    const deliveredWhileWaiting = initialDelivery.mock.calls[0]?.[0]?.length
+    finishOlder([])
+    await loading
+    expect(liveClose).toBe(120)
+    expect(deliveredWhileWaiting).toBe(300)
+    expect(engine.getBars().at(-1)?.close).toBe(120)
+  })
+
   it('loads 360 closed candles plus the live candle using a bounded older page on 1h', async () => {
     const engine = new CandleEngine()
     const start = Date.UTC(2026, 0, 1)
