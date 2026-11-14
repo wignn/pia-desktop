@@ -70,6 +70,29 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     expect(normalize({ symbol: 'XAUUSD', price: 2991 })).toBeNull()
   })
 
+  it('publishes timestamp_ms quotes with source time so candles can accept them', async () => {
+    const sourceTime = Date.now() - 1000
+    ;(provider as any).client = { market: { getPrice: async () => ({
+      symbol: 'BTCUSD', price: 67233.26, timestamp_ms: sourceTime
+    }) } }
+    const updates: unknown[] = []
+    provider.on('market:on-price-update', (quote) => updates.push(quote))
+
+    const quote = await provider.getPrice('BTCUSD')
+    expect(quote?.timestamp).toBe(sourceTime)
+    expect(quote?.timestampEstimated).not.toBe(true)
+    expect(updates).toEqual([quote])
+  })
+
+  it('uses timestamp_ms before generic time but preserves trade time precedence', () => {
+    const now = Date.now()
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    expect(normalize({ symbol: 'BTCUSD', price: 67000, timestamp: now, timestamp_ms: now - 2000 })?.timestamp).toBe(now - 2000)
+    expect(normalize({ symbol: 'ETHUSD', price: 3000, timestamp_ms: now, trade_time_ms: now - 1000 })?.timestamp).toBe(now - 1000)
+    expect(normalize({ symbol: 'EURUSD', price: 1.1, timestamp_ms: now + 3600000 })).toBeNull()
+    expect(normalize({ symbol: 'XAUUSD', price: 3000, timestamp_ms: NaN })).toBeNull()
+  })
+
   it('prefers source trade time and rejects invalid or future source timestamps', () => {
     const now = Date.now()
     const normalize = (provider as any).normalizeMarketPrice.bind(provider)

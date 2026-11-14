@@ -500,6 +500,7 @@ export class PiaProvider {
       volume_type?: 'exchange' | 'tick' | 'unavailable'
       volume_available?: boolean
       trade_time_ms?: number
+      timestamp_ms?: number
       received_at?: string
     }
     const cleanSymbol = raw.symbol.trim().toUpperCase()
@@ -507,7 +508,7 @@ export class PiaProvider {
     if (!Number.isFinite(price) || price <= 0) return null
 
     const receivedAt = Date.now()
-    const sourceTime = rawValue.trade_time_ms ?? raw.timestamp
+    const sourceTime = rawValue.trade_time_ms ?? rawValue.timestamp_ms ?? raw.timestamp
     const timestampEstimated = sourceTime === undefined || sourceTime === null
     let ts = sourceTime !== undefined && sourceTime !== null
       ? Number(sourceTime)
