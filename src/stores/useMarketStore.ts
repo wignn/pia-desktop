@@ -12,8 +12,8 @@ import { usePaperTradingStore } from './usePaperTradingStore'
 import type { KLineData } from 'klinecharts'
 
 function isOlderQuote(quote: PriceQuote, previous?: PriceQuote): boolean {
-  return Boolean(previous && !previous.timestampEstimated &&
-    (quote.timestampEstimated || quote.timestamp < previous.timestamp))
+  return Boolean(previous && (!previous.timestampEstimated || previous.timestampBasis === 'receipt') &&
+    ((quote.timestampEstimated && quote.timestampBasis !== 'receipt') || quote.timestamp < previous.timestamp))
 }
 
 interface MarketState {
@@ -267,7 +267,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       const now = Date.now()
       if (!symbol || document.hidden || fallbackInFlight || now - lastRecoveryAt < 5000) return
       const quote = pendingPrices[symbol] ?? prices[symbol]
-      const isStale = !quote || quote.timestampEstimated || now - quote.timestamp > 5000
+      const isStale = !quote || (quote.timestampEstimated && quote.timestampBasis !== 'receipt') || now - quote.timestamp > 5000
 
       if (connectionState.status !== 'connected' || isStale) {
         fallbackInFlight = true
@@ -300,7 +300,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
           console.warn(`[MarketStore] Fallback price refresh failed for ${symbol}:`, err)
         } finally {
           fallbackInFlight = false
-          const streamAdvanced = streamBeforeRefresh && !streamBeforeRefresh.timestampEstimated && streamBeforeRefresh !== quote
+          const streamAdvanced = streamBeforeRefresh &&
+            (!streamBeforeRefresh.timestampEstimated || streamBeforeRefresh.timestampBasis === 'receipt') &&
+            streamBeforeRefresh !== quote
           if (!disposed && get().symbol === symbol && sessionOpen !== false && needsReconnect && !streamAdvanced &&
             Date.now() - lastReconnectAt >= 30000) {
             lastReconnectAt = Date.now()

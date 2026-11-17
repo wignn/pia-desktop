@@ -147,6 +147,7 @@ export class PiaProvider {
   private dayOpenCache = new Map<string, { open: number; cachedAt: number }>()
   private sessionBaselinePrices = new Map<string, number>()
   private latestQuotes = new Map<string, PriceQuote>()
+  private liveQuoteSymbols = new Set<string>()
   private inFlightPricesPromise: Promise<PriceQuote[]> | null = null
   private latestPricesAt = 0
   private watchdogTimer: ReturnType<typeof setInterval> | null = null
@@ -350,6 +351,7 @@ export class PiaProvider {
     })
 
     rt.on('disconnect', () => {
+      this.liveQuoteSymbols.clear()
       this.lastActivityAt = Date.now()
       this.setConnectionState({ status: 'disconnected' })
     })
@@ -409,7 +411,7 @@ export class PiaProvider {
           lastHeartbeat: Date.now()
         })
       }
-      const quote = this.normalizeMarketPrice(tick)
+      const quote = this.normalizeMarketPrice(tick, true)
       if (quote) {
         this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
       }
@@ -493,7 +495,7 @@ export class PiaProvider {
     return undefined
   }
 
-  private normalizeMarketPrice(raw: MarketPrice): PriceQuote | null {
+  private normalizeMarketPrice(raw: MarketPrice, live = false): PriceQuote | null {
     if (!raw || !raw.symbol) return null
     const rawValue = raw as MarketPrice & {
       volume?: number
@@ -502,6 +504,7 @@ export class PiaProvider {
       trade_time_ms?: number
       timestamp_ms?: number
       received_at?: string
+      provider_source?: string
     }
     const cleanSymbol = raw.symbol.trim().toUpperCase()
     const price = Number(raw.price)
@@ -516,8 +519,12 @@ export class PiaProvider {
     if (ts < 1e11) ts *= 1000
     if (!Number.isSafeInteger(ts) || ts <= 0 || ts > receivedAt + 5000) return null
     const previous = this.latestQuotes.get(cleanSymbol)
-    if (previous && !previous.timestampEstimated &&
-      (timestampEstimated || ts < previous.timestamp)) return null
+    const receiptTime = live && rawValue.provider_source === 'ctrader_fix' &&
+      timestampEstimated && typeof rawValue.received_at === 'string' && rawValue.received_at.length > 0
+    // A delayed REST/snapshot response must not overwrite this socket's live quote.
+    if (!live && this.liveQuoteSymbols.has(cleanSymbol)) return null
+    if (previous && (!previous.timestampEstimated || previous.timestampBasis === 'receipt') &&
+      ((timestampEstimated && !receiptTime) || ts < previous.timestamp)) return null
 
     let change24h: number | undefined
     let change24hPercent: number | undefined
@@ -549,6 +556,7 @@ export class PiaProvider {
       price,
       receivedAt,
       ...(timestampEstimated ? { timestampEstimated: true } : {}),
+      ...(receiptTime ? { timestampBasis: 'receipt' as const } : {}),
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
       timestamp: ts,
@@ -578,6 +586,7 @@ export class PiaProvider {
     }
 
     this.latestQuotes.set(cleanSymbol, quote)
+    if (live) this.liveQuoteSymbols.add(cleanSymbol)
     return quote
   }
 
@@ -589,7 +598,8 @@ export class PiaProvider {
       const raw = await this.client.market.getPrice(symbol)
       const quote = this.normalizeMarketPrice(raw)
       if (quote) this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
-      return quote
+      const cleanSymbol = symbol.trim().toUpperCase()
+      return quote ?? (this.liveQuoteSymbols.has(cleanSymbol) ? this.latestQuotes.get(cleanSymbol) ?? null : null)
     } catch (err) {
       console.warn('[PiaProvider] market.getPrice failed:', this.formatProviderError(err))
       return null
@@ -817,9 +827,8 @@ export class PiaProvider {
         const quotes: PriceQuote[] = []
         for (const item of res.items) {
           if (!item.symbol) continue
-          const quote = this.normalizeMarketPrice(item)
+          const quote = this.normalizeMarketPrice(item) ?? this.latestQuotes.get(item.symbol.trim().toUpperCase())
           if (quote) {
-            this.latestQuotes.set(quote.symbol, quote)
             quotes.push(quote)
           }
 

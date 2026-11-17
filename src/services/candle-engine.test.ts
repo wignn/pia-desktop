@@ -30,6 +30,20 @@ beforeEach(() => {
 })
 
 describe('CandleEngine', () => {
+  it('updates and rolls receipt-time live candles without inventing volume or allowing time regression', async () => {
+    const engine = new CandleEngine()
+    await engine.setSymbolAndTimeframe('XAUUSD', '15m')
+    const start = engine.getBars().at(-1)!.timestamp
+    const tick = { symbol: 'XAUUSD', price: 110, timestamp: start + 60000, timestampEstimated: true, timestampBasis: 'receipt' as const }
+    engine.handleTick(tick)
+    expect(engine.getBars().at(-1)).toMatchObject({ close: 110, high: 110, volume: 55 })
+    engine.handleTick({ ...tick, price: 112, timestamp: start + 900000 })
+    expect(engine.getBars().at(-1)).toMatchObject({ timestamp: start + 900000, open: 112, close: 112 })
+    expect(engine.getBars().at(-1)?.volume).toBeUndefined()
+    engine.handleTick({ ...tick, price: 90 })
+    expect(engine.getBars().at(-1)?.close).toBe(112)
+  })
+
   it('does not use estimated quote time to roll candles or reject real source ticks', async () => {
     const engine = new CandleEngine()
     await engine.setSymbolAndTimeframe('XAUUSD', '15m')

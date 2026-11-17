@@ -14,6 +14,67 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     provider = new PiaProvider(mockCredManager)
   })
 
+  it('uses recorded cTrader receipt time only for live ticks and protects them from late snapshots', () => {
+    const listeners = new Map<string, (value: any) => void>()
+    ;(provider as any).client = { realtime: {
+      on: (event: string, listener: (value: any) => void) => listeners.set(event, listener),
+      getState: () => 'AUTHENTICATED'
+    } }
+    ;(provider as any).setupRealtimeListeners()
+    const updates: any[] = []
+    provider.on('market:on-price-update', quote => updates.push(quote))
+    const time = Date.now() - 3000
+    listeners.get('snapshot')?.({ items: [{ symbol: 'XAUUSD', price: 2990, timestamp_ms: time - 1000 }] })
+    const tick = { symbol: 'XAUUSD', price: 3010, provider_source: 'ctrader_fix', received_at: new Date(time).toISOString() }
+    listeners.get('tick')?.(tick)
+    expect(updates.at(-1)).toMatchObject({ price: 3010, timestamp: time, timestampEstimated: true, timestampBasis: 'receipt' })
+    // Reject both sourced and timestamp-less snapshots after a live quote.
+    listeners.get('snapshot')?.({ items: [{ ...tick, price: 2900, timestamp_ms: time + 2000 }] })
+    listeners.get('snapshot')?.({ items: [{ ...tick, price: 2901 }] })
+    listeners.get('tick')?.({ ...tick, price: 3020, received_at: new Date(time + 1000).toISOString() })
+    expect(updates.map(quote => quote.price)).toEqual([2990, 3010, 3020])
+    listeners.get('tick')?.({ ...tick, price: 2800, received_at: new Date(time - 1000).toISOString() })
+    expect(updates.at(-1).price).toBe(3020)
+  })
+
+  it('allows bootstrap snapshots again after the live socket disconnects', () => {
+    const listeners = new Map<string, (value?: any) => void>()
+    ;(provider as any).client = { realtime: {
+      on: (event: string, listener: (value?: any) => void) => listeners.set(event, listener),
+      getState: () => 'AUTHENTICATED'
+    } }
+    ;(provider as any).setupRealtimeListeners()
+    const updates: any[] = []
+    provider.on('market:on-price-update', quote => updates.push(quote))
+    const time = Date.now() - 3000
+    listeners.get('tick')?.({ symbol: 'XAUUSD', price: 3010, provider_source: 'ctrader_fix', received_at: new Date(time).toISOString() })
+    listeners.get('disconnect')?.()
+    listeners.get('snapshot')?.({ items: [{ symbol: 'XAUUSD', price: 3020, timestamp_ms: time + 1000 }] })
+    expect(updates.map(quote => quote.price)).toEqual([3010, 3020])
+  })
+
+  it('returns the live cached quote when recovery REST is suppressed', async () => {
+    const time = Date.now() - 6000
+    const live = (provider as any).normalizeMarketPrice({ symbol: 'XAUUSD', price: 3010, provider_source: 'ctrader_fix', received_at: new Date(time).toISOString() }, true)
+    ;(provider as any).client = { market: {
+      getPrice: async () => ({ symbol: 'XAUUSD', price: 2900 }),
+      getPrices: async () => ({ items: [{ symbol: 'XAUUSD', price: 2900 }] })
+    } }
+    expect(await provider.getPrices()).toEqual([live])
+    expect(await provider.getPrice('XAUUSD')).toEqual(live)
+  })
+
+  it('does not grant receipt-time candle eligibility to REST, unknown providers or invalid times', () => {
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    const tick = { symbol: 'EURUSD', price: 1.1, provider_source: 'ctrader_fix', received_at: new Date(Date.now() - 1000).toISOString() }
+    expect(normalize(tick)?.timestampBasis).toBeUndefined()
+    expect(normalize({ ...tick, received_at: '' }, true)?.timestampBasis).toBeUndefined()
+    expect(normalize({ ...tick, provider_source: 'other' }, true)?.timestampBasis).toBeUndefined()
+    expect(normalize({ ...tick, received_at: 'invalid' }, true)).toBeNull()
+    expect(normalize({ ...tick, received_at: new Date(Date.now() + 60000).toISOString() }, true)).toBeNull()
+    expect(normalize(tick, true)?.timestampBasis).toBe('receipt')
+  })
+
   it('backs off repeated reconnects and resets after authentication', () => {
     vi.useFakeTimers()
     try {

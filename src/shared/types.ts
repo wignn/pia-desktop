@@ -55,6 +55,8 @@ export interface PriceQuote {
   receivedAt?: number
   /** True when no source event time was provided; cannot prove freshness or ordering. */
   timestampEstimated?: boolean
+  /** Recorded ingestion receipt time, never broker event time. Live chart use only. */
+  timestampBasis?: 'receipt'
   bid?: number
   ask?: number
   timestamp: number

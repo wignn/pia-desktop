@@ -371,7 +371,7 @@ export class CandleEngine {
    * Handle incoming realtime price tick from WebSocket
    */
   public handleTick(quote: PriceQuote): void {
-    if (!quote || !quote.symbol || quote.timestampEstimated) return
+    if (!quote || !quote.symbol || (quote.timestampEstimated && quote.timestampBasis !== 'receipt')) return
     const quoteSym = quote.symbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     const curSym = this.currentSymbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     if (quoteSym !== curSym) {

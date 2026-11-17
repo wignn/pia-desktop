@@ -71,6 +71,38 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('useMarketStore realtime prices', () => {
+  it('accepts live receipt-time quotes after sourced cache without enabling alerts or trading', () => {
+    const checkAlerts = vi.spyOn(useAlertsStore.getState(), 'checkPriceAlerts')
+    const checkPositions = vi.spyOn(usePaperTradingStore.getState(), 'checkPositionsSLTP')
+    const now = Date.now()
+    useMarketStore.setState({ prices: { XAUUSD: { symbol: 'XAUUSD', price: 2990, timestamp: now - 1000 } } })
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: now, timestampEstimated: true, timestampBasis: 'receipt' })
+      frameCallback?.(16)
+      expect(useMarketStore.getState().prices.XAUUSD.price).toBe(3010)
+      expect(checkAlerts).not.toHaveBeenCalled()
+      expect(checkPositions).not.toHaveBeenCalled()
+    } finally { unsubscribe(); checkAlerts.mockRestore(); checkPositions.mockRestore() }
+  })
+
+  it('does not recover a fresh recorded receipt-time stream', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    window.api.market.getPrice = vi.fn().mockResolvedValue(null)
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      for (let i = 0; i < 10; i++) {
+        priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now(), timestampEstimated: true, timestampBasis: 'receipt' })
+        await vi.advanceTimersByTimeAsync(1000)
+      }
+      expect(window.api.market.getPrice).not.toHaveBeenCalled()
+      expect(window.api.market.reconnect).not.toHaveBeenCalled()
+    } finally { unsubscribe() }
+  })
+
   it('recovers continuously delivered stale source prices without overlapping refreshes', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
     vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
@@ -172,6 +204,23 @@ describe('useMarketStore realtime prices', () => {
     try {
       await vi.advanceTimersByTimeAsync(1000)
       priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now() })
+      finish(null)
+      await Promise.resolve()
+      expect(window.api.market.reconnect).not.toHaveBeenCalled()
+    } finally { unsubscribe() }
+  })
+
+  it('does not reconnect when receipt-time ticks recover during HTTP fallback', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-17T12:00:00Z'))
+    useMarketStore.setState({ connectionState: { status: 'connected' } })
+    let finish!: (quote: PriceQuote | null) => void
+    window.api.market.getPrice = vi.fn(() => new Promise(resolve => { finish = resolve }))
+    window.api.market.reconnect = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = useMarketStore.getState().subscribeToMarketEvents()
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      priceListener?.({ symbol: 'XAUUSD', price: 3010, timestamp: Date.now(), timestampEstimated: true, timestampBasis: 'receipt' })
       finish(null)
       await Promise.resolve()
       expect(window.api.market.reconnect).not.toHaveBeenCalled()
