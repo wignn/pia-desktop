@@ -124,11 +124,11 @@ describe('CredentialManager endpoint resilience', () => {
     expect(newManager.getStatus().hasApiKey).toBe(false)
   })
 
-  it('falls back to silvia when authenticated via desktopCredential with empty apiKey', async () => {
+  it('uses the user-scoped desktop credential as the API key', async () => {
     await manager.saveDesktopCredential('wi_live_abc123', { name: 'Tester', email: 'test@example.com' })
     expect(manager.getStatus().isLoggedIn).toBe(true)
     expect(manager.getDesktopCredential()).toBe('wi_live_abc123')
-    expect(manager.getApiKey()).toBe('silvia')
+    expect(manager.getApiKey()).toBe('wi_live_abc123')
   })
 
   it('preserves custom apiKey when explicitly configured', async () => {
@@ -136,8 +136,21 @@ describe('CredentialManager endpoint resilience', () => {
     expect(manager.getApiKey()).toBe('custom-secret-key')
   })
 
-  it('replaces OAuth token in apiKey with silvia fallback', async () => {
-    await manager.saveCredentials('wi_live_accidentally_saved')
-    expect(manager.getApiKey()).toBe('silvia')
+  it('preserves explicitly configured API keys with the user-key prefix', async () => {
+    await manager.saveCredentials('wi_live_configured_api_key')
+    expect(manager.getApiKey()).toBe('wi_live_configured_api_key')
+    expect(manager.getStatus().isLoggedIn).toBe(true)
+  })
+
+  it('prefers a desktop OAuth credential over the API-key slot', async () => {
+    await manager.saveCredentials('custom-api-key')
+    await manager.saveDesktopCredential('wi_live_user_credential')
+    expect(manager.getApiKey()).toBe('wi_live_user_credential')
+  })
+
+  it('strips API keys from WebSocket query strings', () => {
+    expect(normalizeWsUrl('wss://api-engine.wign.dev/api/v1/ws?api_key=custom-secret')).toBe(
+      'wss://api-engine.wign.dev/api/v1/ws'
+    )
   })
 })

@@ -64,7 +64,9 @@ export const GetCandlesSchema = z.object({
   timeframe: z.enum(TIMEFRAMES),
   from: z.number().int().positive().optional(),
   to: z.number().int().positive().optional(),
-  limit: z.number().int().min(1).max(2000).optional().default(500)
+  limit: z.number().int().min(1).max(2000).optional().default(500),
+  measurement: z.enum(['trade', 'activity']).optional(),
+  providerSource: z.string().min(1).max(128).optional()
 })
 export type GetCandlesInput = z.infer<typeof GetCandlesSchema>
 

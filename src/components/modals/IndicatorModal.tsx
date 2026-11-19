@@ -36,10 +36,16 @@ const AVAILABLE_INDICATORS: IndicatorMeta[] = [
     description: 'Closed-candle K-line foundation model scenario trajectory, median line, and ensemble range (q10–q90)'
   },
   {
-    name: 'VOL',
-    fullName: 'Volume',
+    name: 'TRADE_VOLUME',
+    fullName: 'Trade Volume',
     category: 'Volume',
-    description: 'Trading volume bars overlaid or in dedicated pane'
+    description: 'Verified traded quantity only; unavailable for quote-only feeds'
+  },
+  {
+    name: 'TICK_ACTIVITY',
+    fullName: 'Tick Activity',
+    category: 'Volume',
+    description: 'Received feed updates, not market-wide traded volume'
   },
   {
     name: 'MACD',
@@ -87,25 +93,22 @@ export const IndicatorModal: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
+        inset: 0,
         backgroundColor: THEME_TOKENS.colors.modalBackdrop,
         backdropFilter: 'blur(4px)',
         zIndex: 100,
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: '80px'
+        padding: 16
       }}
       onClick={() => setIndicatorModalOpen(false)}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 580,
-          maxHeight: 520,
+          width: 'min(580px, 94vw)',
+          maxHeight: 'min(520px, 86vh)',
           backgroundColor: THEME_TOKENS.colors.bgSurface,
           border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
           borderRadius: 8,

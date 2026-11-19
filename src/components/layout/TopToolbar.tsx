@@ -137,6 +137,7 @@ export const TopToolbar: React.FC = () => {
   return (
     <div
       ref={menuRef}
+      className="tv-no-scrollbar"
       style={{
         height: THEME_TOKENS.dimensions.topToolbarHeight,
         minHeight: THEME_TOKENS.dimensions.topToolbarHeight,
@@ -152,7 +153,11 @@ export const TopToolbar: React.FC = () => {
         zIndex: 30,
         position: 'relative',
         userSelect: 'none',
-        overflow: 'visible'
+        overflow: 'visible',
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        flexShrink: 0
       }}
     >
       {/* 1. Hamburger / Profile Menu Button (Exact TradingView 3-bar icon) */}
@@ -277,7 +282,7 @@ export const TopToolbar: React.FC = () => {
         )}
       </div>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 2. Symbol Search Button (Exact TradingView bold symbol pill) */}
       <button
@@ -296,7 +301,8 @@ export const TopToolbar: React.FC = () => {
           backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
           border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
           borderRadius: 5,
-          boxShadow: 'inset 0 1px 0 0 rgba(255, 255, 255, 0.04)'
+          boxShadow: 'inset 0 1px 0 0 rgba(255, 255, 255, 0.04)',
+          flexShrink: 0
         }}
         title="Search Symbol (Ctrl+K)"
       >
@@ -304,6 +310,7 @@ export const TopToolbar: React.FC = () => {
         <span style={{ letterSpacing: '0.2px' }}>{symbol || 'Select'}</span>
         {symInfo?.category && (
           <span
+            className="tv-toolbar-hide-1280"
             style={{
               fontSize: 9,
               color: THEME_TOKENS.colors.gold,
@@ -321,6 +328,7 @@ export const TopToolbar: React.FC = () => {
         )}
         {currentPrice !== undefined && (
           <span
+            className="tv-toolbar-hide-960"
             style={{
               fontSize: 12,
               fontWeight: 600,
@@ -335,6 +343,7 @@ export const TopToolbar: React.FC = () => {
         )}
         {priceChange24h !== undefined && (
           <span
+            className="tv-toolbar-hide-1100"
             style={{
               fontSize: 10,
               fontWeight: 700,
@@ -358,7 +367,7 @@ export const TopToolbar: React.FC = () => {
         type="button"
         onClick={() => setSymbolSearchOpen(true)}
         className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Compare or Add Symbol"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -367,27 +376,36 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 4. Timeframe Selector (TradingView style pills + dropdown arrow) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {pinnedTimeframes.map((tf) => (
-          <button
-            key={tf}
-            type="button"
-            onClick={() => setTimeframe(tf)}
-            className={`tv-btn ${timeframe === tf ? 'active' : ''}`}
-            style={{
-              fontSize: 12,
-              height: 28,
-              padding: '0 6px',
-              minWidth: 26,
-              color: timeframe === tf ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary
-            }}
-          >
-            {tf}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+        {pinnedTimeframes.map((tf) => {
+          let hideClass = ''
+          if (timeframe !== tf) {
+            if (tf === '1m' || tf === '4h') hideClass = 'tv-toolbar-hide-1280'
+            else if (tf === '5m') hideClass = 'tv-toolbar-hide-960'
+          }
+
+          return (
+            <button
+              key={tf}
+              type="button"
+              onClick={() => setTimeframe(tf)}
+              className={`tv-btn ${timeframe === tf ? 'active' : ''} ${hideClass}`.trim()}
+              style={{
+                fontSize: 12,
+                height: 28,
+                padding: '0 6px',
+                minWidth: 26,
+                color: timeframe === tf ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary,
+                flexShrink: 0
+              }}
+            >
+              {tf}
+            </button>
+          )
+        })}
 
         {/* Dropdown for all timeframes */}
         <div style={{ position: 'relative' }}>
@@ -542,20 +560,20 @@ export const TopToolbar: React.FC = () => {
         )}
       </div>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 6. Indicators Button (Exact TradingView fx icon) */}
       <button
         type="button"
         onClick={() => setIndicatorModalOpen(true)}
         className="tv-btn"
-        style={{ height: 28, fontSize: 12, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5 }}
+        style={{ height: 28, fontSize: 12, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}
         title="Indicators, Metrics & Strategies (Alt+I)"
       >
         <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 700, fontSize: 13, color: THEME_TOKENS.colors.accent }}>
           fx
         </span>
-        <span>Indicators</span>
+        <span className="tv-toolbar-label">Indicators</span>
         {activeIndicatorsCount > 0 && (
           <span
             style={{
@@ -589,7 +607,8 @@ export const TopToolbar: React.FC = () => {
           backgroundColor: isKronosActive ? 'rgba(234, 88, 12, 0.14)' : 'transparent',
           border: isKronosActive ? '1px solid rgba(234, 88, 12, 0.45)' : '1px solid transparent',
           borderRadius: 5,
-          fontWeight: isKronosActive ? 600 : 500
+          fontWeight: isKronosActive ? 600 : 500,
+          flexShrink: 0
         }}
         title="Toggle Real-Time Kronos Forecast (q10–q90 Fan)"
       >
@@ -602,7 +621,7 @@ export const TopToolbar: React.FC = () => {
             boxShadow: isKronosActive ? '0 0 0 3px rgba(234, 88, 12, 0.25)' : 'none'
           }}
         />
-        <span>Kronos</span>
+        <span className="tv-toolbar-label">Kronos</span>
       </button>
 
       {/* 7. Alerts Button (Clock icon) */}
@@ -610,7 +629,7 @@ export const TopToolbar: React.FC = () => {
         type="button"
         onClick={() => useWorkspaceStore.getState().setActiveTab('alerts')}
         className="tv-btn"
-        style={{ height: 28, fontSize: 12, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5 }}
+        style={{ height: 28, fontSize: 12, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}
         title="Create Alert (Alt+A)"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -619,7 +638,7 @@ export const TopToolbar: React.FC = () => {
           <path d="M5 3L2 6" />
           <path d="M22 6L19 3" />
         </svg>
-        <span>Alert</span>
+        <span className="tv-toolbar-label">Alert</span>
       </button>
 
       {/* 8. Bar Replay Button */}
@@ -636,7 +655,8 @@ export const TopToolbar: React.FC = () => {
           gap: 5,
           color: isReplaying ? THEME_TOKENS.colors.accent : THEME_TOKENS.colors.textPrimary,
           backgroundColor: isReplaying ? 'rgba(41, 98, 255, 0.15)' : 'transparent',
-          fontWeight: isReplaying ? 600 : 500
+          fontWeight: isReplaying ? 600 : 500,
+          flexShrink: 0
         }}
         title="Bar Replay Simulation"
       >
@@ -644,17 +664,17 @@ export const TopToolbar: React.FC = () => {
           <polygon points="11 19 2 12 11 5 11 19" fill={isReplaying ? 'currentColor' : 'none'} />
           <polygon points="22 19 13 12 22 5 22 19" fill={isReplaying ? 'currentColor' : 'none'} />
         </svg>
-        <span>Replay</span>
+        <span className="tv-toolbar-label">Replay</span>
       </button>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 9. Undo / Redo Buttons */}
       <button
         type="button"
         onClick={() => clearAllDrawings()}
         className="tv-btn"
-        style={{ width: 26, height: 28, padding: 0 }}
+        style={{ width: 26, height: 28, padding: 0, flexShrink: 0 }}
         title="Undo / Clear Drawings"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -665,9 +685,9 @@ export const TopToolbar: React.FC = () => {
 
       <button
         type="button"
-        className="tv-btn"
+        className="tv-btn tv-toolbar-hide-1100"
         disabled
-        style={{ width: 26, height: 28, padding: 0, opacity: 0.3 }}
+        style={{ width: 26, height: 28, padding: 0, opacity: 0.3, flexShrink: 0 }}
         title="Redo"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -676,13 +696,13 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minWidth: 8 }} />
 
       {/* 10. Multi-chart Layout Split Button (Grid icon) */}
       <button
         type="button"
-        className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        className="tv-btn tv-toolbar-hide-960"
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Select Layout Grid"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -691,7 +711,7 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div className="tv-toolbar-hide-960" style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 11. Cloud Layout Save Pill (TradingView Cloud Icon + Save) */}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
@@ -721,7 +741,7 @@ export const TopToolbar: React.FC = () => {
             <polyline points="16 16 12 12 8 16" />
             <line x1="12" y1="12" x2="12" y2="21" />
           </svg>
-          <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span className="tv-toolbar-label" style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {saveToast ? 'Saved!' : activeLayout?.name || 'Unnamed'}
           </span>
         </button>
@@ -734,7 +754,7 @@ export const TopToolbar: React.FC = () => {
             setIsLayoutMenuOpen(next)
           }}
           className={`tv-btn ${isLayoutMenuOpen ? 'active' : ''}`}
-          style={{ width: 16, height: 28, padding: 0 }}
+          style={{ width: 16, height: 28, padding: 0, flexShrink: 0 }}
           title="Layout Options"
         >
           <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -771,14 +791,14 @@ export const TopToolbar: React.FC = () => {
         )}
       </div>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 11.5. Market Heatmap Button */}
       <button
         type="button"
         onClick={() => openHeatmapInNewTab()}
         className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Market Heatmap"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -792,8 +812,8 @@ export const TopToolbar: React.FC = () => {
       <button
         type="button"
         onClick={() => setSymbolSearchOpen(true)}
-        className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        className="tv-btn tv-toolbar-hide-800"
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Quick Search"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -807,7 +827,7 @@ export const TopToolbar: React.FC = () => {
         type="button"
         onClick={() => setSettingsModalOpen(true)}
         className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Chart Properties / Settings"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -820,8 +840,8 @@ export const TopToolbar: React.FC = () => {
       <button
         type="button"
         onClick={toggleFullscreen}
-        className="tv-btn"
-        style={{ width: 28, height: 28, padding: 0 }}
+        className="tv-btn tv-toolbar-hide-800"
+        style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
         title="Full Screen Mode (F11)"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -838,7 +858,8 @@ export const TopToolbar: React.FC = () => {
           width: 28,
           height: 28,
           padding: 0,
-          color: snapshotToast ? THEME_TOKENS.colors.bullish : 'currentColor'
+          color: snapshotToast ? THEME_TOKENS.colors.bullish : 'currentColor',
+          flexShrink: 0
         }}
         title="Take a Snapshot (Alt+S)"
       >
@@ -848,10 +869,10 @@ export const TopToolbar: React.FC = () => {
         </svg>
       </button>
 
-      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px' }} />
+      <div style={{ width: 1, height: 16, backgroundColor: THEME_TOKENS.colors.borderSubtle, margin: '0 2px', flexShrink: 0 }} />
 
       {/* 16. Account Profile Button & Dropdown Menu */}
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
         <button
           type="button"
           onClick={() => {
@@ -866,7 +887,8 @@ export const TopToolbar: React.FC = () => {
             width: credentials?.name ? 'auto' : 28,
             display: 'flex',
             alignItems: 'center',
-            gap: 6
+            gap: 6,
+            flexShrink: 0
           }}
           title={credentials?.name || credentials?.email || 'Account & Settings'}
         >
@@ -910,6 +932,7 @@ export const TopToolbar: React.FC = () => {
           )}
           {credentials?.name && (
             <span
+              className="tv-toolbar-label"
               style={{
                 fontSize: 11,
                 fontWeight: 600,

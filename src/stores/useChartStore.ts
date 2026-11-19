@@ -38,7 +38,7 @@ export interface ActiveIndicator {
   visible: boolean
 }
 
-export const OVERLAY_INDICATORS = new Set(['EMA', 'SMA', 'BOLL', 'SAR', 'BBI', 'MA', 'KRONOS'])
+export const OVERLAY_INDICATORS = new Set(['EMA', 'SMA', 'BOLL', 'SAR', 'BBI', 'MA', 'KRONOS', 'TRADE_VOLUME', 'TICK_ACTIVITY'])
 export const isOverlayIndicator = (name: string): boolean => OVERLAY_INDICATORS.has(name.toUpperCase())
 
 export const sanitizeIndicators = (indicators: ActiveIndicator[]): ActiveIndicator[] => {

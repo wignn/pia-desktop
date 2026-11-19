@@ -19,24 +19,22 @@ const SettingsModalContent: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
+        inset: 0,
         backgroundColor: THEME_TOKENS.colors.modalBackdrop,
         backdropFilter: 'blur(4px)',
         zIndex: 100,
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: '80px'
+        padding: 16
       }}
       onClick={(): void => setSettingsModalOpen(false)}
     >
       <div
         onClick={(e): void => e.stopPropagation()}
         style={{
-          width: 500,
+          width: 'min(500px, 94vw)',
+          maxHeight: 'min(600px, 86vh)',
           backgroundColor: THEME_TOKENS.colors.bgSurface,
           border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
           borderRadius: 8,

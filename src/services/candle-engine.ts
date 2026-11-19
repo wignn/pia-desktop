@@ -141,7 +141,12 @@ export class CandleEngine {
           high: bar.high,
           low: bar.low,
           close: bar.close,
-          volume: bar.volume
+          volume: bar.volume,
+          tickCount: bar.tickCount,
+          volumeBasis: bar.volumeBasis,
+          activityBasis: bar.activityBasis,
+          activityComplete: bar.activityComplete,
+          providerSource: bar.providerSource
         }))
       }
       const serialized = JSON.stringify(snapshot)
@@ -371,7 +376,7 @@ export class CandleEngine {
    * Handle incoming realtime price tick from WebSocket
    */
   public handleTick(quote: PriceQuote): void {
-    if (!quote || !quote.symbol || (quote.timestampEstimated && quote.timestampBasis !== 'receipt')) return
+    if (!quote || !quote.symbol) return
     const quoteSym = quote.symbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     const curSym = this.currentSymbol.trim().toUpperCase().replace(/[/\\-_]/g, '')
     if (quoteSym !== curSym) {
@@ -404,7 +409,9 @@ export class CandleEngine {
     if (ts < 1e11) ts *= 1000
 
     const price = quote.price
-    if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(ts) || ts < this.lastTickTimestamp) return
+    const isEstimated = Boolean(quote.timestampEstimated) && quote.timestampBasis !== 'receipt'
+    if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(ts)) return
+    if (!isEstimated && ts < this.lastTickTimestamp) return
     const currentGen = this.generationId
 
     // History is expected before live reconciliation. Never turn a delayed
@@ -416,18 +423,32 @@ export class CandleEngine {
     const lastBarIndex = this.activeBars.length - 1
     const lastBar = this.activeBars[lastBarIndex]
 
-    if (ts < lastBar.timestamp - 5000) return
-    this.lastTickTimestamp = ts
+    if (!isEstimated && ts < lastBar.timestamp - 5000) return
+    if (!isEstimated) {
+      this.lastTickTimestamp = ts
+    }
     const barStartTimestamp = Math.floor(Math.max(ts, lastBar.timestamp) / intervalMs) * intervalMs
 
-    if (barStartTimestamp === lastBar.timestamp) {
+    if (barStartTimestamp === lastBar.timestamp || isEstimated) {
       // Update current active bar
+      const sameSource = !lastBar.providerSource || !quote.providerSource || lastBar.providerSource === quote.providerSource
+      const sameMeasurement = !lastBar.volumeBasis || (quote.volumeType === 'exchange' && lastBar.volumeBasis === 'trade')
+      const compatible = sameSource && sameMeasurement
       const updatedBar: KLineData = {
         ...lastBar,
         high: Math.max(lastBar.high, price),
         low: Math.min(lastBar.low, price),
         close: price,
-        volume: lastBar.volume
+        volume: compatible && quote.volumeType === 'exchange' && quote.volumeAvailable
+          ? (lastBar.volume ?? 0) + (quote.volume24h ?? 0)
+          : lastBar.volume,
+        volumeBasis: quote.volumeType === 'exchange' && quote.volumeAvailable
+          ? 'trade'
+          : (compatible ? (lastBar.volumeBasis ?? 'unavailable') : 'unavailable'),
+        providerSource: compatible ? (lastBar.providerSource ?? quote.providerSource) : undefined,
+        tickCount: quote.providerSource === 'ctrader_fix' ? ((typeof lastBar.tickCount === 'number' ? lastBar.tickCount : 0) + 1) : undefined,
+        activityBasis: quote.providerSource === 'ctrader_fix' ? 'received_feed_updates' : 'unavailable',
+        activityComplete: compatible && lastBar.activityComplete === true ? true : false
       }
       this.activeBars[lastBarIndex] = updatedBar
       if (notify) {
@@ -435,6 +456,7 @@ export class CandleEngine {
           listener.onBarUpdate(currentGen, updatedBar)
         }
       }
+      return
     } else if (barStartTimestamp > lastBar.timestamp) {
       // New bar formed (timestamp progressed to next interval)
       const newBar: KLineData = {
@@ -443,7 +465,12 @@ export class CandleEngine {
         high: price,
         low: price,
         close: price,
-        volume: undefined
+        volume: quote.volumeType === 'exchange' && quote.volumeAvailable ? quote.volume24h : undefined,
+        volumeBasis: quote.volumeType === 'exchange' && quote.volumeAvailable ? 'trade' : 'unavailable',
+        activityBasis: quote.providerSource === 'ctrader_fix' ? 'received_feed_updates' : 'unavailable',
+        activityComplete: false,
+        tickCount: quote.providerSource === 'ctrader_fix' ? 1 : undefined,
+        providerSource: quote.providerSource
       }
       this.activeBars.push(newBar)
       if (notify) {
@@ -476,12 +503,18 @@ export class CandleEngine {
         b.close > 0
       ) {
         map.set(ts, {
+          ...b,
           timestamp: ts,
           open: b.open,
           high: Math.max(b.high, b.open, b.close),
           low: Math.min(b.low, b.open, b.close),
           close: b.close,
-          volume: b.volume !== undefined && !isNaN(b.volume) ? b.volume : undefined
+          volume: b.volume !== undefined && !isNaN(b.volume) ? b.volume : undefined,
+          tickCount: b.tickCount,
+          volumeBasis: b.volumeBasis,
+          activityBasis: b.activityBasis,
+          activityComplete: b.activityComplete,
+          providerSource: b.providerSource
         })
       }
     }

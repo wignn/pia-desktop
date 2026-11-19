@@ -7,6 +7,7 @@
 import { PiaClient } from '@piaa/sdk'
 import type { MarketPrice, Candle } from '@piaa/sdk'
 import { TIMEFRAMES } from '@shared/types'
+import { decodeMeasurements, mergeMeasurements } from './volume-measurement'
 import type {
   CandleBar,
   PriceQuote,
@@ -163,22 +164,7 @@ export class PiaProvider {
   public initializeClient(): void {
     const apiKey = this.credManager.getApiKey()
     const baseUrl = this.credManager.getBaseUrl()
-    let wsUrl = this.credManager.getWsUrl()
-
-    if (apiKey) {
-      try {
-        const u = new URL(wsUrl)
-        if (!u.searchParams.has('api_key') || u.searchParams.get('api_key')?.startsWith('wi_live_')) {
-          u.searchParams.set('api_key', apiKey)
-          wsUrl = u.toString()
-        }
-      } catch {
-        if (!wsUrl.includes('api_key=')) {
-          const sep = wsUrl.includes('?') ? '&' : '?'
-          wsUrl = `${wsUrl}${sep}api_key=${encodeURIComponent(apiKey)}`
-        }
-      }
-    }
+    const wsUrl = this.credManager.getWsUrl()
 
     this.discoveredSymbols.clear()
     this.symbolsRefreshPromise = null
@@ -498,13 +484,16 @@ export class PiaProvider {
   private normalizeMarketPrice(raw: MarketPrice, live = false): PriceQuote | null {
     if (!raw || !raw.symbol) return null
     const rawValue = raw as MarketPrice & {
-      volume?: number
+      volume?: number | null
+      volume_basis?: 'trade' | 'unavailable' | 'unknown'
+      provider_source?: string
       volume_type?: 'exchange' | 'tick' | 'unavailable'
       volume_available?: boolean
       trade_time_ms?: number
       timestamp_ms?: number
       received_at?: string
-      provider_source?: string
+      activity_basis?: 'received_feed_updates' | 'unavailable'
+      activity_complete?: boolean | null
     }
     const cleanSymbol = raw.symbol.trim().toUpperCase()
     const price = Number(raw.price)
@@ -523,8 +512,14 @@ export class PiaProvider {
       timestampEstimated && typeof rawValue.received_at === 'string' && rawValue.received_at.length > 0
     // A delayed REST/snapshot response must not overwrite this socket's live quote.
     if (!live && this.liveQuoteSymbols.has(cleanSymbol)) return null
-    if (previous && (!previous.timestampEstimated || previous.timestampBasis === 'receipt') &&
-      ((timestampEstimated && !receiptTime) || ts < previous.timestamp)) return null
+    if (previous && (!previous.timestampEstimated || previous.timestampBasis === 'receipt')) {
+      if (timestampEstimated && !receiptTime) {
+        const previousAge = receivedAt - (previous.receivedAt ?? previous.timestamp)
+        if (previousAge < 3000) return null
+      } else if (ts < previous.timestamp) {
+        return null
+      }
+    }
 
     let change24h: number | undefined
     let change24hPercent: number | undefined
@@ -560,25 +555,15 @@ export class PiaProvider {
       bid: raw.bid !== undefined ? Number(raw.bid) : undefined,
       ask: raw.ask !== undefined ? Number(raw.ask) : undefined,
       timestamp: ts,
-      volume24h:
-        raw.volume_24h !== undefined
-          ? Number(raw.volume_24h)
-          : rawValue.volume !== undefined
-            ? Number(rawValue.volume)
-            : undefined,
-      volumeType:
-        rawValue.volume_type === 'exchange' ||
-        rawValue.volume_type === 'tick' ||
-        rawValue.volume_type === 'unavailable'
-          ? rawValue.volume_type
-          : raw.volume_24h !== undefined
-            ? 'exchange'
-            : rawValue.volume !== undefined
-              ? 'exchange'
-              : 'unavailable',
-      volumeAvailable:
-        rawValue.volume_available ??
-        (raw.volume_24h !== undefined || rawValue.volume !== undefined),
+      volume24h: raw.volume_24h !== undefined && raw.volume_24h !== null
+        ? Number(raw.volume_24h)
+        : undefined,
+      volumeType: rawValue.volume_basis === 'trade'
+        ? 'exchange'
+        : rawValue.volume_basis === 'unavailable' || rawValue.provider_source === 'ctrader_fix'
+          ? 'unavailable'
+          : 'tick',
+      volumeAvailable: rawValue.volume_basis === 'trade' && typeof raw.volume === 'number' && Number.isFinite(raw.volume),
       change24h,
       change24hPercent,
       high24h: raw.high_24h !== undefined ? Number(raw.high_24h) : undefined,
@@ -588,6 +573,25 @@ export class PiaProvider {
     this.latestQuotes.set(cleanSymbol, quote)
     if (live) this.liveQuoteSymbols.add(cleanSymbol)
     return quote
+  }
+
+  /**
+   * Directly ingest native market tick from Tauri 2 Typed Channel
+   */
+  public pushNativeTick(tick: { s: string; p: number; t: number; v?: number; d?: number }): void {
+    if (!tick.s || typeof tick.p !== 'number') return
+    const cleanSymbol = tick.s.trim().toUpperCase()
+    const existing = this.latestQuotes.get(cleanSymbol)
+    const quote: PriceQuote = {
+      ...existing,
+      symbol: cleanSymbol,
+      price: tick.p,
+      timestamp: tick.t || existing?.timestamp || Date.now(),
+      receivedAt: tick.t || Date.now(),
+      timestampEstimated: false
+    }
+    this.latestQuotes.set(cleanSymbol, quote)
+    this.broadcast(IPC_CHANNELS.MARKET_ON_PRICE_UPDATE, quote)
   }
 
   // --- Public APIs called by IPC handlers ---
@@ -874,6 +878,8 @@ export class PiaProvider {
     from?: number
     to?: number
     limit?: number
+    measurement?: 'trade' | 'activity'
+    providerSource?: string
   }): Promise<CandleBar[]> {
     if (!this.client) return []
 
@@ -883,7 +889,7 @@ export class PiaProvider {
       params.timeframe === '15m' || params.timeframe === '1h'
         ? Math.min(params.limit ?? 300, 300)
         : Math.min(params.limit ?? 300, 1000)
-    const cacheKey = `${cleanSymbol}:${params.timeframe}:${effectiveLimit}:${params.to || 'latest'}`
+    const cacheKey = `${cleanSymbol}:${params.timeframe}:${effectiveLimit}:${params.to || 'latest'}:${params.measurement ?? 'legacy'}:${params.providerSource ?? ''}`
     const cached = this.candleCache.get(cacheKey)
     // ponytail: memory cache 120s for active candles (instant 0ms chart switches). Live ticks update via WebSocket.
     const ttl = params.to ? 600_000 : 120_000
@@ -907,10 +913,13 @@ export class PiaProvider {
           limit: effectiveLimit,
           since: params.from,
           until: params.to,
+          measurement: params.measurement,
+          providerSource: params.providerSource,
           timeoutMs: 8000,
           maxRetries: 1
         } as any)
       } catch (sdkErr) {
+        if (params.measurement) throw sdkErr
         if (params.timeframe === '15m') {
           try {
             const fiveMinBars = await this.getCandles({
@@ -953,6 +962,7 @@ export class PiaProvider {
             ? payload.data
             : []
       if (rawRows.length === 0) {
+        if (params.measurement) return []
         if (params.timeframe === '15m') {
           try {
             const fiveMinBars = await this.getCandles({
@@ -996,7 +1006,7 @@ export class PiaProvider {
         const high = Number(r.high)
         const low = Number(r.low)
         const close = Number(r.close)
-        const volume = r.volume !== undefined ? Number(r.volume) : undefined
+        const measurements = decodeMeasurements(r as unknown as Record<string, unknown>)
 
         if (ts > 0 && !isNaN(open) && !isNaN(high) && !isNaN(low) && !isNaN(close)) {
           bars.push({
@@ -1005,7 +1015,7 @@ export class PiaProvider {
             high: Math.max(high, open, close),
             low: Math.min(low, open, close),
             close,
-            volume: volume !== undefined && !isNaN(volume) ? volume : undefined
+            ...measurements
           })
         }
       }
@@ -1040,6 +1050,7 @@ export class PiaProvider {
       const existing = weeklyMap.get(weekStart)
       if (!existing) {
         weeklyMap.set(weekStart, {
+          ...b,
           timestamp: weekStart,
           open: b.open,
           high: b.high,
@@ -1051,8 +1062,10 @@ export class PiaProvider {
         existing.high = Math.max(existing.high, b.high)
         existing.low = Math.min(existing.low, b.low)
         existing.close = b.close
-        if (b.volume !== undefined) {
-          existing.volume = (existing.volume ?? 0) + b.volume
+        if (existing.volumeBasis === undefined && b.volumeBasis === undefined) {
+          if (b.volume !== undefined) existing.volume = (existing.volume ?? 0) + b.volume
+        } else {
+          Object.assign(existing, mergeMeasurements(existing, b))
         }
       }
     }
@@ -1069,6 +1082,7 @@ export class PiaProvider {
       const existing = m15Map.get(bucket)
       if (!existing) {
         m15Map.set(bucket, {
+          ...b,
           timestamp: bucket,
           open: b.open,
           high: b.high,
@@ -1080,8 +1094,10 @@ export class PiaProvider {
         existing.high = Math.max(existing.high, b.high)
         existing.low = Math.min(existing.low, b.low)
         existing.close = b.close
-        if (b.volume !== undefined) {
-          existing.volume = (existing.volume ?? 0) + b.volume
+        if (existing.volumeBasis === undefined && b.volumeBasis === undefined) {
+          if (b.volume !== undefined) existing.volume = (existing.volume ?? 0) + b.volume
+        } else {
+          Object.assign(existing, mergeMeasurements(existing, b))
         }
       }
     }

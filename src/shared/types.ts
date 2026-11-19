@@ -42,6 +42,11 @@ export interface CandleBar {
   low: number
   close: number
   volume?: number
+  tickCount?: number
+  volumeBasis?: 'trade' | 'unavailable' | 'unknown'
+  activityBasis?: 'received_feed_updates' | 'unavailable'
+  activityComplete?: boolean
+  providerSource?: string
   turnover?: number
 }
 
@@ -63,6 +68,7 @@ export interface PriceQuote {
   volume24h?: number
   volumeType?: 'exchange' | 'tick' | 'unavailable'
   volumeAvailable?: boolean
+  providerSource?: string
   change24h?: number
   change24hPercent?: number
   high24h?: number

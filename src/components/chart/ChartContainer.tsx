@@ -33,6 +33,7 @@ import { DrawingPropertyBar } from './DrawingPropertyBar'
 import { ReplayControlBar } from './ReplayControlBar'
 import { registerCustomOverlays } from './register-overlays'
 import { registerPiaScriptIndicator } from './register-piascript-indicator'
+import { registerVolumeIndicators } from './register-volume-indicators'
 import { usePiaScriptStore } from '../../stores/usePiaScriptStore'
 import { syncPositionOverlays, clearPositionOverlays } from './position-overlay-sync'
 import { usePaperTradingStore } from '../../stores/usePaperTradingStore'
@@ -291,6 +292,10 @@ export const ChartContainer: React.FC = () => {
         if (currentSym) {
           chart.setSymbol({ ...currentSym })
         }
+        const activeQuote = useMarketStore.getState().prices[sym]
+        if (activeQuote && Number.isFinite(activeQuote.price) && activeQuote.price > 0) {
+          candleEngine.handleTick(activeQuote)
+        }
       } else {
         const err = candleEngine.getLastLoadError()
         setHasHistoricalBars(false)
@@ -326,6 +331,7 @@ export const ChartContainer: React.FC = () => {
   useEffect(() => {
     registerCustomOverlays()
     registerPiaScriptIndicator()
+    registerVolumeIndicators()
     const container = containerRef.current
     if (!container) return
 
@@ -341,7 +347,9 @@ export const ChartContainer: React.FC = () => {
       liveSubscriberRef.current?.(bar)
     }, () => {
       const state = useMarketStore.getState()
-      return state.symbol === candleEngine.getSymbol() && state.timeframe === candleEngine.getTimeframe()
+      const currentSym = (state.symbol ?? '').trim().toUpperCase().replace(/[/\\-_]/g, '')
+      const engineSym = candleEngine.getSymbol().trim().toUpperCase().replace(/[/\\-_]/g, '')
+      return currentSym === engineSym && state.timeframe === candleEngine.getTimeframe()
     })
     const unsubKronos = useKronosStore.subscribe(() => {
       chart.overrideIndicator({ name: 'KRONOS', paneId: 'candle_pane' })
@@ -414,6 +422,12 @@ export const ChartContainer: React.FC = () => {
 
           callback(bars, { forward: bars.length >= 300, backward: false })
           scheduleKronos()
+
+          // If the market store already holds a live quote for this symbol, reconcile the active bar immediately.
+          const activeQuote = useMarketStore.getState().prices[sym.ticker]
+          if (activeQuote && Number.isFinite(activeQuote.price) && activeQuote.price > 0) {
+            candleEngine.handleTick(activeQuote)
+          }
 
           const lastError = candleEngine.getLastLoadError()
           setLoadError(bars.length === 0 && lastError ? String(lastError) : null)
@@ -520,14 +534,9 @@ export const ChartContainer: React.FC = () => {
     renderedIndicators.clear()
     for (const ind of savedIndicators) {
       const isStack = isOverlayIndicator(ind.name)
-      chart.createIndicator(
-        {
-          name: ind.name,
-          paneId: ind.paneId
-        },
-        isStack
-      )
-      renderedIndicators.add(ind.name)
+      const indicatorName = ind.name === 'VOL' ? 'TRADE_VOLUME' : ind.name
+      chart.createIndicator({ name: indicatorName, paneId: ind.paneId }, isStack)
+      renderedIndicators.add(indicatorName)
     }
 
     // Resize observer for responsive canvas adjustments
@@ -853,7 +862,7 @@ export const ChartContainer: React.FC = () => {
     const chart = chartRef.current
     if (!chart) return
 
-    const currentActiveNames = new Set(activeIndicators.map((i) => i.name))
+    const currentActiveNames = new Set(activeIndicators.map((i) => i.name === 'VOL' ? 'TRADE_VOLUME' : i.name))
     scheduleKronos()
 
     // Remove indicators that are no longer active
@@ -866,16 +875,11 @@ export const ChartContainer: React.FC = () => {
 
     // Add newly activated indicators
     for (const ind of activeIndicators) {
-      if (!renderedIndicatorsRef.current.has(ind.name)) {
-        const isStack = isOverlayIndicator(ind.name)
-        chart.createIndicator(
-          {
-            name: ind.name,
-            paneId: ind.paneId
-          },
-          isStack
-        )
-        renderedIndicatorsRef.current.add(ind.name)
+      const indicatorName = ind.name === 'VOL' ? 'TRADE_VOLUME' : ind.name
+      if (!renderedIndicatorsRef.current.has(indicatorName)) {
+        const isStack = isOverlayIndicator(indicatorName)
+        chart.createIndicator({ name: indicatorName, paneId: ind.paneId }, isStack)
+        renderedIndicatorsRef.current.add(indicatorName)
       }
     }
     chart.setOffsetRightDistance(currentActiveNames.has('KRONOS') ? 180 : 80)
