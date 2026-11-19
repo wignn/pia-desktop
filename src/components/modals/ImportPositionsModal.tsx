@@ -246,18 +246,14 @@ const ImportPositionsModalDialog: React.FC<DialogProps> = ({ initialTab, initial
     <div
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
+        inset: 0,
         backgroundColor: THEME_TOKENS.colors.modalBackdrop,
         backdropFilter: 'blur(10px)',
         zIndex: 100,
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: '60px',
-        paddingBottom: '40px',
+        padding: 16,
         overflowY: 'auto'
       }}
       onClick={onClose}
@@ -265,8 +261,8 @@ const ImportPositionsModalDialog: React.FC<DialogProps> = ({ initialTab, initial
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 660,
-          maxWidth: '92vw',
+          width: 'min(660px, 94vw)',
+          maxWidth: '94vw',
           backgroundColor: THEME_TOKENS.colors.bgSurface,
           border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
           borderRadius: 10,
@@ -274,7 +270,7 @@ const ImportPositionsModalDialog: React.FC<DialogProps> = ({ initialTab, initial
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          maxHeight: '88vh'
+          maxHeight: 'min(700px, 88vh)'
         }}
       >
         {/* Modal Header */}

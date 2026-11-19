@@ -84,7 +84,11 @@ export const BottomStatusBar: React.FC = () => {
         fontSize: 11,
         color: THEME_TOKENS.colors.textSecondary,
         zIndex: 20,
-        userSelect: 'none'
+        userSelect: 'none',
+        width: '100%',
+        maxWidth: '100%',
+        flexShrink: 0,
+        overflow: 'hidden'
       }}
     >
       {/* 1. Market Status Indicator (TradingView Green/Orange dot + Market Open) */}

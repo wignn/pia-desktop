@@ -37,7 +37,7 @@ describe('live bar frame scheduler', () => {
     engine.handleTick({ symbol: 'XAUUSD', price: 80, timestamp: 1800000002000 })
     engine.handleTick({ symbol: 'XAUUSD', price: 105, timestamp: 1800000003000 })
     flush(16)
-    expect(delivered).toEqual([{ timestamp: 1800000000000, open: 100, high: 120, low: 80, close: 105, volume: undefined }])
+    expect(delivered).toMatchObject([{ timestamp: 1800000000000, open: 100, high: 120, low: 80, close: 105, volume: undefined, volumeBasis: 'unavailable' }])
   })
 
   it('preserves the final old bar and the new bar across a frame boundary', () => {

@@ -219,8 +219,10 @@ export function TerminalWorkspace(): React.JSX.Element {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: '100vw',
-        height: '100vh',
+        width: '100%',
+        maxWidth: '100%',
+        height: '100%',
+        maxHeight: '100%',
         overflow: 'hidden',
         backgroundColor: THEME_TOKENS.colors.bgApp
       }}

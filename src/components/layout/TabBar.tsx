@@ -42,7 +42,10 @@ export const TabBar: React.FC = () => {
         overflowX: 'auto',
         overflowY: 'hidden',
         scrollbarWidth: 'none',
-        zIndex: 20
+        zIndex: 20,
+        width: '100%',
+        maxWidth: '100%',
+        flexShrink: 0
       }}
     >
       {/* Tabs List */}

@@ -37,6 +37,7 @@ export const ChartRangeBar: React.FC = () => {
   // ponytail: Local state toggles for scale modes; upgrade to klinecharts chart.setStyles({ yAxis: { type: 'log' } }) when custom scales requested.
   return (
     <div
+      className="tv-no-scrollbar"
       style={{
         height: 28,
         minHeight: 28,
@@ -49,7 +50,11 @@ export const ChartRangeBar: React.FC = () => {
         fontSize: 11,
         color: THEME_TOKENS.colors.textSecondary,
         userSelect: 'none',
-        zIndex: 10
+        zIndex: 10,
+        width: '100%',
+        maxWidth: '100%',
+        flexShrink: 0,
+        overflowX: 'auto'
       }}
     >
       {/* Date Range Presets */}

@@ -99,7 +99,8 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ isOpen, onClose, d
     >
       <div
         style={{
-          width: 480,
+          width: 'min(480px, 94vw)',
+          maxHeight: 'min(620px, 90vh)',
           backgroundColor: THEME_TOKENS.colors.bgSurface,
           border: `1px solid ${THEME_TOKENS.colors.borderMedium}`,
           borderRadius: 8,

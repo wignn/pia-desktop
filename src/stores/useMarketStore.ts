@@ -12,8 +12,15 @@ import { usePaperTradingStore } from './usePaperTradingStore'
 import type { KLineData } from 'klinecharts'
 
 function isOlderQuote(quote: PriceQuote, previous?: PriceQuote): boolean {
-  return Boolean(previous && !previous.timestampEstimated &&
-    (quote.timestampEstimated || quote.timestamp < previous.timestamp))
+  if (!previous) return false
+  if (previous.timestampEstimated) {
+    return !quote.timestampEstimated ? false : quote.timestamp < previous.timestamp
+  }
+  const previousAge = Date.now() - (previous.receivedAt ?? previous.timestamp)
+  if (quote.timestampEstimated) {
+    return previousAge < 3000
+  }
+  return quote.timestamp < previous.timestamp
 }
 
 interface MarketState {
@@ -202,6 +209,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       if (quote) {
         set((state) => isOlderQuote(quote, state.prices[quote.symbol])
           ? state : { prices: { ...state.prices, [quote.symbol]: quote } })
+        dispatchCandleTick(quote)
       }
     } catch (err) {
       console.warn(`[MarketStore] Failed to refresh ${symbol}:`, err)
@@ -292,6 +300,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             if (!isOlderQuote(refreshed, previous)) {
               delete pendingPrices[symbol]
               set((state) => ({ prices: { ...state.prices, [refreshed.symbol]: refreshed } }))
+              dispatchCandleTick(refreshed)
             }
           }
         } catch (err) {

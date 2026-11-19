@@ -84,6 +84,22 @@ describe('PiaProvider - 15m Fallback and Aggregation', () => {
     expect(updates).toEqual([quote])
   })
 
+  it('does not classify cTrader midpoint as exchange volume when amount is null', () => {
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    const quote = normalize({symbol: 'XAUUSD', price: 2500, volume: null, provider_source: 'ctrader_fix', volume_basis: 'unavailable'})
+    expect(quote.volume24h).toBeUndefined()
+    expect(quote.volumeAvailable).toBe(false)
+    expect(quote.volumeType).toBe('unavailable')
+  })
+
+  it('retains only explicit 24h exchange volume and its metadata', () => {
+    const normalize = (provider as any).normalizeMarketPrice.bind(provider)
+    const quote = normalize({symbol: 'BTCUSDT', price: 2500, volume: 7, volume_24h: 80, volume_basis: 'trade', provider_source: 'okx'})
+    expect(quote.volume24h).toBe(80)
+    expect(quote.volumeAvailable).toBe(true)
+    expect(quote.volumeType).toBe('exchange')
+  })
+
   it('uses timestamp_ms before generic time but preserves trade time precedence', () => {
     const now = Date.now()
     const normalize = (provider as any).normalizeMarketPrice.bind(provider)

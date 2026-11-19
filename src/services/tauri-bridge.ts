@@ -4,9 +4,10 @@
  * and native Tauri plugins, implementing the full TerminalAPI contract.
  */
 
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { decodeBinaryCandles } from '../utils/binary-candle-decoder'
 import { CredentialManager } from './credentials'
 import { DatabaseService, sharedDbService } from './database'
 import { PiaProvider } from './pia-provider'
@@ -86,10 +87,58 @@ export async function createTauriApi(): Promise<TerminalAPI> {
     })
   }
 
+  // High-performance typed IPC channel for native market ticks
+  if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+    try {
+      const tickChannel = new Channel<{
+        s: string
+        p: number
+        t: number
+        v: number
+        d: number
+      }>((tick) => {
+        piaProvider.pushNativeTick(tick)
+      })
+
+      invoke('subscribe_market_ticks', { channel: tickChannel }).catch((e) => {
+        console.warn('[tauri-bridge] subscribe_market_ticks warning:', e)
+      })
+    } catch (e) {
+      console.warn('[tauri-bridge] Failed to initialize native tick channel:', e)
+    }
+  }
+
   const api: TerminalAPI = {
     market: {
       getSymbols: () => piaProvider.getSymbols(),
-      getCandles: (params: GetCandlesInput) => piaProvider.getCandles(params),
+      getCandles: async (params: GetCandlesInput) => {
+        // Prefer native binary IPC when running inside Tauri desktop app
+        if (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) {
+          try {
+            const apiKey = credManager.getApiKey() || undefined
+            const baseUrl = credManager.getBaseUrl() || undefined
+            const binaryResponse = await invoke<ArrayBuffer | number[]>('pia_native_candles_binary', {
+              symbol: params.symbol,
+              timeframe: params.timeframe,
+              limit: params.limit,
+              apiKey,
+              baseUrl
+            })
+            if (binaryResponse) {
+              const buffer =
+                binaryResponse instanceof ArrayBuffer
+                  ? binaryResponse
+                  : new Uint8Array(binaryResponse).buffer
+              if (buffer.byteLength > 0 && buffer.byteLength % 48 === 0) {
+                return decodeBinaryCandles(buffer)
+              }
+            }
+          } catch (nativeErr) {
+            console.warn('[tauri-bridge] Native binary candles fallback to JS SDK:', nativeErr)
+          }
+        }
+        return piaProvider.getCandles(params)
+      },
       getPrices: (params?: GetPricesInput) => piaProvider.getPrices(params?.symbols),
       getPrice: (symbol: string) => piaProvider.getPrice(symbol),
       getSession: (symbol: string) => piaProvider.getSession(symbol),

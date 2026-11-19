@@ -22,9 +22,8 @@ export function normalizeWsUrl(url?: string | null): string {
     if (parsed.pathname === '/' || parsed.pathname === '') {
       parsed.pathname = '/api/v1/ws'
     }
-    if (parsed.searchParams.get('api_key')?.startsWith('wi_live_')) {
-      parsed.searchParams.delete('api_key')
-    }
+    parsed.searchParams.delete('api_key')
+    parsed.searchParams.delete('token')
     return parsed.toString().replace(/\/+$/, '')
   } catch {
     return trimmed
@@ -101,7 +100,9 @@ export class CredentialManager {
   }
 
   public getStatus(): CredentialStatus {
-    const hasCreds = Boolean(this.inMemoryCreds?.desktopCredential || this.inMemoryCreds?.apiKey)
+    const desktopCredential = this.inMemoryCreds?.desktopCredential?.trim()
+    const apiKey = this.inMemoryCreds?.apiKey?.trim()
+    const hasCreds = Boolean(desktopCredential || apiKey)
     return {
       hasApiKey: hasCreds,
       isLoggedIn: hasCreds,
@@ -125,15 +126,11 @@ export class CredentialManager {
   }
 
   public getApiKey(): string | null {
+    const desktopCredential = this.inMemoryCreds?.desktopCredential?.trim()
+    if (desktopCredential) return desktopCredential
+
     const explicitKey = this.inMemoryCreds?.apiKey?.trim()
-    if (explicitKey && !explicitKey.startsWith('wi_live_')) {
-      return explicitKey
-    }
-    // ponytail: fallback to 'silvia' engine key for WebSocket & market data when using OAuth desktopCredential; upgrade when gateway accepts user bearer tokens
-    if (this.inMemoryCreds?.desktopCredential || explicitKey?.startsWith('wi_live_')) {
-      return 'silvia'
-    }
-    return null
+    return explicitKey || null
   }
 
   public getBaseUrl(): string {

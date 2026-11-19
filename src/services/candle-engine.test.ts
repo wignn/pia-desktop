@@ -39,6 +39,32 @@ describe('CandleEngine', () => {
     expect(engine.getBars().at(-1)?.close).toBe(110)
   })
 
+  it('updates the active bar close and extrema when an estimated quote arrives without rolling a new candle', async () => {
+    const engine = new CandleEngine()
+    await engine.setSymbolAndTimeframe('XAUUSD', '15m')
+    const start = engine.getBars().at(-1)!.timestamp
+    engine.handleTick({ symbol: 'XAUUSD', price: 125, timestamp: start + 20 * 60_000, timestampEstimated: true })
+    const active = engine.getBars().at(-1)!
+    expect(active.close).toBe(125)
+    expect(active.high).toBe(125)
+    expect(active.timestamp).toBe(start)
+  })
+
+  it('does not treat 24h quote volume as candle trade volume', async () => {
+    const engine = new CandleEngine()
+    vi.mocked(window.api.market.getCandles).mockResolvedValueOnce([
+      { timestamp: 1_700_000_000_000, open: 100, high: 100, low: 100, close: 100 }
+    ])
+    await engine.setSymbolAndTimeframe('XAUUSD', '15m')
+    const base = engine.getBars().at(-1)!.timestamp
+    engine.handleTick({symbol:'XAUUSD', price:101, timestamp:base + 16 * 60_000, providerSource:'ctrader_fix', volumeType:'unavailable', volumeAvailable:false})
+    const bar = engine.getBars().at(-1)!
+    expect(bar.volume).toBeUndefined()
+    expect(bar.volumeBasis).toBe('unavailable')
+    expect(bar.activityBasis).toBe('received_feed_updates')
+    expect(bar.providerSource).toBe('ctrader_fix')
+  })
+
   it('never moves the live close backwards in tick time', async () => {
     const engine = new CandleEngine()
     await engine.setSymbolAndTimeframe('XAUUSD', '15m')
@@ -259,7 +285,10 @@ describe('CandleEngine', () => {
       price: 110,
       bid: 109,
       ask: 111,
-      timestamp: latest.timestamp + 1_000
+      timestamp: latest.timestamp + 1_000,
+      volumeType: 'exchange',
+      volumeAvailable: true,
+      volume24h: 0
     }
 
     engine.handleTick(quote)
@@ -269,7 +298,8 @@ describe('CandleEngine', () => {
       high: 110,
       low: 102,
       close: 110,
-      volume: 55
+      volume: 55,
+      volumeBasis: 'trade'
     })
     expect(onBarUpdate).toHaveBeenCalledOnce()
   })

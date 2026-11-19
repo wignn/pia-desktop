@@ -1,4 +1,5 @@
 mod kronos;
+mod market_ipc;
 mod piascript;
 
 use piascript::{PiaCandle, PiaScriptEngine, PiaScriptResult};
@@ -243,14 +244,27 @@ fn set_window_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
             let _ = window.set_decorations(true);
             let _ = window.set_resizable(true);
             let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
-                width: 1080.0,
-                height: 680.0,
+                width: 800.0,
+                height: 500.0,
             })));
-            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-                width: 1440.0,
-                height: 900.0,
-            }));
+
+            if let Ok(Some(monitor)) = window.current_monitor() {
+                let scale_factor = monitor.scale_factor();
+                let monitor_size = monitor.size().to_logical::<f64>(scale_factor);
+                let target_w = (monitor_size.width * 0.92).clamp(800.0, 1360.0);
+                let target_h = (monitor_size.height * 0.88).clamp(500.0, 800.0);
+                let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+                    width: target_w,
+                    height: target_h,
+                }));
+            } else {
+                let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+                    width: 1100.0,
+                    height: 680.0,
+                }));
+            }
             let _ = window.center();
+            let _ = window.maximize();
         }
     }
     Ok(())
@@ -644,6 +658,9 @@ pub fn run() {
             save_ai_provider_credentials,
             google_oauth_callback,
             pia_native_candles,
+            market_ipc::pia_native_candles_binary,
+            market_ipc::subscribe_market_ticks,
+            market_ipc::emit_native_market_tick,
             pia_native_request,
             native_http_request,
             execute_piascript,

@@ -89,7 +89,8 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
     const onMouseMove = (moveEvent: MouseEvent): void => {
       if (!isDraggingRef.current) return
       const delta = startYRef.current - moveEvent.clientY
-      const nextHeight = Math.min(520, Math.max(120, startHeightRef.current + delta))
+      const maxAllowed = Math.min(520, Math.max(160, (window.innerHeight || 600) - 180))
+      const nextHeight = Math.min(maxAllowed, Math.max(100, startHeightRef.current + delta))
       setDrawerHeight(nextHeight)
     }
 
@@ -209,7 +210,10 @@ export const BottomDockPanel: React.FC<BottomDockPanelProps> = ({
         flexDirection: 'column',
         zIndex: 15,
         userSelect: 'none',
-        position: 'relative'
+        position: 'relative',
+        width: '100%',
+        maxWidth: '100%',
+        flexShrink: 0
       }}
     >
       {/* Resizable Top Edge Handle (when open) */}
