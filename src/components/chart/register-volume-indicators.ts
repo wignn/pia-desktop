@@ -25,7 +25,7 @@ export function registerVolumeIndicators(): void {
           type: 'bar' as const,
           baseValue: 0,
           styles: ({ data, defaultStyles }) => {
-            const current = data.current as unknown as CandleBar
+            const current = data.current as unknown as { open?: number; close?: number }
             if (current && typeof current.close === 'number' && typeof current.open === 'number') {
               if (current.close > current.open) {
                 return { color: defaultStyles?.bars?.[0]?.upColor ?? 'rgba(38, 166, 154, 0.7)' }
@@ -48,7 +48,9 @@ export function registerVolumeIndicators(): void {
             value = candle.tickCount
           }
         }
-        return value === undefined ? {} : { measurement: value }
+        return value === undefined
+          ? { open: candle.open, close: candle.close }
+          : { measurement: value, open: candle.open, close: candle.close }
       })
     })
   }
