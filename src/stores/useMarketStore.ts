@@ -6,6 +6,7 @@
 import { create } from 'zustand'
 import { TIMEFRAMES } from '@shared/types'
 import type { ConnectionState, PriceQuote, SymbolInfo, Timeframe } from '@shared/types'
+import { getAllKnownInstruments } from '@shared/instruments'
 import { dispatchCandleTick } from '../services/candle-engine'
 import { useAlertsStore } from './useAlertsStore'
 import { usePaperTradingStore } from './usePaperTradingStore'
@@ -77,7 +78,7 @@ const loadInitialTimeframe = (): Timeframe => {
 export const useMarketStore = create<MarketState>((set, get) => ({
   symbol: loadInitialSymbol(),
   timeframe: loadInitialTimeframe(),
-  symbols: [],
+  symbols: getAllKnownInstruments(),
   prices: {},
   connectionState: { status: 'connecting' },
   selectedBar: null,
@@ -172,14 +173,18 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         priceMap[p.symbol] = p
       }
 
-      set((state) => ({
-        symbols,
-        symbol:
-          state.symbol && symbols.some((item) => item.symbol === state.symbol)
-            ? state.symbol
-            : symbols[0]?.symbol || null,
-        prices: { ...priceMap, ...state.prices }
-      }))
+      set((state) => {
+        const resolvedSymbols =
+          symbols.length > 0 ? symbols : state.symbols.length > 0 ? state.symbols : getAllKnownInstruments()
+        return {
+          symbols: resolvedSymbols,
+          symbol:
+            state.symbol && resolvedSymbols.some((item) => item.symbol === state.symbol)
+              ? state.symbol
+              : resolvedSymbols[0]?.symbol || null,
+          prices: { ...priceMap, ...state.prices }
+        }
+      })
 
       if (
         (symbols.length > 0 || pricesList.length > 0) &&

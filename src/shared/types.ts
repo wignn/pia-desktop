@@ -43,7 +43,7 @@ export interface CandleBar {
   close: number
   volume?: number
   tickCount?: number
-  volumeBasis?: 'trade' | 'unavailable' | 'unknown'
+  volumeBasis?: 'trade' | 'unavailable' | 'unknown' | 'tick_count'
   activityBasis?: 'received_feed_updates' | 'unavailable'
   activityComplete?: boolean
   providerSource?: string

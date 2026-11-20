@@ -74,8 +74,20 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
   }
 
   let s = rawSymbol.trim().toUpperCase()
+  if (s.startsWith('FH_')) {
+    s = s.slice(3)
+  }
   if (s.includes(':')) {
     s = s.split(':').pop() || s
+  }
+
+  // 1. For word-format names with spaces, check alias mapping (e.g. 'TESLA MOTORS' -> TSLA, 'US 500' -> US500)
+  if (s.includes(' ') && LOCAL_ALIAS_MAP[s]) {
+    const alias = LOCAL_ALIAS_MAP[s]
+    return {
+      coin: alias.toLowerCase(),
+      cleanSym: alias
+    }
   }
 
   const fx = parseForexPair(s)
@@ -101,6 +113,14 @@ export function resolveSymbolTokens(rawSymbol: string): { coin: string; cleanSym
   if (s.startsWith('XAG')) return { coin: 'xag', cleanSym: 'XAG' }
   if (s.startsWith('XPT')) return { coin: 'xpt', cleanSym: 'XPT' }
   if (s.startsWith('XPD')) return { coin: 'xpd', cleanSym: 'XPD' }
+  if (s.startsWith('XAL')) return { coin: 'xal', cleanSym: 'XAL' }
+  if (s.startsWith('XCU')) return { coin: 'xcu', cleanSym: 'XCU' }
+  if (s.startsWith('XNI')) return { coin: 'xni', cleanSym: 'XNI' }
+  if (s.startsWith('XPB')) return { coin: 'xpb', cleanSym: 'XPB' }
+  if (s.startsWith('XZN')) return { coin: 'xzn', cleanSym: 'XZN' }
+  if (s.startsWith('XNG')) return { coin: 'xng', cleanSym: 'XNGUSD' }
+  if (s.startsWith('XBR')) return { coin: 'brent', cleanSym: 'BRENT' }
+  if (s.startsWith('XTI')) return { coin: 'wti', cleanSym: 'WTI' }
 
   // 4. Quote currencies stripping: USDT, USDC, BUSD, PERP, USD, EUR, etc.
   const quoteSuffixes = [
@@ -192,9 +212,137 @@ const SYMBOL_ALIASES: Record<string, string[]> = {
   WTI: ['OIL', 'USO'],
   BRENT: ['OIL', 'BNO'],
   OIL: ['WTI', 'USO'],
-  SPX: ['SPY'],
-  NDX: ['QQQ'],
-  DJI: ['DIA']
+  SPX: ['SPY', 'US500'],
+  SPX500: ['SPX', 'SPY', 'US500'],
+  NDX: ['QQQ', 'USTEC'],
+  NAS100: ['NDX', 'QQQ', 'USTEC'],
+  DJI: ['DIA', 'US30'],
+  US30: ['DJI', 'DIA'],
+  RUT: ['IWM', 'US2000'],
+  US2000: ['RUT', 'IWM'],
+  JP225: ['NIKKEI', 'N225'],
+  AU200: ['AUS200', 'ASX200'],
+  UK100: ['FTSE'],
+  DE30: ['DAX', 'GDAXI'],
+  FR40: ['CAC40'],
+  EU50: ['STOXX50', 'SX5E'],
+  HK33: ['HK50', 'HSI'],
+  CN50: ['A50'],
+  SG30: ['STI'],
+  NL25: ['AEX']
+}
+
+export const LOCAL_ALIAS_MAP: Record<string, string> = {
+  FH_SPX500: 'US500',
+  SPX500: 'US500',
+  FH_NAS100: 'USTEC',
+  NAS100: 'USTEC',
+  FH_US30: 'US30',
+  FH_US2000: 'RUT',
+  US2000: 'RUT',
+  FH_JP225: 'JP225',
+  FH_AU200: 'AUS200',
+  AU200: 'AUS200',
+  FH_UK100: 'UK100',
+  FH_DE30: 'DE30',
+  FH_FR40: 'FR40',
+  FH_EU50: 'STOXX50',
+  EU50: 'STOXX50',
+  FH_HK33: 'HK50',
+  HK33: 'HK50',
+  FH_CN50: 'CN50',
+  FH_SG30: 'STI',
+  SG30: 'STI',
+  FH_NL25: 'NL25',
+  SPX: 'SPX',
+  NDX: 'USTEC',
+  DJI: 'DJI',
+
+  // cTrader word-form indices & benchmarks
+  'AUSTRALIA 200': 'AUS200',
+  'EUROPE 50': 'STOXX50',
+  'FRANCE 40': 'FR40',
+  'GERMANY 40': 'DE30',
+  'HONG KONG 50': 'HK50',
+  'JAPAN 225': 'JP225',
+  'NETHERLANDS 25': 'NL25',
+  'UK 100': 'UK100',
+  'US 30': 'US30',
+  'US 500': 'US500',
+  'US TECH 100': 'USTEC',
+  'CORE S&P 500': 'US500',
+  'S&P 500 LOW VOLATILITY': 'US500',
+
+  // Commodities
+  XBRUSD: 'BRENT',
+  XTIUSD: 'WTI',
+  'NAT.GAS': 'XNGUSD',
+  NATGAS: 'XNGUSD',
+
+  // Equities & Corporate CFDs with local icons
+  'TESLA MOTORS': 'TSLA',
+  APPLE: 'AAPL',
+  MICROSOFT: 'MSFT',
+  AMAZON: 'AMZN',
+  ALPHABET: 'GOOGL',
+  GOOGLE: 'GOOGL',
+  NVIDIA: 'NVDA',
+  'WALT DISNEY': 'DIS',
+  BOEING: 'BA',
+  'GOLDMAN SACHS': 'GS',
+  'FORD MOTOR': 'F',
+  'HOME DEPOT': 'HD',
+  'BANK OF AMERICA': 'BAC',
+  'WELLS FARGO': 'WFC',
+  INTEL: 'INTC',
+  CISCO: 'CSCO',
+  ORACLE: 'ORCL',
+  WALMART: 'WMT',
+  VISA: 'V',
+  MASTERCARD: 'MA',
+  'AMERICAN EXPRESS': 'AXP',
+  CITIGROUP: 'C',
+  'MC DONALDS': 'MCD',
+  NIKE: 'NKE',
+  STARBUCKS: 'SBUX',
+  'COCA-COLA': 'KO',
+  PEPSICO: 'PEP'
+}
+
+export const INDEX_FLAG_MAP: Record<string, string> = {
+  FH_CN50: 'cn',
+  CN50: 'cn',
+  FH_NL25: 'nl',
+  NL25: 'nl',
+  'NETHERLANDS 25': 'nl',
+  FH_JP225: 'jp',
+  JP225: 'jp',
+  'JAPAN 225': 'jp',
+  FH_AU200: 'au',
+  AU200: 'au',
+  'AUSTRALIA 200': 'au',
+  FH_UK100: 'gb',
+  UK100: 'gb',
+  'UK 100': 'gb',
+  FH_DE30: 'de',
+  DE30: 'de',
+  'GERMANY 40': 'de',
+  FH_FR40: 'fr',
+  FR40: 'fr',
+  'FRANCE 40': 'fr',
+  FH_EU50: 'eu',
+  EU50: 'eu',
+  'EUROPE 50': 'eu',
+  FH_HK33: 'hk',
+  HK33: 'hk',
+  'HONG KONG 50': 'hk',
+  FH_SG30: 'sg',
+  SG30: 'sg',
+  'ITALY 40': 'it',
+  'SPAIN 35': 'es',
+  'SWITZERLAND 20': 'ch',
+  'LATIN AMERICA 40': 'br',
+  'CHINA LARGE-CAP': 'cn'
 }
 
 // ponytail: multi-tier CDN candidates support optional Cloudflare R2 URL via VITE_R2_CDN_URL; falls back to category-optimized jsdelivr CDN with zero waterfall delay.
@@ -275,7 +423,13 @@ function getDeterministicCategoryColor(symbol: string): { bg: string; text: stri
     return { bg: '#ea580c', text: '#ffffff' }
   }
 
-  if (['SPX', 'NDX', 'DJI', 'DAX', 'DXY', 'VIX', 'RUT'].includes(s)) {
+  if (
+    ['SPX', 'NDX', 'DJI', 'DAX', 'DXY', 'VIX', 'RUT'].includes(s) ||
+    s.startsWith('FH_') ||
+    s.includes('500') ||
+    s.includes('100') ||
+    s.includes('2000')
+  ) {
     return { bg: '#6366f1', text: '#ffffff' }
   }
 
@@ -342,10 +496,16 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
   }
 
   // 1. Instant local symbol icon resolution from pre-bundled assets
-  if (preferLocal && !localFailed && !forceFallback && LOCAL_SYMBOL_ICONS.has(normSym)) {
+  const localTarget = LOCAL_SYMBOL_ICONS.has(normSym)
+    ? normSym
+    : LOCAL_ALIAS_MAP[normSym] && LOCAL_SYMBOL_ICONS.has(LOCAL_ALIAS_MAP[normSym])
+      ? LOCAL_ALIAS_MAP[normSym]
+      : null
+
+  if (preferLocal && !localFailed && !forceFallback && localTarget) {
     return (
       <img
-        src={`/symbol-icons/${normSym}.png`}
+        src={`/symbol-icons/${localTarget}.png`}
         alt={symbol}
         loading="lazy"
         decoding="async"
@@ -471,6 +631,29 @@ export const SymbolLogo: React.FC<SymbolLogoProps> = ({
   const { cleanSym } = resolveSymbolTokens(symbol)
 
   if (forceFallback || isExhausted || candidates.length === 0) {
+    if (!forceFallback && INDEX_FLAG_MAP[normSym]) {
+      const flagCountry = INDEX_FLAG_MAP[normSym]
+      return (
+        <img
+          src={`https://cdn.jsdelivr.net/gh/lipis/flag-icons@main/flags/4x3/${flagCountry}.svg`}
+          alt={symbol}
+          crossOrigin="anonymous"
+          style={{
+            width: size,
+            height: size,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            display: 'inline-block',
+            flexShrink: 0,
+            ...style
+          }}
+          className={className}
+          title={symbol}
+          data-testid="symbol-logo-flag"
+        />
+      )
+    }
+
     const color = getDeterministicCategoryColor(symbol)
     const initials = cleanSym ? cleanSym.slice(0, Math.min(cleanSym.length, 2)) : '?'
 

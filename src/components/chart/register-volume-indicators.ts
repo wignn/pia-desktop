@@ -15,9 +15,39 @@ export function registerVolumeIndicators(): void {
       name,
       shortName,
       series: 'volume',
-      figures: [{ key: 'measurement', title: `${shortName}: `, type: 'bar' as const }],
+      minValue: 0,
+      shouldFormatBigNumber: true,
+      precision: 0,
+      figures: [
+        {
+          key: 'measurement',
+          title: `${shortName}: `,
+          type: 'bar' as const,
+          baseValue: 0,
+          styles: ({ data, defaultStyles }) => {
+            const current = data.current as unknown as CandleBar
+            if (current && typeof current.close === 'number' && typeof current.open === 'number') {
+              if (current.close > current.open) {
+                return { color: defaultStyles?.bars?.[0]?.upColor ?? 'rgba(38, 166, 154, 0.7)' }
+              }
+              if (current.close < current.open) {
+                return { color: defaultStyles?.bars?.[0]?.downColor ?? 'rgba(239, 83, 80, 0.7)' }
+              }
+            }
+            return { color: defaultStyles?.bars?.[0]?.noChangeColor ?? 'rgba(150, 150, 150, 0.7)' }
+          }
+        }
+      ],
       calc: (bars) => bars.map(bar => {
-        const value = projectHistogram(bar as unknown as CandleBar, mode)
+        const candle = bar as unknown as CandleBar
+        let value = projectHistogram(candle, mode)
+        if (value === undefined && candle.volumeBasis !== 'unavailable') {
+          if (typeof candle.volume === 'number' && Number.isFinite(candle.volume) && candle.volume >= 0) {
+            value = candle.volume
+          } else if (typeof candle.tickCount === 'number' && Number.isFinite(candle.tickCount) && candle.tickCount >= 0) {
+            value = candle.tickCount
+          }
+        }
         return value === undefined ? {} : { measurement: value }
       })
     })

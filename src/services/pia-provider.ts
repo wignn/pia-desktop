@@ -63,6 +63,7 @@ import {
   resolveOptionsUnderlying,
   resolveNewsImage
 } from '@shared/market-utils'
+import { getAllKnownInstruments, getKnownInstrument } from '@shared/instruments'
 import { parseCalendarTimestamp } from '@shared/calendar-helpers'
 import type { CredentialManager } from './credentials'
 
@@ -137,7 +138,9 @@ export class PiaProvider {
   private credManager: CredentialManager
   private connectionState: ConnectionState = { status: 'disconnected' }
   private lastLatencyCheck = 0
-  private discoveredSymbols = new Map<string, SymbolInfo>()
+  private discoveredSymbols = new Map<string, SymbolInfo>(
+    getAllKnownInstruments().map((item) => [item.symbol, item])
+  )
   private symbolsRefreshPromise: Promise<void> | null = null
   private symbolsRefreshedAt = 0
   private loggedSymbolCount: number | null = null
@@ -166,7 +169,9 @@ export class PiaProvider {
     const baseUrl = this.credManager.getBaseUrl()
     const wsUrl = this.credManager.getWsUrl()
 
-    this.discoveredSymbols.clear()
+    this.discoveredSymbols = new Map<string, SymbolInfo>(
+      getAllKnownInstruments().map((item) => [item.symbol, item])
+    )
     this.symbolsRefreshPromise = null
     this.symbolsRefreshedAt = 0
     this.loggedSymbolCount = null
@@ -724,18 +729,20 @@ export class PiaProvider {
         }
         for (const s of allItems) {
           if (!s.symbol) continue
-          const category = mapPiaAssetTypeToCategory(s.asset_type || 'crypto', s.symbol)
+          const known = getKnownInstrument(s.symbol)
+          const category = known ? known.category : mapPiaAssetTypeToCategory(s.asset_type || 'crypto', s.symbol)
           const precision = getSymbolPrecision(s.symbol, category)
+          const existing = this.discoveredSymbols.get(s.symbol)
           this.discoveredSymbols.set(s.symbol, {
             symbol: s.symbol,
-            name: s.name || s.symbol,
+            name: known?.name || s.name || existing?.name || s.symbol,
             category,
-            pricePrecision: s.price_precision ?? precision.pricePrecision,
-            volumePrecision: precision.volumePrecision,
-            exchange: s.exchange,
-            providerSymbol: s.source,
+            pricePrecision: s.price_precision ?? known?.pricePrecision ?? precision.pricePrecision,
+            volumePrecision: known?.volumePrecision ?? precision.volumePrecision,
+            exchange: s.exchange || known?.provider || existing?.exchange,
+            providerSymbol: s.source || s.symbol,
             capabilities: capabilitiesForSymbol(s.symbol, category),
-            minMove: s.tick_size ?? precision.minMove
+            minMove: s.tick_size ?? known?.minMove ?? precision.minMove
           })
         }
       } catch (err: unknown) {
@@ -754,22 +761,25 @@ export class PiaProvider {
               this.latestQuotes.set(quote.symbol, quote)
             }
             const price = Number(item.price)
-            const category = mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
+            const known = getKnownInstrument(item.symbol)
+            const category = known ? known.category : mapPiaAssetTypeToCategory(item.asset_type || '', item.symbol)
             const session = (item as unknown as { session?: { exchange?: string } }).session
-            const exchange = session?.exchange || ''
-            const displayName = exchange ? `${item.symbol} · ${exchange}` : item.symbol
+            const exchange = session?.exchange || known?.provider || ''
+            const displayName = known?.name || (exchange ? `${item.symbol} · ${exchange}` : item.symbol)
 
             const precision = getSymbolPrecision(item.symbol, category, price)
             const existing = this.discoveredSymbols.get(item.symbol)
             this.discoveredSymbols.set(item.symbol, {
               symbol: item.symbol,
               name:
-                existing?.name && existing.name !== existing.symbol ? existing.name : displayName,
+                known?.name || (existing?.name && existing.name !== existing.symbol ? existing.name : displayName),
               category,
-              pricePrecision: precision.pricePrecision,
-              volumePrecision: precision.volumePrecision,
+              pricePrecision: known?.pricePrecision ?? precision.pricePrecision,
+              volumePrecision: known?.volumePrecision ?? precision.volumePrecision,
+              exchange: existing?.exchange || exchange,
+              providerSymbol: existing?.providerSymbol || item.symbol,
               capabilities: capabilitiesForSymbol(item.symbol, category),
-              minMove: precision.minMove
+              minMove: known?.minMove ?? precision.minMove
             })
           }
           this.latestPricesAt = Date.now()

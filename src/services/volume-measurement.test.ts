@@ -22,4 +22,27 @@ describe('honest volume measurements', () => {
     expect(mergeMeasurements(a, a).tickCount).toBe(4)
     expect(a.tickCount).toBe(2)
   })
+
+  it('correctly decodes ClickHouse tick_count candles and displays volume and activity', () => {
+    const clickhouseRow = {
+      close: 3617.985,
+      high: 3618.235,
+      latest_at: '2026-11-20 00:09:00',
+      low: 3613.695,
+      open: 3613.715,
+      source: 'clickhouse_candles_1m',
+      tick_count: '162',
+      time: 1795133340,
+      value: 3617.985,
+      volume: 162,
+      volume_basis: 'tick_count'
+    }
+    const decoded = decodeMeasurements(clickhouseRow)
+    expect(decoded.volume).toBe(162)
+    expect(decoded.tickCount).toBe(162)
+    expect(decoded.volumeBasis).toBe('tick_count')
+    expect(decoded.activityBasis).toBe('received_feed_updates')
+    expect(projectHistogram(decoded, 'trade')).toBe(162)
+    expect(projectHistogram(decoded, 'activity')).toBe(162)
+  })
 })

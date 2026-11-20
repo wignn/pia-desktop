@@ -5,7 +5,7 @@ import { THEME_TOKENS } from '../../theme/tokens'
 import type { AssetCategory } from '@shared/types'
 import { SymbolLogo } from '../common/SymbolLogo'
 
-const CATEGORIES = ['all', 'stocks', 'indices', 'forex', 'commodities', 'metals', 'crypto'] as const
+const CATEGORIES = ['all', 'indices', 'forex', 'crypto', 'metals', 'commodities', 'stocks'] as const
 
 export const SymbolSearchModal: React.FC = () => {
   const { isSymbolSearchOpen, setSymbolSearchOpen } = useWorkspaceStore()
@@ -262,6 +262,21 @@ const SymbolSearchDialog: React.FC = () => {
                     >
                       {item.category}
                     </span>
+                    {item.exchange && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 500,
+                          backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                          color: THEME_TOKENS.colors.textMuted,
+                          border: `1px solid ${THEME_TOKENS.colors.borderSubtle}`,
+                          padding: '0 4px',
+                          borderRadius: 2
+                        }}
+                      >
+                        {item.exchange}
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: 11, color: THEME_TOKENS.colors.textSecondary }}>
                     {item.name}

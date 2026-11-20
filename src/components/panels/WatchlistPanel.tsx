@@ -595,11 +595,20 @@ export const WatchlistPanel: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: THEME_TOKENS.colors.textSecondary }}>Volume (24h)</span>
               <span style={{ color: THEME_TOKENS.colors.textPrimary, fontFamily: THEME_TOKENS.typography?.fontMono }}>
-                {selectedQuote?.volume24h
-                  ? selectedQuote.volume24h > 1e6
-                    ? `${(selectedQuote.volume24h / 1e6).toFixed(2)}M`
-                    : `${(selectedQuote.volume24h / 1e3).toFixed(1)}K`
-                  : '--'}
+                {(() => {
+                  const barVol = typeof latestBar?.volume === 'number' && latestBar.volume > 0 ? latestBar.volume : undefined
+                  const barTicks = typeof (latestBar as any)?.tickCount === 'number' && (latestBar as any).tickCount > 0 ? (latestBar as any).tickCount as number : undefined
+                  const vol: number | undefined =
+                    (selectedQuote?.volume24h && selectedQuote.volume24h > 0 ? selectedQuote.volume24h : undefined) ??
+                    barVol ??
+                    barTicks
+                  if (vol === undefined) return '--'
+                  return vol >= 1e6
+                    ? `${(vol / 1e6).toFixed(2)}M`
+                    : vol >= 1e3
+                    ? `${(vol / 1e3).toFixed(1)}K`
+                    : vol.toLocaleString()
+                })()}
               </span>
             </div>
 

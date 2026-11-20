@@ -4,6 +4,7 @@
  */
 
 import type { AssetCategory, MarketCapabilities } from './types'
+import { getKnownInstrument } from './instruments'
 
 export const DEFAULT_MARKET_CAPABILITIES: MarketCapabilities = {
   quote: true,
@@ -35,10 +36,23 @@ export function capabilitiesForSymbol(symbol: string, category: AssetCategory): 
 const KNOWN_INDICES = new Set([
   'SPX', 'NDX', 'DJI', 'DAX', 'FTSE', 'NIKKEI', 'HSI', 'JCI', 'IHSG', 'SSEC',
   'RUT', 'N225', 'NIFTY50', 'STI', 'FCHI', 'GDAXI', 'DXY', 'DXYM', 'VIX',
-  'ASX200', 'AUS200', 'AUS200M', 'KOSPI', 'SENSEX', 'HK50', 'HK50M',
+  'ASX200', 'AUS200', 'AUS200M', 'KOSPI', 'SENSEX', 'HK50', 'HK50M', 'HK33',
   'US30', 'US30M', 'US30X10', 'US30_X10M', 'US500', 'US500M', 'US500X100', 'US500_X100M',
   'USTEC', 'USTECM', 'USTECX100', 'USTEC_X100M', 'DE30', 'DE30M', 'FR40', 'FR40M',
-  'UK100', 'UK100M', 'STOXX50', 'STOXX50M', 'JP225', 'JP225M'
+  'UK100', 'UK100M', 'STOXX50', 'STOXX50M', 'JP225', 'JP225M',
+  'SPX500', 'NAS100', 'US2000', 'AU200', 'EU50', 'CN50', 'SG30', 'NL25',
+  'FH_SPX500', 'FH_NAS100', 'FH_US30', 'FH_US2000', 'FH_JP225', 'FH_AU200',
+  'FH_UK100', 'FH_DE30', 'FH_FR40', 'FH_EU50', 'FH_HK33', 'FH_CN50', 'FH_SG30', 'FH_NL25',
+  'FTSE RAFI US1000', 'FTSE RAFI US1500', 'DB US DOLLAR INDEX', 'DB COMMODITY INDEX', 'US COMMODITY INDEX',
+  'AUSTRALIA 200', 'EUROPE 50', 'FRANCE 40', 'GERMANY 40', 'HONG KONG 50', 'ITALY 40',
+  'JAPAN 225', 'LATIN AMERICA 40', 'NETHERLANDS 25', 'SPAIN 35', 'SWITZERLAND 20', 'UK 100', 'US 30', 'US 500',
+  'US TECH 100', 'CORE S&P 500', 'S&P 500 LOW VOLATILITY', 'CHINA LARGE-CAP'
+])
+
+const KNOWN_COMMODITIES = new Set([
+  'USOIL', 'USOILM', 'UKOIL', 'UKOILM', 'XNGUSD', 'XNGUSDM', 'BRENT', 'WTI', 'NAT.GAS', 'NATGAS',
+  'XBRUSD', 'XTIUSD', 'CORN', 'WHEAT', 'SOYBEAN', 'COFFEE', 'SUGAR', 'COTTON', 'COCOA',
+  'DB OIL FUND', 'DB AGRICULTURE FUND', 'US OIL FUND', 'US NATURAL GAS FUND'
 ])
 
 const FOREX_CURRENCIES = new Set([
@@ -46,10 +60,33 @@ const FOREX_CURRENCIES = new Set([
   'TRY', 'ZAR', 'MXN', 'PLN', 'CZK', 'HUF', 'ILS', 'DKK', 'CNH', 'THB', 'RUB', 'CNY', 'IDR'
 ])
 
-export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): AssetCategory {
-  const cleanSym = symbol.toUpperCase()
-  const cleanType = (assetType || '').toLowerCase()
+const CRYPTO_COINS = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'SUI', 'NEAR', 'APT', 'PEPE', 'LTC'
+]
 
+export function isForexCurrencyPair(symbol: string): boolean {
+  let s = (symbol || '').toUpperCase().trim()
+  if (s.endsWith('M') && s.length === 7) s = s.slice(0, 6)
+  if (s.length === 6) {
+    const base = s.slice(0, 3)
+    const quote = s.slice(3, 6)
+    if (FOREX_CURRENCIES.has(base) && FOREX_CURRENCIES.has(quote)) return true
+  }
+  if (s.includes('/') || s.includes('_') || s.includes('-')) {
+    const parts = s.split(/[/\\-_]/)
+    if (parts.length >= 2 && FOREX_CURRENCIES.has(parts[0]) && FOREX_CURRENCIES.has(parts[1])) return true
+  }
+  return false
+}
+
+export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): AssetCategory {
+  const cleanSym = (symbol || '').toUpperCase().trim()
+  const cleanType = (assetType || '').toLowerCase().trim()
+
+  const known = getKnownInstrument(cleanSym)
+  if (known) return known.category
+
+  // 1. Metals First (prevents XPBUSD matching crypto BUSD)
   if (
     cleanSym.startsWith('XAU') ||
     cleanSym.startsWith('XAG') ||
@@ -60,48 +97,79 @@ export function mapPiaAssetTypeToCategory(assetType: string, symbol: string): As
     cleanSym.startsWith('XNI') ||
     cleanSym.startsWith('XPB') ||
     cleanSym.startsWith('XZN') ||
-    cleanSym.includes('GOLD') ||
-    cleanSym.includes('SILVER') ||
-    cleanSym.includes('COPPER')
+    cleanSym === 'GOLD' ||
+    cleanSym === 'SILVER' ||
+    cleanSym === 'COPPER' ||
+    cleanSym === 'PLATINUM' ||
+    cleanSym === 'PALLADIUM'
   ) {
     return 'metals'
   }
 
+  // 2. Commodities (Energies, Agriculture, Commodity Funds)
   if (
-    cleanType === 'commodity' ||
-    cleanSym.includes('OIL') ||
-    cleanSym.includes('GAS') ||
+    KNOWN_COMMODITIES.has(cleanSym) ||
     cleanSym.startsWith('XNG') ||
-    ['WTI', 'BRENT', 'CORN', 'WHEAT'].includes(cleanSym)
+    cleanSym === 'XBRUSD' ||
+    cleanSym === 'XTIUSD' ||
+    cleanSym === 'WTI' ||
+    cleanSym === 'BRENT' ||
+    cleanSym === 'USOIL' ||
+    cleanSym === 'UKOIL' ||
+    cleanSym === 'NAT.GAS' ||
+    cleanSym === 'NATGAS'
   ) {
     return 'commodities'
   }
 
-  if (cleanType === 'index' || KNOWN_INDICES.has(cleanSym)) {
+  // 3. Indices (Finnhub OANDA CFDs, Benchmarks, Word-form CFDs, MSCI indices)
+  const noM = cleanSym.endsWith('M') ? cleanSym.slice(0, -1) : cleanSym
+  if (
+    cleanSym.startsWith('FH_') ||
+    cleanSym.startsWith('MSCI ') ||
+    cleanType === 'index' ||
+    cleanType === 'indices' ||
+    KNOWN_INDICES.has(cleanSym) ||
+    KNOWN_INDICES.has(cleanSym.replace(/^FH_/, '')) ||
+    KNOWN_INDICES.has(noM)
+  ) {
     return 'indices'
   }
 
+  // 4. Crypto (Major tokens, Binance pairs, stablecoins, micro contracts)
+  if (cleanType === 'crypto') return 'crypto'
   if (
-    cleanType === 'crypto' ||
     cleanSym.endsWith('USDT') ||
-    cleanSym.endsWith('BTC') ||
-    cleanSym.startsWith('BTC') ||
-    cleanSym.startsWith('ETH')
+    cleanSym.endsWith('USDTM') ||
+    cleanSym.endsWith('USDC') ||
+    cleanSym.endsWith('USDCM') ||
+    cleanSym.endsWith('PERP')
   ) {
     return 'crypto'
   }
-
-  // Currency pairs (standard 6-letter or micro pairs like EURUSDM)
-  const base = cleanSym.endsWith('M') && cleanSym.length === 7 ? cleanSym.slice(0, 6) : cleanSym
-  if (base.length === 6) {
-    const c1 = base.slice(0, 3)
-    const c2 = base.slice(3, 6)
-    if (FOREX_CURRENCIES.has(c1) && FOREX_CURRENCIES.has(c2)) {
-      return 'forex'
+  for (const c of CRYPTO_COINS) {
+    if (cleanSym.startsWith(c)) {
+      let rem = cleanSym.slice(c.length)
+      if (rem.endsWith('M')) rem = rem.slice(0, -1)
+      if (
+        FOREX_CURRENCIES.has(rem) ||
+        rem === 'XAU' ||
+        rem === 'XAG' ||
+        rem === 'USDT' ||
+        rem === 'USDC' ||
+        rem === 'BUSD'
+      ) {
+        return 'crypto'
+      }
     }
   }
 
-  if (cleanType === 'stock' || cleanType === 'equity') return 'stocks'
+  // 5. Forex (Strict verification: must be a genuine fiat pair)
+  if (isForexCurrencyPair(cleanSym)) {
+    return 'forex'
+  }
+
+  // 6. Stocks / Corporate Equities / Corporate CFDs / Bonds / ETFs
   return 'stocks'
 }
 
@@ -110,7 +178,16 @@ export function getSymbolPrecision(
   category?: AssetCategory,
   currentPrice?: number
 ): { pricePrecision: number; volumePrecision: number; minMove: number } {
-  const cleanSym = (symbol || '').toUpperCase()
+  const cleanSym = (symbol || '').toUpperCase().trim()
+  const known = getKnownInstrument(cleanSym)
+  if (known && currentPrice === undefined) {
+    return {
+      pricePrecision: known.pricePrecision,
+      volumePrecision: known.volumePrecision,
+      minMove: known.minMove
+    }
+  }
+
   const cat = category || mapPiaAssetTypeToCategory('', cleanSym)
 
   if (cat === 'forex') {
