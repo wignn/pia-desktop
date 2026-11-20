@@ -392,21 +392,23 @@ export async function createTauriApi(): Promise<TerminalAPI> {
         })
         if (!finishResponse.ok) throw new Error(`Google login failed (${finishResponse.status})`)
         const finish = (await finishResponse.json()) as {
+          session_token?: string
           desktop_credential?: string
           user?: { id?: string; email?: string; name?: string; avatar_url?: string; plan?: string }
         }
-        if (!finish.desktop_credential) throw new Error('Google login did not return a credential')
+        const credential = finish.session_token || finish.desktop_credential
+        if (!credential) throw new Error('Google login did not return a credential')
         const userMeta = finish.user
           ? {
               id: finish.user.id,
               email: finish.user.email,
               name: finish.user.name,
               avatarUrl: finish.user.avatar_url,
-              plan: finish.user.plan || 'enterprise'
+              plan: finish.user.plan || 'free'
             }
           : undefined
 
-        if (!(await credManager.saveDesktopCredential(finish.desktop_credential, userMeta))) {
+        if (!(await credManager.saveDesktopCredential(credential, userMeta))) {
           throw new Error(`Could not securely save desktop login: ${credManager.getStorageError() || 'system credential store unavailable'}`)
         }
         if (userMeta) {

@@ -138,6 +138,7 @@ async fn native_http_request(req: NativeHttpRequest) -> Result<NativeHttpRespons
         .timeout(Duration::from_secs(120))
         .redirect(reqwest::redirect::Policy::none())
         .resolve_to_addrs(host, &addrs)
+        .no_proxy()
         .build()
         .map_err(|e| e.to_string())?;
 
